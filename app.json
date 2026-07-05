@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "testimonial-app",
+    "slug": "testimonial-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.zeistinteractive.testimonialapp",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs camera access to record your testimonial video and provide real-time framing guidance.",
+        "NSMicrophoneUsageDescription": "This app needs microphone access to record audio for your testimonial video."
+      }
+    },
+    "android": {
+      "package": "com.zeistinteractive.testimonialapp",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "react-native-fast-tflite"
+    ]
+  }
+}
