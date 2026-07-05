@@ -92,6 +92,30 @@ you expect to hand-edit native code regularly).
   it's a one-time, low-risk dev-machine setting many Node/Android workflows benefit from,
   but needs an admin-elevated terminal, so I left it for you to run deliberately
 
+## ⚠️ Overnight build result: FAILED — known cause, quick fix
+The background build kicked off after the move (targeting x86_64 + arm64-v8a)
+**failed**. Note for future me: the task-completion notification said "exit code 0" —
+that was misleading, it was the exit code of the wrapper's trailing `echo`, not
+Gradle's. Always check the log content itself, not the notification's exit code.
+
+Root cause: `robocopy` carried over `android/build/` and `android/app/build/`
+(Gradle/CMake build output dirs) from the old location. Gradle saw them as
+already up-to-date and didn't regenerate them — but files like
+`android/build/generated/autolinking/autolinking.json` have the **old absolute
+path** (`C:\Users\soham\Desktop\githubRepos\testimonial-app\...`) hardcoded
+inside them from the pre-move build. CMake then tried to build against that
+stale/nonexistent path and hit the same `ninja: manifest still dirty` failure
+we already fixed once, just re-triggered by the stale cache.
+
+**Fix (do this before rebuilding tomorrow):**
+```
+rm -rf android/build android/app/build
+find . -type d -name ".cxx" -exec rm -rf {} +
+find node_modules -maxdepth 3 -type d -name build -path "*/android/*" -exec rm -rf {} +
+```
+Then rebuild with `npx expo run:android` (or the direct gradlew command). This
+should be a clean build from the correct path with no stale references.
+
 ## Next steps for tomorrow
 1. Open the project at its new location: `C:\dev\testimonial-app`
 2. If you want to test on your **real phone** (recommended — see below): enable
