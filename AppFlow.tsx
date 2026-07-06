@@ -3,12 +3,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ConsentScreen } from './screens/ConsentScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
+import { CameraAlignment } from './CameraAlignment';
 import { QuestionIntroOverlay } from './screens/QuestionIntroOverlay';
 import { CountdownOverlay } from './screens/CountdownOverlay';
 import { RedoPromptOverlay } from './screens/RedoPromptOverlay';
 import { UploadingScreen } from './screens/UploadingScreen';
 import { CompletionScreen } from './screens/CompletionScreen';
-import { colors } from './theme';
 
 // Lightweight state-based flow - no navigation library added yet, so this
 // doesn't require any new native dependencies/rebuild. Swap for
@@ -16,9 +16,16 @@ import { colors } from './theme';
 // gestures, deep links).
 type Screen = 'welcome' | 'consent' | 'question' | 'uploading' | 'complete';
 
-// Per CLAUDE.md: TTS question plays fully -> 5s countdown -> recording
+// Per CLAUDE.md: full alignment lock (~15-20 frames) before question 1,
+// lighter recheck (~5-8 frames) before questions 2-5, guide fades out once
+// locked -> TTS question plays fully -> 5s countdown -> recording
 // auto-starts -> (if alignment broke mid-answer) redo prompt -> next question.
-type QuestionPhase = 'intro' | 'countdown' | 'recording' | 'redo-prompt';
+type QuestionPhase =
+  | 'aligning'
+  | 'intro'
+  | 'countdown'
+  | 'recording'
+  | 'redo-prompt';
 
 const TOTAL_QUESTIONS = 5;
 const PLACEHOLDER_QUESTIONS = [
@@ -32,16 +39,14 @@ const PLACEHOLDER_QUESTIONS = [
 // Not wired into App.tsx/index.ts yet - this is scaffolding for the
 // surrounding app flow, built alongside (not on top of) the in-progress
 // camera alignment feature so the two don't collide while both are being
-// tested. Wiring the camera placeholder up to the real <Camera> +
-// alignment overlay is the next integration step once that feature
-// branch lands. Several pieces stand in for logic that doesn't exist yet
-// (TTS playback, real recording, alignment-break detection, real upload)
-// via clearly-labeled "(dev)" triggers - see FRAME_PROCESSOR_PROGRESS.md
-// / commit messages for what's real vs. placeholder.
+// tested. Several pieces stand in for logic that doesn't exist yet (TTS
+// playback, real recording, alignment-break detection, real upload) via
+// clearly-labeled "(dev)" triggers - see FRAME_PROCESSOR_PROGRESS.md /
+// commit messages for what's real vs. placeholder.
 export function AppFlow() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [questionIndex, setQuestionIndex] = useState(0);
-  const [phase, setPhase] = useState<QuestionPhase>('intro');
+  const [phase, setPhase] = useState<QuestionPhase>('aligning');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Fake elapsed-time ticker while "recording" - stands in for real
@@ -61,7 +66,7 @@ export function AppFlow() {
       return;
     }
     setQuestionIndex((i) => i + 1);
-    setPhase('intro');
+    setPhase('aligning');
   }
 
   if (screen === 'welcome') {
@@ -73,7 +78,7 @@ export function AppFlow() {
       <ConsentScreen
         onAgree={() => {
           setQuestionIndex(0);
-          setPhase('intro');
+          setPhase('aligning');
           setScreen('question');
         }}
       />
@@ -102,6 +107,7 @@ export function AppFlow() {
 
   // screen === 'question'
   const questionText = PLACEHOLDER_QUESTIONS[questionIndex] ?? '';
+  const lockMode = questionIndex === 0 ? 'initial' : 'recheck';
 
   return (
     <RecordingScreen
@@ -111,7 +117,11 @@ export function AppFlow() {
       isRecording={phase === 'recording'}
       elapsedSeconds={elapsedSeconds}
     >
-      <View style={styles.cameraPlaceholder} />
+      <CameraAlignment
+        lockMode={lockMode}
+        resetToken={questionIndex}
+        onLocked={() => setPhase('intro')}
+      />
 
       {phase === 'intro' && (
         <QuestionIntroOverlay
@@ -143,10 +153,6 @@ export function AppFlow() {
 }
 
 const styles = StyleSheet.create({
-  cameraPlaceholder: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   devEndAnswerButton: {
     position: 'absolute',
     bottom: 120,

@@ -13,7 +13,8 @@ survives even if a session gets cut short.
 - [x] 3. Compute centering/distance/headroom signals from face bounds
 - [x] 4. Build alignment-lock state machine (consecutive good-frame counter)
 - [x] 5. Build guide overlay UI with fade-out on lock/record start
-- [ ] 6. Verify on real device, commit
+- [x] 6. Verify on real device, commit
+- [x] 7. Wire camera/alignment into the full app pipeline (AppFlow)
 
 ## Log
 
@@ -179,6 +180,34 @@ with the user but deferred pending these cheaper tweaks first):
   useFaceDetector()/frame-processor + tflite path.
 
 `npx tsc --noEmit` passes clean.
+
+### Step 7 — Wired into the full app pipeline (done)
+Lag is reduced but not eliminated even after fps/minFaceSize tuning -
+decided to move on to integration now rather than keep optimizing; the
+bigger architectural options (custom tracking, lighter model) documented
+above remain available if needed later.
+
+Extracted the camera/permission/alignment-lock logic out of `App.tsx`
+into a standalone `CameraAlignment.tsx` component, parameterized by
+`lockMode` ('initial' | 'recheck') and `resetToken` (question index) so
+it can run a fresh lock cycle per question, calling `onLocked()` once
+when the streak completes. This is the same logic as before, just no
+longer hardcoded to a single always-'initial' screen.
+
+`AppFlow.tsx` now has a real `QuestionPhase` state machine per CLAUDE.md's
+flow: `aligning -> intro -> countdown -> recording -> redo-prompt ->
+next question (back to aligning)`. Question 1 uses `lockMode: 'initial'`
+(18 frames), questions 2-5 use `'recheck'` (6 frames). `CameraAlignment`
+is now the actual camera feed inside `RecordingScreen`'s children slot,
+replacing the dark placeholder View. `App.tsx` is now just
+`<AppFlow />` + `<StatusBar />` - the raw full-screen camera test screen
+that was there since the start of this feature no longer exists as a
+separate thing; it's the 'aligning' phase of the real flow now.
+
+Dev-only placeholders (TTS intro, recording stop, real upload) are
+unchanged - still clearly labeled, not touched by this integration pass.
+
+`npx tsc --noEmit` passes clean. Not yet re-verified on device - next step.
 
 ### Step 5 — Guide overlay UI (done)
 Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +
