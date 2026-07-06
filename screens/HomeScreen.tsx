@@ -13,9 +13,10 @@ export interface RecordedVideo {
 interface Props {
   videos: RecordedVideo[];
   onCreateNew: () => void;
+  onPressVideo: (video: RecordedVideo) => void;
 }
 
-export function HomeScreen({ videos, onCreateNew }: Props) {
+export function HomeScreen({ videos, onCreateNew, onPressVideo }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -41,9 +42,15 @@ export function HomeScreen({ videos, onCreateNew }: Props) {
           columnWrapperStyle={styles.row}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <View style={styles.videoCard}>
+            <Pressable
+              style={styles.videoCard}
+              onPress={() => onPressVideo(item)}
+            >
+              <View style={styles.playIconCircle}>
+                <Text style={styles.playIcon}>▶</Text>
+              </View>
               <Text style={styles.videoLabel}>{item.label}</Text>
-            </View>
+            </Pressable>
           )}
         />
       )}
@@ -99,6 +106,21 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  playIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  playIcon: {
+    color: colors.accentText,
+    fontSize: 16,
+    // Optically center the triangle glyph within the circle.
+    marginLeft: 2,
   },
   videoLabel: {
     ...typography.caption,

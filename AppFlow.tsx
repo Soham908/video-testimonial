@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ConsentScreen } from './screens/ConsentScreen';
 import { HomeScreen, type RecordedVideo } from './screens/HomeScreen';
+import { VideoPlayerScreen } from './screens/VideoPlayerScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
 import { CameraAlignment, type CameraAlignmentHandle } from './CameraAlignment';
 import { QuestionIntroOverlay } from './screens/QuestionIntroOverlay';
@@ -59,6 +60,7 @@ export function AppFlow() {
   const [phase, setPhase] = useState<QuestionPhase>('aligning');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
+  const [playingVideo, setPlayingVideo] = useState<RecordedVideo | null>(null);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
 
   // Fake elapsed-time ticker while "recording" - the recording itself is
@@ -93,6 +95,15 @@ export function AppFlow() {
     goToNextQuestion();
   }
 
+  if (playingVideo) {
+    return (
+      <VideoPlayerScreen
+        video={playingVideo}
+        onClose={() => setPlayingVideo(null)}
+      />
+    );
+  }
+
   if (screen === 'welcome') {
     return <WelcomeScreen onGetStarted={() => setScreen('consent')} />;
   }
@@ -105,6 +116,7 @@ export function AppFlow() {
     return (
       <HomeScreen
         videos={videos}
+        onPressVideo={(video) => setPlayingVideo(video)}
         onCreateNew={() => {
           setQuestionIndex(0);
           setPhase('aligning');

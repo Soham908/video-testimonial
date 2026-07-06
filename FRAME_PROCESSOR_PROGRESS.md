@@ -18,6 +18,7 @@ survives even if a session gets cut short.
 - [x] 8. Fix permission-sequencing bug + add Home screen + fix consent scroll bug
 - [x] 9. Fix redo-prompt click-blocking bug, question bar legibility, consent emptiness
 - [x] 10. Real video recording + storage (Keep/Redo actually finalize/discard files)
+- [x] 11. Verify recorded files exist on-device (adb), add video playback via expo-video
 
 ## Log
 
@@ -305,6 +306,35 @@ Built real recording:
   reference is tracked, not fabricated.
 
 `npx tsc --noEmit` passes clean. Not yet re-verified on device - next step.
+
+### Step 11 — Verified recorded files, added real playback (in progress)
+Verified via `adb shell run-as com.zeistinteractive.testimonialapp find
+/data/data/.../cache -iname "*.mp4"` that recording produces real files
+(5 files, 2.9MB-47MB, matching realistic footage sizes) - confirms the
+recording pipeline genuinely works, not just returning fake success.
+**Caveat**: files live in `cache/`, which Android can clear under storage
+pressure - fine for now, but should move to durable "files" storage
+before wiring real upload.
+
+Home's video cards had no `onPress` at all - tapping did nothing, by
+omission, not a bug hiding real functionality. User chose (via
+AskUserQuestion): generic play-icon thumbnail + tap-to-open full-screen
+player (not real per-video frame thumbnails), and to proceed with the
+native rebuild this requires immediately.
+
+Installed `expo-video` (new native dependency - needs a real rebuild,
+not just a Metro reload, kicked off in the background). Added:
+- `screens/VideoPlayerScreen.tsx`: full-screen player using
+  `useVideoPlayer`/`VideoView`, source as `file://${filePath}`, native
+  controls, close button.
+- `HomeScreen`'s video cards are now `Pressable` with a play-icon circle,
+  calling a new `onPressVideo` prop.
+- `AppFlow.tsx`: `playingVideo` state: when set, renders
+  `VideoPlayerScreen` instead of the current screen (checked before all
+  other screen branches); Home's `onPressVideo` sets it.
+
+`npx tsc --noEmit` passes clean. Rebuild in progress - not yet verified
+on device.
 
 ### Step 5 — Guide overlay UI (done)
 Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +

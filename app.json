@@ -32,7 +32,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "react-native-fast-tflite"
+      "react-native-fast-tflite",
+      "expo-video"
     ]
   }
 }
