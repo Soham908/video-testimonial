@@ -11,7 +11,7 @@ survives even if a session gets cut short.
 - [x] 1. Research VisionCamera v5 frame processor + worklets API
 - [x] 2. Wire face detector onto `<Camera>`, stream raw face detections to JS console
 - [x] 3. Compute centering/distance/headroom signals from face bounds
-- [ ] 4. Build alignment-lock state machine (consecutive good-frame counter)
+- [x] 4. Build alignment-lock state machine (consecutive good-frame counter)
 - [ ] 5. Build guide overlay UI with fade-out on lock/record start
 - [ ] 6. Verify on real device, commit
 
@@ -61,3 +61,19 @@ API is simpler than expected.
   its own `outputs` array internally, plural). Fixed by passing
   `output={undefined}` — satisfies the type, does nothing at runtime.
 - `npx tsc --noEmit` passes clean.
+
+### Step 4 — Alignment-lock state machine (done)
+Added `useAlignmentLock.ts`: a hook taking `mode: 'initial' | 'recheck'`
+(18 vs 6 required consecutive good frames, per CLAUDE.md's ~15-20 / ~5-8
+spec), exposing `{ isLocked, goodFrameStreak, requiredFrames, registerFrame,
+reset }`. `registerFrame(aligned)` increments/resets the streak and flips
+`isLocked` once the threshold is hit; once locked it ignores further frames
+until `reset()` is called (not wired to anything yet — that's for when the
+5-question flow and re-lock-between-questions logic gets built).
+
+`App.tsx` now calls `registerFrame` on every detection callback and logs
+once when the lock transitions to `true` ("LOCKED — ready to record"). Only
+`'initial'` mode is used for now since there's still just one screen — the
+`'recheck'` mode has no caller yet, which is expected at this stage.
+
+`npx tsc --noEmit` passes clean.

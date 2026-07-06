@@ -8,6 +8,7 @@ import {
 } from 'react-native-vision-camera';
 import { Camera, type Face } from 'react-native-vision-camera-face-detector';
 import { computeAlignmentSignals, isFullyAligned } from './alignment';
+import { useAlignmentLock } from './useAlignmentLock';
 
 export default function App() {
   const { hasPermission: hasCamera, requestPermission: requestCamera } =
@@ -27,29 +28,42 @@ export default function App() {
     if (!hasMic) requestMic();
   }, [hasMic, requestMic]);
 
-  // Log roughly twice a second (every 15th frame) instead of every frame,
-  // just to confirm detection + signal computation while wiring this up.
+  // Only one question/screen exists so far, so 'initial' is the only mode
+  // in play right now — the 'recheck' mode will matter once the 5-question
+  // flow exists.
+  const { isLocked, goodFrameStreak, requiredFrames, registerFrame } =
+    useAlignmentLock('initial');
+
   const frameCount = useRef(0);
+  const wasLocked = useRef(false);
   const handleFacesDetected = useCallback(
     (faces: Face[]) => {
+      const aligned = faces.length > 0 && isFullyAligned(
+        computeAlignmentSignals(faces[0].bounds, width, height),
+      );
+      registerFrame(aligned);
+
+      // Log roughly twice a second instead of every frame, just to confirm
+      // this is behaving correctly while wiring it up.
       frameCount.current += 1;
-      if (frameCount.current % 15 !== 0) return;
-
-      if (faces.length === 0) {
-        console.log('[alignment] no face detected');
-        return;
+      if (frameCount.current % 15 === 0) {
+        console.log('[alignment]', {
+          faces: faces.length,
+          aligned,
+          goodFrameStreak,
+          requiredFrames,
+        });
       }
-
-      const signals = computeAlignmentSignals(faces[0].bounds, width, height);
-      console.log('[alignment]', {
-        faces: faces.length,
-        bounds: faces[0].bounds,
-        ...signals,
-        aligned: isFullyAligned(signals),
-      });
     },
-    [width, height],
+    [width, height, registerFrame, goodFrameStreak, requiredFrames],
   );
+
+  useEffect(() => {
+    if (isLocked && !wasLocked.current) {
+      console.log('[alignment] LOCKED — ready to record');
+    }
+    wasLocked.current = isLocked;
+  }, [isLocked]);
 
   if (!hasCamera || !hasMic) {
     return (
