@@ -101,6 +101,50 @@ Not yet re-verified on device after this fix — that's the next thing to do.
 
 `npx tsc --noEmit` passes clean.
 
+### Step 6 continued — actually reducing detection frequency (done)
+The render-throttling fix above only reduced JS-side reaction cost; ML Kit
+was still running inference on every camera frame (20-30+/sec), which is
+the real dominant cost of continuous on-device CV — this is the exact
+budget/mid-range-hardware risk CLAUDE.md flagged going in.
+
+Rather than a full custom frame-processor + worklets + shared-value rewrite
+(meaningfully more complexity), used two levers already in VisionCamera's
+high-level API:
+
+1. **`constraints={[{ fps: 12 }]}` while aligning.** The camera session
+   negotiates a format matching that fps for all its streams (preview +
+   any attached output), so ML Kit only receives ~12 frames/sec instead of
+   the sensor's native rate — directly cuts inference frequency, no
+   worklets needed. Preview looks slightly less smooth during this phase,
+   which is an acceptable trade for a "position yourself" screen.
+2. **Detection is fully disconnected once locked**, not just ignored.
+   Switched from the face-detector package's own `<Camera>` wrapper to the
+   base `<Camera>` (`react-native-vision-camera`) + the `useFaceDetectorOutput`
+   hook directly, so the `outputs` array can be controlled ourselves. Once
+   `isLocked`, `outputs` becomes `[]` (verified via `useCameraSession.ts`/
+   `useCameraController.ts` that changing `outputs` triggers a real
+   `session.configure(...)` reconfiguration — this actually disconnects the
+   native pipeline branch, not just silences the JS callback) — then a
+   `setInterval` briefly re-enables it for ~1s every 10s to catch drift,
+   per the "check every ~10s if still in frame" idea rather than running
+   continuously through the whole answer.
+
+Note: `outputs` and `constraints` are both memoized (VisionCamera's own
+docs warn `outputs` must be stable or the session reconfigures every
+render).
+
+**Known caveat, not fixed now**: the `{ fps: 12 }` constraint currently
+applies to the *entire* camera session, including preview. That's fine
+while there's no recording feature, but once actual video recording is
+built, this constraint must be scoped to the alignment phase only, and
+lifted (or set to normal e.g. 24-30fps) once real recording starts — a
+12fps recorded clip would look bad. Flagging this now so it isn't
+forgotten when the recording feature is built.
+
+Still needs re-verification on device — that's the next step.
+
+`npx tsc --noEmit` passes clean.
+
 ### Step 5 — Guide overlay UI (done)
 Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +
 "N/required" progress counter, absolutely positioned over the camera feed.

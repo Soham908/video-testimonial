@@ -1,15 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
+  Camera,
   useCameraDevice,
   useCameraPermission,
   useMicrophonePermission,
+  type CameraOutput,
 } from 'react-native-vision-camera';
-import { Camera, type Face } from 'react-native-vision-camera-face-detector';
+import { useFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector';
 import { AlignmentGuideOverlay } from './AlignmentGuideOverlay';
 import { computeAlignmentSignals, isFullyAligned, type AlignmentSignals } from './alignment';
 import { useAlignmentLock } from './useAlignmentLock';
+
+// While aligning, ML Kit runs on every frame the session delivers - a lower
+// capture fps directly cuts that inference frequency, which is the actual
+// on-device cost (JS-side render throttling alone didn't touch it).
+const ALIGNING_FPS_CONSTRAINT = [{ fps: 12 }];
+
+// Once locked, there's no need for continuous detection - just a periodic
+// sanity check that the person hasn't drifted out of frame.
+const RECHECK_INTERVAL_MS = 10_000;
+const RECHECK_DURATION_MS = 1_000;
 
 export default function App() {
   const { hasPermission: hasCamera, requestPermission: requestCamera } =
@@ -46,9 +58,8 @@ export default function App() {
           : null;
       registerFrame(currentSignals != null && isFullyAligned(currentSignals));
 
-      // Detection callbacks can fire 20-30+ times/sec; re-rendering the
-      // overlay at that rate is what was causing the on-device lag, so we
-      // throttle the UI-facing state update to ~10/sec instead.
+      // Detection callbacks can still fire faster than we need to visibly
+      // update; throttle the UI-facing state update to ~10/sec.
       frameCount.current += 1;
       if (frameCount.current % 3 === 0) {
         setSignals(currentSignals);
@@ -71,6 +82,54 @@ export default function App() {
     }
     wasLocked.current = isLocked;
   }, [isLocked]);
+
+  // Detection is continuous until locked, then off except for a brief
+  // recheck window every RECHECK_INTERVAL_MS.
+  const [detectionEnabled, setDetectionEnabled] = useState(true);
+  useEffect(() => {
+    if (!isLocked) {
+      setDetectionEnabled(true);
+      return;
+    }
+
+    setDetectionEnabled(false);
+    let recheckTimeout: ReturnType<typeof setTimeout> | undefined;
+    const interval = setInterval(() => {
+      setDetectionEnabled(true);
+      recheckTimeout = setTimeout(
+        () => setDetectionEnabled(false),
+        RECHECK_DURATION_MS,
+      );
+    }, RECHECK_INTERVAL_MS);
+
+    return () => {
+      clearInterval(interval);
+      if (recheckTimeout) clearTimeout(recheckTimeout);
+    };
+  }, [isLocked]);
+
+  const faceDetectorOutput = useFaceDetectorOutput({
+    onFacesDetected: handleFacesDetected,
+    onError: (error) => console.error('[face detector]', error),
+    // Landmarks/contours aren't used yet - our alignment checks only read
+    // `bounds` - and landmark detection is a meaningfully heavier ML Kit
+    // model, so leave both off until something actually needs them.
+    performanceMode: 'fast',
+    autoMode: true,
+    windowWidth: width,
+    windowHeight: height,
+  });
+
+  // `outputs` must be a stable/memoized array (per VisionCamera's docs) or
+  // the session reconfigures on every render.
+  const outputs = useMemo<CameraOutput[]>(
+    () => (detectionEnabled ? [faceDetectorOutput] : []),
+    [detectionEnabled, faceDetectorOutput],
+  );
+  const constraints = useMemo(
+    () => (isLocked ? undefined : ALIGNING_FPS_CONSTRAINT),
+    [isLocked],
+  );
 
   if (!hasCamera || !hasMic) {
     return (
@@ -98,19 +157,8 @@ export default function App() {
         style={StyleSheet.absoluteFill}
         device={device}
         isActive={true}
-        // Landmarks/contours aren't used yet - our alignment checks only
-        // read `bounds` - and landmark detection is a meaningfully heavier
-        // ML Kit model, so leave both off until something actually needs them.
-        performanceMode="fast"
-        autoMode
-        windowWidth={width}
-        windowHeight={height}
-        onFacesDetected={handleFacesDetected}
-        onError={(error) => console.error('[face detector]', error)}
-        // `output` is a required field in this package's own .d.ts, but the
-        // runtime component never reads it (it builds its own `outputs`
-        // array internally) — passing undefined just satisfies the type.
-        output={undefined}
+        constraints={constraints}
+        outputs={outputs}
       />
       <AlignmentGuideOverlay
         visible={!isLocked}
