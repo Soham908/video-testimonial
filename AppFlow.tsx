@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ConsentScreen } from './screens/ConsentScreen';
+import { HomeScreen, type RecordedVideo } from './screens/HomeScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
 import { CameraAlignment } from './CameraAlignment';
 import { QuestionIntroOverlay } from './screens/QuestionIntroOverlay';
@@ -14,7 +15,13 @@ import { CompletionScreen } from './screens/CompletionScreen';
 // doesn't require any new native dependencies/rebuild. Swap for
 // React Navigation later if the flow grows more complex (e.g. back
 // gestures, deep links).
-type Screen = 'welcome' | 'consent' | 'question' | 'uploading' | 'complete';
+type Screen =
+  | 'welcome'
+  | 'consent'
+  | 'home'
+  | 'question'
+  | 'uploading'
+  | 'complete';
 
 // Per CLAUDE.md: full alignment lock (~15-20 frames) before question 1,
 // lighter recheck (~5-8 frames) before questions 2-5, guide fades out once
@@ -48,6 +55,8 @@ export function AppFlow() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [phase, setPhase] = useState<QuestionPhase>('aligning');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // Empty until real recording + storage exists - see HomeScreen.tsx.
+  const [videos] = useState<RecordedVideo[]>([]);
 
   // Fake elapsed-time ticker while "recording" - stands in for real
   // recording duration until actual capture exists.
@@ -74,9 +83,14 @@ export function AppFlow() {
   }
 
   if (screen === 'consent') {
+    return <ConsentScreen onAgree={() => setScreen('home')} />;
+  }
+
+  if (screen === 'home') {
     return (
-      <ConsentScreen
-        onAgree={() => {
+      <HomeScreen
+        videos={videos}
+        onCreateNew={() => {
           setQuestionIndex(0);
           setPhase('aligning');
           setScreen('question');
@@ -102,7 +116,7 @@ export function AppFlow() {
   }
 
   if (screen === 'complete') {
-    return <CompletionScreen onDone={() => setScreen('welcome')} />;
+    return <CompletionScreen onDone={() => setScreen('home')} />;
   }
 
   // screen === 'question'

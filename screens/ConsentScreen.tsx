@@ -21,7 +21,7 @@ export function ConsentScreen({ onAgree }: Props) {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>Before we start</Text>
         {CONSENT_POINTS.map((point) => (
           <View key={point} style={styles.pointRow}>
@@ -60,6 +60,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     padding: spacing.xl,
     paddingBottom: spacing.xxl,
+  },
+  scrollView: {
+    flex: 1,
   },
   scrollContent: {
     paddingTop: spacing.lg,

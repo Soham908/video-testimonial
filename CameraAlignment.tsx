@@ -47,13 +47,20 @@ export function CameraAlignment({ lockMode, resetToken, onLocked }: Props) {
   const device = useCameraDevice('front');
   const { width, height } = useWindowDimensions();
 
+  // Requesting both permissions in separate, independent effects fires them
+  // concurrently on mount - Android can only show one system permission
+  // dialog at a time, so the second request (mic) gets dropped/stuck until
+  // the app is reloaded and the effects re-run with hasCamera already true.
+  // Sequencing them - only request mic once camera has resolved - fixes it.
   useEffect(() => {
-    if (!hasCamera) requestCamera();
-  }, [hasCamera, requestCamera]);
-
-  useEffect(() => {
-    if (!hasMic) requestMic();
-  }, [hasMic, requestMic]);
+    if (!hasCamera) {
+      requestCamera();
+      return;
+    }
+    if (!hasMic) {
+      requestMic();
+    }
+  }, [hasCamera, hasMic, requestCamera, requestMic]);
 
   const { isLocked, goodFrameStreak, requiredFrames, registerFrame, reset } =
     useAlignmentLock(lockMode);

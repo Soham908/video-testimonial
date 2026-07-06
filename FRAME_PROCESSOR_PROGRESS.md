@@ -15,6 +15,7 @@ survives even if a session gets cut short.
 - [x] 5. Build guide overlay UI with fade-out on lock/record start
 - [x] 6. Verify on real device, commit
 - [x] 7. Wire camera/alignment into the full app pipeline (AppFlow)
+- [x] 8. Fix permission-sequencing bug + add Home screen + fix consent scroll bug
 
 ## Log
 
@@ -208,6 +209,34 @@ Dev-only placeholders (TTS intro, recording stop, real upload) are
 unchanged - still clearly labeled, not touched by this integration pass.
 
 `npx tsc --noEmit` passes clean. Not yet re-verified on device - next step.
+
+### Step 8 — Permission bug fix, Home screen, consent scroll bug (done)
+User feedback after testing the wired-up flow, addressed:
+
+- **Real bug found**: `CameraAlignment` requested camera and mic
+  permission in two separate, independent `useEffect`s, firing both on
+  mount. Android can only show one system permission dialog at a time,
+  so the mic request got dropped/stuck - the app appeared to hang after
+  granting camera permission, only proceeding after a full reload (by
+  which point `hasCamera` was already `true`, so only the mic effect fired
+  alone, cleanly). Fixed by sequencing them in one effect - request mic
+  only once camera has resolved.
+- **Real bug found**: `ConsentScreen`'s `ScrollView` had no `style={{flex:1}}`,
+  only a `contentContainerStyle` - without it, the scroll area doesn't
+  reliably size within the flex column layout, which was the "alignment"
+  issue. Fixed.
+- **Flow restructured** per user request: Welcome -> Consent -> **Home**
+  -> (tap "Create Testimonial") -> question flow -> Uploading -> Complete
+  -> back to **Home** (not Welcome). Added `screens/HomeScreen.tsx`.
+- **Home screen's video gallery is intentionally empty right now** - no
+  real video recording/storage exists yet, so rather than fabricate
+  placeholder thumbnails, it shows an honest empty state ("You haven't
+  recorded one yet"). `HomeScreen` accepts a `videos: RecordedVideo[]`
+  prop and renders a real grid once that's populated - ready for wiring
+  once actual capture + storage is built, not populated with fake data
+  now.
+
+`npx tsc --noEmit` passes clean. Not yet re-verified on device.
 
 ### Step 5 — Guide overlay UI (done)
 Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +
