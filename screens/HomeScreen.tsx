@@ -4,9 +4,9 @@ import { colors, radius, spacing, typography } from '../theme';
 export interface RecordedVideo {
   id: string;
   label: string;
-  // Filesystem path from VisionCamera's Recorder (app-private temp
-  // storage, not a public gallery). Not rendered yet - no thumbnail/
-  // playback UI exists - but tracked so it's available once that's built.
+  // A file:// URI in the app's durable document storage (see
+  // recordings.ts) - not a public gallery, moved there from VisionCamera's
+  // temp cache once the recording is finalized.
   filePath: string;
 }
 

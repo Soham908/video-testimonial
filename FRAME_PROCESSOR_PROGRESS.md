@@ -19,6 +19,7 @@ survives even if a session gets cut short.
 - [x] 9. Fix redo-prompt click-blocking bug, question bar legibility, consent emptiness
 - [x] 10. Real video recording + storage (Keep/Redo actually finalize/discard files)
 - [x] 11. Verify recorded files exist on-device (adb), add video playback via expo-video
+- [x] 12. Durable storage move + clear-on-new-session (expo-file-system), button cleanup
 
 ## Log
 
@@ -335,6 +336,39 @@ not just a Metro reload, kicked off in the background). Added:
 
 `npx tsc --noEmit` passes clean. Rebuild in progress - not yet verified
 on device.
+
+### Step 12 — Durable storage + testing cleanup + button polish (done)
+User asked about deleting old test recordings (Home's list was growing
+across repeated test runs) and moving recordings out of the cache dir -
+both need real filesystem access, so added `expo-file-system` (another
+new native dependency - rebuild required, confirmed with user first via
+AskUserQuestion).
+
+- `recordings.ts`: `moveRecordingToDurableStorage(tempFilePath, fileName)`
+  moves a finished recording from VisionCamera's temp cache into
+  `Paths.document/recordings/` (safe from Android clearing it under
+  storage pressure, unlike cache/) using expo-file-system's new
+  File/Directory/Paths API, returning the new `file://` URI.
+  `clearAllRecordings()` deletes the whole recordings directory - called
+  from Home's "Create Testimonial" button as a **testing convenience**
+  so the video list doesn't grow indefinitely across repeated runs; noted
+  in comments that a real product would keep multiple sessions instead of
+  wiping on each new one.
+- `AppFlow.handleRecordingFinished` now moves the file before storing it
+  in `videos` state; `VideoPlayerScreen`'s source no longer needs a
+  `file://` prefix added since the stored path is already a full URI.
+- Button cleanup per user request: `QuestionIntroOverlay`'s "Continue
+  (dev — stands in for TTS finishing)" -> just "Continue" (still a
+  placeholder underneath, just without cluttering UI text).
+  `AppFlow`'s "Finish answer (dev — ...)" -> "Finish Answer", now styled
+  as a real solid button (theme.accent) since manual tap *is* the actual
+  v1 decision for ending an answer, not a placeholder anymore. The
+  Uploading screen's "Skip (dev — ...)" -> "Skip for now" as a plain text
+  link, since real upload genuinely doesn't exist yet - kept visually
+  distinct from real buttons rather than dressed up as one.
+
+`npx tsc --noEmit` passes clean. Rebuild needed (expo-file-system is
+native) - not yet verified on device.
 
 ### Step 5 — Guide overlay UI (done)
 Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +

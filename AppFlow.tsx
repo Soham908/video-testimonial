@@ -11,6 +11,8 @@ import { CountdownOverlay } from './screens/CountdownOverlay';
 import { RedoPromptOverlay } from './screens/RedoPromptOverlay';
 import { UploadingScreen } from './screens/UploadingScreen';
 import { CompletionScreen } from './screens/CompletionScreen';
+import { moveRecordingToDurableStorage, clearAllRecordings } from './recordings';
+import { colors, radius, spacing, typography } from './theme';
 
 // Lightweight state-based flow - no navigation library added yet, so this
 // doesn't require any new native dependencies/rebuild. Swap for
@@ -49,11 +51,10 @@ const PLACEHOLDER_QUESTIONS = [
 // Not wired into App.tsx/index.ts yet - this is scaffolding for the
 // surrounding app flow, built alongside (not on top of) the in-progress
 // camera alignment feature so the two don't collide while both are being
-// tested. Some pieces still stand in for logic that doesn't exist yet
-// (TTS playback, real upload, mid-answer alignment-break detection) via
-// clearly-labeled "(dev)" triggers - see FRAME_PROCESSOR_PROGRESS.md /
-// commit messages for what's real vs. placeholder. Video recording itself
-// is real (see CameraAlignment.tsx).
+// tested. TTS playback, real upload, and mid-answer alignment-break
+// detection still don't exist for real - see the "Continue"/"Skip"
+// buttons below and FRAME_PROCESSOR_PROGRESS.md for what's real vs.
+// placeholder. Video recording + storage + playback are all real.
 export function AppFlow() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -87,10 +88,12 @@ export function AppFlow() {
   // Only ever fires as a result of "Keep this take" (stopRecording()) -
   // "Redo answer" uses cancelRecording() instead, which doesn't finalize
   // a file, so this is unambiguous.
-  function handleRecordingFinished(filePath: string) {
+  function handleRecordingFinished(tempFilePath: string) {
+    const fileName = `question-${questionIndex + 1}-${Date.now()}.mp4`;
+    const durablePath = moveRecordingToDurableStorage(tempFilePath, fileName);
     setVideos((prev) => [
       ...prev,
-      { id: `q${questionIndex}-${Date.now()}`, label: `Question ${questionIndex + 1}`, filePath },
+      { id: `q${questionIndex}-${Date.now()}`, label: `Question ${questionIndex + 1}`, filePath: durablePath },
     ]);
     goToNextQuestion();
   }
@@ -118,6 +121,12 @@ export function AppFlow() {
         videos={videos}
         onPressVideo={(video) => setPlayingVideo(video)}
         onCreateNew={() => {
+          // Testing convenience: clears prior recordings so this list
+          // doesn't grow indefinitely across repeated test runs - see
+          // recordings.ts for the caveat about revisiting this for the
+          // real product.
+          clearAllRecordings();
+          setVideos([]);
           setQuestionIndex(0);
           setPhase('aligning');
           setScreen('question');
@@ -131,12 +140,10 @@ export function AppFlow() {
       <View style={{ flex: 1 }}>
         <UploadingScreen />
         <Pressable
-          style={styles.devButton}
+          style={styles.skipLink}
           onPress={() => setScreen('complete')}
         >
-          <Text style={styles.devButtonText}>
-            Skip (dev — stands in for real upload finishing)
-          </Text>
+          <Text style={styles.skipLinkText}>Skip for now</Text>
         </Pressable>
       </View>
     );
@@ -187,12 +194,10 @@ export function AppFlow() {
         )}
         {phase === 'recording' && (
           <Pressable
-            style={styles.devEndAnswerButton}
+            style={styles.finishAnswerButton}
             onPress={() => setPhase('redo-prompt')}
           >
-            <Text style={styles.devButtonText}>
-              Finish answer (dev — stands in for real end-of-answer detection)
-            </Text>
+            <Text style={styles.finishAnswerButtonText}>Finish Answer</Text>
           </Pressable>
         )}
       </RecordingScreen>
@@ -224,26 +229,30 @@ const styles = StyleSheet.create({
   questionScreenRoot: {
     flex: 1,
   },
-  devEndAnswerButton: {
+  finishAnswerButton: {
     position: 'absolute',
-    bottom: 120,
+    bottom: 130,
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    backgroundColor: colors.accent,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
   },
-  devButton: {
+  finishAnswerButtonText: {
+    ...typography.button,
+    fontSize: 14,
+    color: colors.accentText,
+  },
+  skipLink: {
     position: 'absolute',
     bottom: 60,
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  devButtonText: {
-    color: '#fff',
-    fontSize: 13,
+  skipLinkText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textDecorationLine: 'underline',
   },
 });

@@ -20,8 +20,8 @@ export function QuestionIntroOverlay({
         <Text style={styles.speakerIcon}>🔊</Text>
       </View>
       <Text style={styles.questionText}>{questionText}</Text>
-      <Pressable style={styles.devButton} onPress={onFinishedSpeaking}>
-        <Text style={styles.devButtonText}>Continue (dev — stands in for TTS finishing)</Text>
+      <Pressable style={styles.continueButton} onPress={onFinishedSpeaking}>
+        <Text style={styles.continueButtonText}>Continue</Text>
       </Pressable>
     </View>
   );
@@ -55,14 +55,14 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     marginBottom: spacing.xl,
   },
-  devButton: {
+  continueButton: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  devButtonText: {
+  continueButtonText: {
     ...typography.caption,
     color: colors.textMuted,
   },

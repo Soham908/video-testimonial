@@ -9,7 +9,9 @@ interface Props {
 }
 
 export function VideoPlayerScreen({ video, onClose }: Props) {
-  const player = useVideoPlayer(`file://${video.filePath}`, (p) => {
+  // filePath is already a full file:// URI (from recordings.ts, which
+  // moves recordings into durable storage) - no prefix needed here.
+  const player = useVideoPlayer(video.filePath, (p) => {
     p.play();
   });
 
