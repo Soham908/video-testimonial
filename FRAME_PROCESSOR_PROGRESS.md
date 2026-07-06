@@ -145,6 +145,41 @@ Still needs re-verification on device — that's the next step.
 
 `npx tsc --noEmit` passes clean.
 
+### Step 6 continued — release build confirms real ML Kit cost, more tuning
+Built and tested a Release APK (`builds/testimonial-video-v1.apk`, gitignored,
+not committed) to isolate debug-mode JS overhead from genuine native
+inference cost. Result: lag during aligning was about the same as debug -
+confirms this is real ML Kit inference cost, not a JS-thread/debug-build
+artifact.
+
+Two more tuning changes, both cheap/low-risk (no architecture change):
+- Dropped `ALIGNING_FPS_CONSTRAINT` from 12 to 8 - further cuts detection
+  frequency.
+- Added `minFaceSize: 0.25` to the face detector options. ML Kit searches
+  across a range of face sizes by default (as small as 15% of frame
+  width); raising this is ML Kit's own documented performance
+  recommendation, since it shrinks the multi-scale search space. Kept
+  below alignment.ts's 0.35 "too far" threshold so a too-distant face
+  still gets a "move closer" message rather than "no face detected".
+
+Not yet re-verified on device.
+
+**Bigger options, not pursued yet** (real architecture changes, discussed
+with the user but deferred pending these cheaper tweaks first):
+- Camera hardware's own face-rectangle metadata (Camera2's
+  `STATISTICS_FACES`, used for AF/AE) is essentially free but not exposed
+  by VisionCamera's JS API - would need native module work.
+- Detect-once-then-track cheaply between detections (optical flow or
+  similar), only re-running full ML Kit detection periodically. ML Kit's
+  `trackingEnabled` flag does NOT do this - it only assigns consistent
+  IDs across full detections, doesn't reduce per-frame inference cost.
+- A lighter, GPU-accelerated real-time model (e.g. MediaPipe BlazeFace)
+  instead of ML Kit - meaningfully faster but requires dropping
+  react-native-vision-camera-face-detector for the manual
+  useFaceDetector()/frame-processor + tflite path.
+
+`npx tsc --noEmit` passes clean.
+
 ### Step 5 — Guide overlay UI (done)
 Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +
 "N/required" progress counter, absolutely positioned over the camera feed.

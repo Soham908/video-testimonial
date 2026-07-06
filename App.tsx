@@ -15,8 +15,18 @@ import { useAlignmentLock } from './useAlignmentLock';
 
 // While aligning, ML Kit runs on every frame the session delivers - a lower
 // capture fps directly cuts that inference frequency, which is the actual
-// on-device cost (JS-side render throttling alone didn't touch it).
-const ALIGNING_FPS_CONSTRAINT = [{ fps: 12 }];
+// on-device cost (JS-side render throttling alone didn't touch it). A
+// release build ruled out debug-mode JS overhead as the cause, so this is
+// genuinely the inference cost - dropped further from 12 to 8.
+const ALIGNING_FPS_CONSTRAINT = [{ fps: 8 }];
+
+// ML Kit searches across a range of face sizes by default (as small as 15%
+// of frame width) - most of that search space is irrelevant here since we
+// expect a reasonably large, centered face. Raising this is ML Kit's own
+// documented performance tip. Kept below alignment.ts's 0.35 "too far"
+// threshold so a too-distant face still gets a "move closer" message
+// instead of registering as "no face detected".
+const MIN_FACE_SIZE = 0.25;
 
 // Once locked, there's no need for continuous detection - just a periodic
 // sanity check that the person hasn't drifted out of frame.
@@ -115,6 +125,7 @@ export default function App() {
     // `bounds` - and landmark detection is a meaningfully heavier ML Kit
     // model, so leave both off until something actually needs them.
     performanceMode: 'fast',
+    minFaceSize: MIN_FACE_SIZE,
     autoMode: true,
     windowWidth: width,
     windowHeight: height,
