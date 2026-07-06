@@ -105,15 +105,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     // Fixed-height bar - questionText needs a hard character cap upstream
     // (unresolved in CLAUDE.md's open items) so it never wraps past 2 lines.
+    // Extra bottom padding approximates safe-area/gesture-nav clearance
+    // without adding react-native-safe-area-context (a new native dep) -
+    // revisit with real safe-area insets if this doesn't hold up across
+    // devices.
     minHeight: 96,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.78)',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
   },
   questionText: {
     ...typography.subtitle,
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: 24,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });

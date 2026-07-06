@@ -16,6 +16,7 @@ survives even if a session gets cut short.
 - [x] 6. Verify on real device, commit
 - [x] 7. Wire camera/alignment into the full app pipeline (AppFlow)
 - [x] 8. Fix permission-sequencing bug + add Home screen + fix consent scroll bug
+- [x] 9. Fix redo-prompt click-blocking bug, question bar legibility, consent emptiness
 
 ## Log
 
@@ -235,6 +236,35 @@ User feedback after testing the wired-up flow, addressed:
   prop and renders a real grid once that's populated - ready for wiring
   once actual capture + storage is built, not populated with fake data
   now.
+
+`npx tsc --noEmit` passes clean. Not yet re-verified on device.
+
+### Step 9 — More user-reported bugs, fixed (done)
+- **Real bug**: `RedoPromptOverlay`'s "Keep this take"/"Redo answer" buttons
+  were unclickable - `RecordingScreen` renders its own chrome (rec
+  indicator, progress badge, question bar) *after* `{children}` in JSX, so
+  it always paints on top of whatever's passed in as children - including
+  `RedoPromptOverlay`, whose buttons sit in the same bottom region as the
+  question bar. Fixed by moving `RedoPromptOverlay` out of
+  `RecordingScreen`'s children entirely in `AppFlow.tsx`, rendering it as
+  a sibling after the whole `RecordingScreen`, guaranteeing it paints
+  above all of that chrome.
+- **Legibility**: question bar text bumped to 18px/600 weight with a text
+  shadow for contrast against variable video content; bar opacity raised
+  0.65 -> 0.78; extra bottom padding added to approximate safe-area/
+  gesture-nav clearance (not exact - would need
+  `react-native-safe-area-context`, a new native dependency, for real
+  device insets; noted as a caveat rather than added now).
+- **Consent screen "empty" feeling**: content was top-aligned inside the
+  scroll view with a large gap above the checkbox/button, since the 4
+  bullet points don't fill the screen height. Added `flexGrow: 1,
+  justifyContent: 'center'` to the scroll content so it centers instead
+  of hugging the top.
+
+Real recording/storage still doesn't exist - user asked directly, and
+this was confirmed as the honest current state, not something to fake.
+Building actual video capture + storage is the next real feature to
+consider, separate from these bug fixes.
 
 `npx tsc --noEmit` passes clean. Not yet re-verified on device.
 

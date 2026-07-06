@@ -124,49 +124,59 @@ export function AppFlow() {
   const lockMode = questionIndex === 0 ? 'initial' : 'recheck';
 
   return (
-    <RecordingScreen
-      questionNumber={questionIndex + 1}
-      totalQuestions={TOTAL_QUESTIONS}
-      questionText={questionText}
-      isRecording={phase === 'recording'}
-      elapsedSeconds={elapsedSeconds}
-    >
-      <CameraAlignment
-        lockMode={lockMode}
-        resetToken={questionIndex}
-        onLocked={() => setPhase('intro')}
-      />
-
-      {phase === 'intro' && (
-        <QuestionIntroOverlay
-          questionText={questionText}
-          onFinishedSpeaking={() => setPhase('countdown')}
+    <View style={styles.questionScreenRoot}>
+      <RecordingScreen
+        questionNumber={questionIndex + 1}
+        totalQuestions={TOTAL_QUESTIONS}
+        questionText={questionText}
+        isRecording={phase === 'recording'}
+        elapsedSeconds={elapsedSeconds}
+      >
+        <CameraAlignment
+          lockMode={lockMode}
+          resetToken={questionIndex}
+          onLocked={() => setPhase('intro')}
         />
-      )}
-      {phase === 'countdown' && (
-        <CountdownOverlay onComplete={() => setPhase('recording')} />
-      )}
-      {phase === 'recording' && (
-        <Pressable
-          style={styles.devEndAnswerButton}
-          onPress={() => setPhase('redo-prompt')}
-        >
-          <Text style={styles.devButtonText}>
-            End answer (dev — stands in for real recording stop)
-          </Text>
-        </Pressable>
-      )}
+
+        {phase === 'intro' && (
+          <QuestionIntroOverlay
+            questionText={questionText}
+            onFinishedSpeaking={() => setPhase('countdown')}
+          />
+        )}
+        {phase === 'countdown' && (
+          <CountdownOverlay onComplete={() => setPhase('recording')} />
+        )}
+        {phase === 'recording' && (
+          <Pressable
+            style={styles.devEndAnswerButton}
+            onPress={() => setPhase('redo-prompt')}
+          >
+            <Text style={styles.devButtonText}>
+              End answer (dev — stands in for real recording stop)
+            </Text>
+          </Pressable>
+        )}
+      </RecordingScreen>
+
+      {/* Rendered outside RecordingScreen (not in its children) so it
+          always paints above the question bar / rec indicator / progress
+          badge - those are RecordingScreen's own chrome, layered after its
+          children, and would otherwise sit on top of and block this. */}
       {phase === 'redo-prompt' && (
         <RedoPromptOverlay
           onKeep={goToNextQuestion}
           onRedo={() => setPhase('countdown')}
         />
       )}
-    </RecordingScreen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  questionScreenRoot: {
+    flex: 1,
+  },
   devEndAnswerButton: {
     position: 'absolute',
     bottom: 120,

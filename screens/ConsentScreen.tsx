@@ -65,6 +65,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
     paddingTop: spacing.lg,
   },
   title: {
