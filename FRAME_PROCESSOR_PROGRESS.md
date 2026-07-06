@@ -78,6 +78,29 @@ once when the lock transitions to `true` ("LOCKED — ready to record"). Only
 
 `npx tsc --noEmit` passes clean.
 
+### Step 6 — On-device verification: found and fixed lag (in progress)
+Working end to end on a real phone: lock detection, oval guide, fade-out
+all confirmed correct — but with noticeable lag, which wasn't present
+before face detection was added (the plain camera preview alone had none).
+
+Two causes identified:
+1. `runLandmarks: true` was on but nothing reads landmark data yet (only
+   `bounds` is used) — landmark detection is a meaningfully heavier ML Kit
+   model than plain bounding-box detection. Removed; added
+   `performanceMode="fast"` explicitly.
+2. Every detection callback (20-30+/sec) was pushing straight to React
+   state in two places (`setSignals` in App.tsx, and internally inside
+   `useAlignmentLock`'s `registerFrame`), re-rendering the whole overlay
+   at that rate. Throttled both to update UI-facing state ~10x/sec instead
+   (every 3rd callback), while the streak/lock logic itself still runs on
+   every raw callback via refs, so lock-timing accuracy is unaffected —
+   only how often the *display* refreshes changed. Lock transitions still
+   update immediately (not throttled) so the fade-out isn't delayed.
+
+Not yet re-verified on device after this fix — that's the next thing to do.
+
+`npx tsc --noEmit` passes clean.
+
 ### Step 5 — Guide overlay UI (done)
 Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +
 "N/required" progress counter, absolutely positioned over the camera feed.

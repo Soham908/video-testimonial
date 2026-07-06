@@ -44,12 +44,15 @@ export default function App() {
         faces.length > 0
           ? computeAlignmentSignals(faces[0].bounds, width, height)
           : null;
-      setSignals(currentSignals);
       registerFrame(currentSignals != null && isFullyAligned(currentSignals));
 
-      // Log roughly twice a second instead of every frame, just to confirm
-      // this is behaving correctly while wiring it up.
+      // Detection callbacks can fire 20-30+ times/sec; re-rendering the
+      // overlay at that rate is what was causing the on-device lag, so we
+      // throttle the UI-facing state update to ~10/sec instead.
       frameCount.current += 1;
+      if (frameCount.current % 3 === 0) {
+        setSignals(currentSignals);
+      }
       if (frameCount.current % 15 === 0) {
         console.log('[alignment]', {
           faces: faces.length,
@@ -95,7 +98,10 @@ export default function App() {
         style={StyleSheet.absoluteFill}
         device={device}
         isActive={true}
-        runLandmarks
+        // Landmarks/contours aren't used yet - our alignment checks only
+        // read `bounds` - and landmark detection is a meaningfully heavier
+        // ML Kit model, so leave both off until something actually needs them.
+        performanceMode="fast"
         autoMode
         windowWidth={width}
         windowHeight={height}
