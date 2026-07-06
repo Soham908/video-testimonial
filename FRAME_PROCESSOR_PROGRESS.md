@@ -12,7 +12,7 @@ survives even if a session gets cut short.
 - [x] 2. Wire face detector onto `<Camera>`, stream raw face detections to JS console
 - [x] 3. Compute centering/distance/headroom signals from face bounds
 - [x] 4. Build alignment-lock state machine (consecutive good-frame counter)
-- [ ] 5. Build guide overlay UI with fade-out on lock/record start
+- [x] 5. Build guide overlay UI with fade-out on lock/record start
 - [ ] 6. Verify on real device, commit
 
 ## Log
@@ -75,5 +75,24 @@ until `reset()` is called (not wired to anything yet — that's for when the
 once when the lock transitions to `true` ("LOCKED — ready to record"). Only
 `'initial'` mode is used for now since there's still just one screen — the
 `'recheck'` mode has no caller yet, which is expected at this stage.
+
+`npx tsc --noEmit` passes clean.
+
+### Step 5 — Guide overlay UI (done)
+Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +
+"N/required" progress counter, absolutely positioned over the camera feed.
+Uses React Native's built-in `Animated` (no new dependency) to fade opacity
+to 0 over 400ms when `visible` goes false — per CLAUDE.md, "fades out
+(smooth transition, not a hard cut)". Outline turns green when all three
+signals pass. Message picks the single most relevant instruction
+(distance > centering > headroom, in that priority order) rather than
+listing all failing signals at once.
+
+Wired into `App.tsx`: `visible={!isLocked}`, so the guide fades out the
+moment the lock state machine reports locked — standing in for "recording
+begins" until actual recording exists. `signals` state now also drives the
+overlay (previously only used for the console log), throttled to update on
+every detection callback for now; worth revisiting for perf on lower-end
+hardware once we're testing frame rates on a real device.
 
 `npx tsc --noEmit` passes clean.

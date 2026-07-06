@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
@@ -7,7 +7,8 @@ import {
   useMicrophonePermission,
 } from 'react-native-vision-camera';
 import { Camera, type Face } from 'react-native-vision-camera-face-detector';
-import { computeAlignmentSignals, isFullyAligned } from './alignment';
+import { AlignmentGuideOverlay } from './AlignmentGuideOverlay';
+import { computeAlignmentSignals, isFullyAligned, type AlignmentSignals } from './alignment';
 import { useAlignmentLock } from './useAlignmentLock';
 
 export default function App() {
@@ -33,15 +34,18 @@ export default function App() {
   // flow exists.
   const { isLocked, goodFrameStreak, requiredFrames, registerFrame } =
     useAlignmentLock('initial');
+  const [signals, setSignals] = useState<AlignmentSignals | null>(null);
 
   const frameCount = useRef(0);
   const wasLocked = useRef(false);
   const handleFacesDetected = useCallback(
     (faces: Face[]) => {
-      const aligned = faces.length > 0 && isFullyAligned(
-        computeAlignmentSignals(faces[0].bounds, width, height),
-      );
-      registerFrame(aligned);
+      const currentSignals =
+        faces.length > 0
+          ? computeAlignmentSignals(faces[0].bounds, width, height)
+          : null;
+      setSignals(currentSignals);
+      registerFrame(currentSignals != null && isFullyAligned(currentSignals));
 
       // Log roughly twice a second instead of every frame, just to confirm
       // this is behaving correctly while wiring it up.
@@ -49,7 +53,7 @@ export default function App() {
       if (frameCount.current % 15 === 0) {
         console.log('[alignment]', {
           faces: faces.length,
-          aligned,
+          signals: currentSignals,
           goodFrameStreak,
           requiredFrames,
         });
@@ -101,6 +105,12 @@ export default function App() {
         // runtime component never reads it (it builds its own `outputs`
         // array internally) — passing undefined just satisfies the type.
         output={undefined}
+      />
+      <AlignmentGuideOverlay
+        visible={!isLocked}
+        signals={signals}
+        goodFrameStreak={goodFrameStreak}
+        requiredFrames={requiredFrames}
       />
       <StatusBar style="light" />
     </View>
