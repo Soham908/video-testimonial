@@ -1,8 +1,12 @@
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ConsentScreen } from './screens/ConsentScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
+import { QuestionIntroOverlay } from './screens/QuestionIntroOverlay';
+import { CountdownOverlay } from './screens/CountdownOverlay';
+import { RedoPromptOverlay } from './screens/RedoPromptOverlay';
+import { UploadingScreen } from './screens/UploadingScreen';
 import { CompletionScreen } from './screens/CompletionScreen';
 import { colors } from './theme';
 
@@ -10,7 +14,11 @@ import { colors } from './theme';
 // doesn't require any new native dependencies/rebuild. Swap for
 // React Navigation later if the flow grows more complex (e.g. back
 // gestures, deep links).
-type Screen = 'welcome' | 'consent' | 'recording' | 'complete';
+type Screen = 'welcome' | 'consent' | 'question' | 'uploading' | 'complete';
+
+// Per CLAUDE.md: TTS question plays fully -> 5s countdown -> recording
+// auto-starts -> (if alignment broke mid-answer) redo prompt -> next question.
+type QuestionPhase = 'intro' | 'countdown' | 'recording' | 'redo-prompt';
 
 const TOTAL_QUESTIONS = 5;
 const PLACEHOLDER_QUESTIONS = [
@@ -24,35 +32,141 @@ const PLACEHOLDER_QUESTIONS = [
 // Not wired into App.tsx/index.ts yet - this is scaffolding for the
 // surrounding app flow, built alongside (not on top of) the in-progress
 // camera alignment feature so the two don't collide while both are being
-// tested. Wiring RecordingScreen up to the real <Camera> + alignment
-// overlay is the next integration step once that feature branch lands.
+// tested. Wiring the camera placeholder up to the real <Camera> +
+// alignment overlay is the next integration step once that feature
+// branch lands. Several pieces stand in for logic that doesn't exist yet
+// (TTS playback, real recording, alignment-break detection, real upload)
+// via clearly-labeled "(dev)" triggers - see FRAME_PROCESSOR_PROGRESS.md
+// / commit messages for what's real vs. placeholder.
 export function AppFlow() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [phase, setPhase] = useState<QuestionPhase>('intro');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Fake elapsed-time ticker while "recording" - stands in for real
+  // recording duration until actual capture exists.
+  useEffect(() => {
+    if (phase !== 'recording') {
+      setElapsedSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [phase]);
+
+  function goToNextQuestion() {
+    if (questionIndex + 1 >= TOTAL_QUESTIONS) {
+      setScreen('uploading');
+      return;
+    }
+    setQuestionIndex((i) => i + 1);
+    setPhase('intro');
+  }
 
   if (screen === 'welcome') {
     return <WelcomeScreen onGetStarted={() => setScreen('consent')} />;
   }
 
   if (screen === 'consent') {
-    return <ConsentScreen onAgree={() => setScreen('recording')} />;
-  }
-
-  if (screen === 'recording') {
-    // Advancing questions/finishing isn't wired to any real action yet -
-    // no TTS/countdown/recording logic exists here, this is layout only.
     return (
-      <RecordingScreen
-        questionNumber={questionIndex + 1}
-        totalQuestions={TOTAL_QUESTIONS}
-        questionText={PLACEHOLDER_QUESTIONS[questionIndex] ?? ''}
-        isRecording={false}
-        elapsedSeconds={0}
-      >
-        <View style={{ flex: 1, backgroundColor: colors.background }} />
-      </RecordingScreen>
+      <ConsentScreen
+        onAgree={() => {
+          setQuestionIndex(0);
+          setPhase('intro');
+          setScreen('question');
+        }}
+      />
     );
   }
 
-  return <CompletionScreen onDone={() => setScreen('welcome')} />;
+  if (screen === 'uploading') {
+    return (
+      <View style={{ flex: 1 }}>
+        <UploadingScreen />
+        <Pressable
+          style={styles.devButton}
+          onPress={() => setScreen('complete')}
+        >
+          <Text style={styles.devButtonText}>
+            Skip (dev — stands in for real upload finishing)
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (screen === 'complete') {
+    return <CompletionScreen onDone={() => setScreen('welcome')} />;
+  }
+
+  // screen === 'question'
+  const questionText = PLACEHOLDER_QUESTIONS[questionIndex] ?? '';
+
+  return (
+    <RecordingScreen
+      questionNumber={questionIndex + 1}
+      totalQuestions={TOTAL_QUESTIONS}
+      questionText={questionText}
+      isRecording={phase === 'recording'}
+      elapsedSeconds={elapsedSeconds}
+    >
+      <View style={styles.cameraPlaceholder} />
+
+      {phase === 'intro' && (
+        <QuestionIntroOverlay
+          questionText={questionText}
+          onFinishedSpeaking={() => setPhase('countdown')}
+        />
+      )}
+      {phase === 'countdown' && (
+        <CountdownOverlay onComplete={() => setPhase('recording')} />
+      )}
+      {phase === 'recording' && (
+        <Pressable
+          style={styles.devEndAnswerButton}
+          onPress={() => setPhase('redo-prompt')}
+        >
+          <Text style={styles.devButtonText}>
+            End answer (dev — stands in for real recording stop)
+          </Text>
+        </Pressable>
+      )}
+      {phase === 'redo-prompt' && (
+        <RedoPromptOverlay
+          onKeep={goToNextQuestion}
+          onRedo={() => setPhase('countdown')}
+        />
+      )}
+    </RecordingScreen>
+  );
 }
+
+const styles = StyleSheet.create({
+  cameraPlaceholder: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  devEndAnswerButton: {
+    position: 'absolute',
+    bottom: 120,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  devButton: {
+    position: 'absolute',
+    bottom: 60,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  devButtonText: {
+    color: '#fff',
+    fontSize: 13,
+  },
+});
