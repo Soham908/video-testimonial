@@ -4,12 +4,13 @@ import { colors, radius, spacing, typography } from '../theme';
 export interface RecordedVideo {
   id: string;
   label: string;
+  // Filesystem path from VisionCamera's Recorder (app-private temp
+  // storage, not a public gallery). Not rendered yet - no thumbnail/
+  // playback UI exists - but tracked so it's available once that's built.
+  filePath: string;
 }
 
 interface Props {
-  // Empty until real recording + storage exists - this is the honest
-  // state today, not a placeholder gallery of fake videos. Ready to
-  // populate with real entries once that pipeline is built.
   videos: RecordedVideo[];
   onCreateNew: () => void;
 }

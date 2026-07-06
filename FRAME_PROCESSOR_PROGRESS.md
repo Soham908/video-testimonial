@@ -17,6 +17,7 @@ survives even if a session gets cut short.
 - [x] 7. Wire camera/alignment into the full app pipeline (AppFlow)
 - [x] 8. Fix permission-sequencing bug + add Home screen + fix consent scroll bug
 - [x] 9. Fix redo-prompt click-blocking bug, question bar legibility, consent emptiness
+- [x] 10. Real video recording + storage (Keep/Redo actually finalize/discard files)
 
 ## Log
 
@@ -267,6 +268,43 @@ Building actual video capture + storage is the next real feature to
 consider, separate from these bug fixes.
 
 `npx tsc --noEmit` passes clean. Not yet re-verified on device.
+
+### Step 10 — Real video recording + storage (done)
+User asked whether videos are actually being recorded/saved - honest
+answer at the time was no, the whole "recording" phase was UI-only.
+Built real recording:
+
+- Discovery: video recording (`useVideoOutput` + `Recorder`) is already
+  part of `react-native-vision-camera` itself - no new native dependency,
+  no rebuild needed, just a Metro reload. `createRecorder({})` with no
+  `filePath` records to a temp file within the app's own private storage
+  by default (not a public gallery, no MediaLibrary permission needed) -
+  matches CLAUDE.md's storage model already.
+- `CameraAlignment` is now a `forwardRef` component exposing
+  `{ startRecording, stopRecording, cancelRecording }` imperatively (via
+  `CameraAlignmentHandle`), matching VisionCamera's own ref-based
+  imperative pattern (focusTo, takeSnapshot, etc).
+- Redesigned the redo-prompt flow around the Recorder API's actual
+  semantics: recording stays *active* through the whole 'recording' ->
+  'redo-prompt' window (the "Finish answer (dev)" button just changes
+  phase, it doesn't stop anything). Only the user's actual choice
+  resolves it: "Keep this take" calls `stopRecording()` (finalizes the
+  file; `onRecordingFinished(filePath)` then adds it to `videos` state and
+  advances to the next question), "Redo answer" calls `cancelRecording()`
+  (cancels the in-progress recording and deletes its temp file
+  automatically - no manual filesystem/delete code needed) then restarts
+  the countdown.
+- `outputs` now always includes `videoOutput` (so recording can start
+  immediately after countdown); only the face-detector output still
+  toggles on/off. Detection is fully suspended for the whole
+  recording+redo-prompt window (`recordingActive` prop) - avoids
+  reconfiguring outputs mid-capture, and avoids reintroducing the ML Kit
+  lag during the actual answer.
+- `HomeScreen`'s `RecordedVideo` now carries the real `filePath`. Still no
+  thumbnail/playback UI - out of scope for this pass - but the real file
+  reference is tracked, not fabricated.
+
+`npx tsc --noEmit` passes clean. Not yet re-verified on device - next step.
 
 ### Step 5 — Guide overlay UI (done)
 Added `AlignmentGuideOverlay.tsx`: an oval guide outline + status message +
