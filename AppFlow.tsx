@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ConsentScreen } from './screens/ConsentScreen';
-import { HomeScreen, type RecordedVideo } from './screens/HomeScreen';
+import { PermissionsScreen } from './screens/PermissionsScreen';
+import { HomeScreen } from './screens/HomeScreen';
+import { MyVideosScreen } from './screens/MyVideosScreen';
+import { ProfileScreen } from './screens/ProfileScreen';
+import { BottomTabBar, type MainTab } from './screens/BottomTabBar';
 import { VideoPlayerScreen } from './screens/VideoPlayerScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
 import { CameraAlignment, type CameraAlignmentHandle } from './CameraAlignment';
@@ -11,8 +15,13 @@ import { CountdownOverlay } from './screens/CountdownOverlay';
 import { RedoPromptOverlay } from './screens/RedoPromptOverlay';
 import { UploadingScreen } from './screens/UploadingScreen';
 import { CompletionScreen } from './screens/CompletionScreen';
-import { moveRecordingToDurableStorage, clearAllRecordings } from './recordings';
-import { colors, radius, spacing, typography } from './theme';
+import { ConfirmationScreen } from './screens/ConfirmationScreen';
+import {
+  moveRecordingToDurableStorage,
+  clearAllRecordings,
+  type RecordedVideo,
+} from './recordings';
+import { colors } from './theme';
 
 // Lightweight state-based flow - no navigation library added yet, so this
 // doesn't require any new native dependencies/rebuild. Swap for
@@ -21,10 +30,12 @@ import { colors, radius, spacing, typography } from './theme';
 type Screen =
   | 'welcome'
   | 'consent'
-  | 'home'
+  | 'main'
+  | 'permissions'
   | 'question'
+  | 'complete'
   | 'uploading'
-  | 'complete';
+  | 'confirmation';
 
 // Per CLAUDE.md: full alignment lock (~15-20 frames) before question 1,
 // lighter recheck (~5-8 frames) before questions 2-5, guide fades out once
@@ -57,6 +68,7 @@ const PLACEHOLDER_QUESTIONS = [
 // placeholder. Video recording + storage + playback are all real.
 export function AppFlow() {
   const [screen, setScreen] = useState<Screen>('welcome');
+  const [mainTab, setMainTab] = useState<MainTab>('home');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [phase, setPhase] = useState<QuestionPhase>('aligning');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -78,7 +90,7 @@ export function AppFlow() {
 
   function goToNextQuestion() {
     if (questionIndex + 1 >= TOTAL_QUESTIONS) {
-      setScreen('uploading');
+      setScreen('complete');
       return;
     }
     setQuestionIndex((i) => i + 1);
@@ -98,6 +110,17 @@ export function AppFlow() {
     goToNextQuestion();
   }
 
+  // Testing convenience: clears prior recordings so My Videos doesn't grow
+  // indefinitely across repeated test runs - see recordings.ts for the
+  // caveat about revisiting this for the real product.
+  function startNewSession() {
+    clearAllRecordings();
+    setVideos([]);
+    setQuestionIndex(0);
+    setPhase('aligning');
+    setScreen('question');
+  }
+
   if (playingVideo) {
     return (
       <VideoPlayerScreen
@@ -112,45 +135,55 @@ export function AppFlow() {
   }
 
   if (screen === 'consent') {
-    return <ConsentScreen onAgree={() => setScreen('home')} />;
+    return <ConsentScreen onAgree={() => setScreen('main')} />;
   }
 
-  if (screen === 'home') {
+  if (screen === 'permissions') {
+    return <PermissionsScreen onContinue={startNewSession} />;
+  }
+
+  if (screen === 'main') {
     return (
-      <HomeScreen
-        videos={videos}
-        onPressVideo={(video) => setPlayingVideo(video)}
-        onCreateNew={() => {
-          // Testing convenience: clears prior recordings so this list
-          // doesn't grow indefinitely across repeated test runs - see
-          // recordings.ts for the caveat about revisiting this for the
-          // real product.
-          clearAllRecordings();
-          setVideos([]);
-          setQuestionIndex(0);
-          setPhase('aligning');
-          setScreen('question');
-        }}
-      />
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        {mainTab === 'home' && <HomeScreen onCreateNew={() => setScreen('permissions')} />}
+        {mainTab === 'myVideos' && (
+          <MyVideosScreen
+            videos={videos}
+            onPressVideo={(video) => setPlayingVideo(video)}
+            onRetake={(video) =>
+              console.log('[my-videos] retake tapped (placeholder)', video.id)
+            }
+          />
+        )}
+        {mainTab === 'profile' && <ProfileScreen />}
+        <BottomTabBar activeTab={mainTab} onTabPress={setMainTab} />
+      </View>
     );
+  }
+
+  if (screen === 'complete') {
+    return <CompletionScreen onSave={() => setScreen('uploading')} />;
   }
 
   if (screen === 'uploading') {
     return (
       <View style={{ flex: 1 }}>
         <UploadingScreen />
-        <Pressable
-          style={styles.skipLink}
-          onPress={() => setScreen('complete')}
-        >
-          <Text style={styles.skipLinkText}>Skip for now</Text>
-        </Pressable>
+        <SkipLink onPress={() => setScreen('confirmation')} />
       </View>
     );
   }
 
-  if (screen === 'complete') {
-    return <CompletionScreen onDone={() => setScreen('home')} />;
+  if (screen === 'confirmation') {
+    return (
+      <ConfirmationScreen
+        onDone={() => {
+          setMainTab('home');
+          setScreen('main');
+        }}
+        onRecordAnother={() => setScreen('permissions')}
+      />
+    );
   }
 
   // screen === 'question'
@@ -158,13 +191,14 @@ export function AppFlow() {
   const lockMode = questionIndex === 0 ? 'initial' : 'recheck';
 
   return (
-    <View style={styles.questionScreenRoot}>
+    <View style={{ flex: 1 }}>
       <RecordingScreen
         questionNumber={questionIndex + 1}
         totalQuestions={TOTAL_QUESTIONS}
         questionText={questionText}
         isRecording={phase === 'recording'}
         elapsedSeconds={elapsedSeconds}
+        onFinishAnswer={() => setPhase('redo-prompt')}
       >
         <CameraAlignment
           ref={cameraRef}
@@ -178,6 +212,8 @@ export function AppFlow() {
 
         {phase === 'intro' && (
           <QuestionIntroOverlay
+            questionNumber={questionIndex + 1}
+            totalQuestions={TOTAL_QUESTIONS}
             questionText={questionText}
             onFinishedSpeaking={() => setPhase('countdown')}
           />
@@ -191,14 +227,6 @@ export function AppFlow() {
               setPhase('recording');
             }}
           />
-        )}
-        {phase === 'recording' && (
-          <Pressable
-            style={styles.finishAnswerButton}
-            onPress={() => setPhase('redo-prompt')}
-          >
-            <Text style={styles.finishAnswerButtonText}>Finish Answer</Text>
-          </Pressable>
         )}
       </RecordingScreen>
 
@@ -225,34 +253,25 @@ export function AppFlow() {
   );
 }
 
+function SkipLink({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable style={styles.skipLink} onPress={onPress}>
+      <Text style={styles.skipLinkText}>Skip for now</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  questionScreenRoot: {
-    flex: 1,
-  },
-  finishAnswerButton: {
-    position: 'absolute',
-    bottom: 130,
-    alignSelf: 'center',
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-  },
-  finishAnswerButtonText: {
-    ...typography.button,
-    fontSize: 14,
-    color: colors.accentText,
-  },
   skipLink: {
     position: 'absolute',
     bottom: 60,
     alignSelf: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   skipLinkText: {
-    ...typography.caption,
-    color: colors.textMuted,
+    fontSize: 13,
+    color: colors.textFaint,
     textDecorationLine: 'underline',
   },
 });

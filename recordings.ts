@@ -1,5 +1,14 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+export interface RecordedVideo {
+  id: string;
+  label: string;
+  // A file:// URI in the app's durable document storage (see
+  // recordings.ts) - not a public gallery, moved there from VisionCamera's
+  // temp cache once the recording is finalized.
+  filePath: string;
+}
+
 const RECORDINGS_DIR_NAME = 'recordings';
 
 function getRecordingsDirectory(): Directory {

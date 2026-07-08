@@ -1,6 +1,6 @@
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { RecordedVideo } from './HomeScreen';
+import type { RecordedVideo } from '../recordings';
 import { colors, radius, spacing, typography } from '../theme';
 
 interface Props {

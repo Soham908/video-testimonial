@@ -33,7 +33,9 @@
     },
     "plugins": [
       "react-native-fast-tflite",
-      "expo-video"
+      "expo-video",
+      "expo-splash-screen",
+      "expo-font"
     ]
   }
 }

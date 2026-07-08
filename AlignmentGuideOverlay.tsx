@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import type { AlignmentSignals } from './alignment';
+import { colors, themeDark } from './theme';
 
 interface Props {
   // Guide is shown while this is true, and fades out (not a hard cut) when
@@ -62,25 +63,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   guideOval: {
-    width: 260,
-    height: 340,
+    width: 232,
+    height: 312,
     borderRadius: 170,
     borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.9)',
   },
   guideOvalGood: {
-    borderColor: '#4ade80',
+    borderColor: colors.accent,
+    borderStyle: 'solid',
   },
   message: {
     marginTop: 24,
-    color: '#fff',
+    color: themeDark.text,
     fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
     paddingHorizontal: 32,
   },
   progress: {
     marginTop: 8,
-    color: 'rgba(255,255,255,0.7)',
+    color: themeDark.textFaint,
     fontSize: 14,
   },
 });

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '../theme';
+import { useEffect, useRef } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { radius, spacing, themeDark, typography } from '../theme';
 
 interface Props {
   // The live camera feed (+ alignment guide overlay) slots in here once
@@ -12,12 +13,30 @@ interface Props {
   questionText: string;
   isRecording: boolean;
   elapsedSeconds: number;
+  onFinishAnswer?: () => void;
 }
 
 function formatTime(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
   const s = Math.floor(totalSeconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function RecordingDot() {
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[styles.recDot, { opacity }]} />;
 }
 
 export function RecordingScreen({
@@ -27,6 +46,7 @@ export function RecordingScreen({
   questionText,
   isRecording,
   elapsedSeconds,
+  onFinishAnswer,
 }: Props) {
   return (
     <View style={styles.container}>
@@ -34,14 +54,14 @@ export function RecordingScreen({
 
       {isRecording && (
         <View style={styles.recIndicator}>
-          <View style={styles.recDot} />
+          <RecordingDot />
           <Text style={styles.recTimer}>{formatTime(elapsedSeconds)}</Text>
         </View>
       )}
 
       <View style={styles.progressBadge}>
         <Text style={styles.progressText}>
-          Question {questionNumber} of {totalQuestions}
+          {questionNumber} of {totalQuestions}
         </Text>
       </View>
 
@@ -49,6 +69,11 @@ export function RecordingScreen({
         <Text style={styles.questionText} numberOfLines={2}>
           {questionText}
         </Text>
+        {isRecording && onFinishAnswer && (
+          <Pressable style={styles.finishButton} onPress={onFinishAnswer}>
+            <Text style={styles.finishButtonText}>I'm done answering</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -57,46 +82,50 @@ export function RecordingScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: themeDark.background,
   },
   feed: {
     ...StyleSheet.absoluteFill,
   },
   recIndicator: {
     position: 'absolute',
-    top: spacing.lg,
-    left: spacing.lg,
+    top: spacing.lg + spacing.sm,
+    left: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 20,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs + 2,
+    backgroundColor: themeDark.chrome,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md - 1,
+    paddingVertical: spacing.sm + 1,
   },
   recDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.danger,
-    marginRight: spacing.xs,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: '#E04F4F',
+    marginRight: spacing.sm + 1,
   },
   recTimer: {
-    ...typography.caption,
-    color: colors.text,
+    ...typography.body,
+    fontSize: 15,
+    fontWeight: '700',
+    color: themeDark.text,
     fontVariant: ['tabular-nums'],
   },
   progressBadge: {
     position: 'absolute',
-    top: spacing.lg,
-    right: spacing.lg,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 20,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs + 2,
+    top: spacing.lg + spacing.sm,
+    right: spacing.md,
+    backgroundColor: themeDark.chrome,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md - 1,
+    paddingVertical: spacing.sm + 1,
   },
   progressText: {
-    ...typography.caption,
-    color: colors.text,
+    ...typography.body,
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.9)',
   },
   questionBar: {
     position: 'absolute',
@@ -110,20 +139,30 @@ const styles = StyleSheet.create({
     // revisit with real safe-area insets if this doesn't hold up across
     // devices.
     minHeight: 96,
-    backgroundColor: 'rgba(0,0,0,0.78)',
+    backgroundColor: themeDark.chromeStrong,
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
   questionText: {
-    ...typography.subtitle,
-    fontSize: 18,
+    ...typography.body,
+    fontSize: 19,
     fontWeight: '600',
-    color: colors.text,
-    lineHeight: 24,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    color: themeDark.text,
+    lineHeight: 26,
+  },
+  finishButton: {
+    marginTop: spacing.md + 2,
+    height: 56,
+    borderRadius: radius.lg - 1,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finishButtonText: {
+    ...typography.button,
+    fontSize: 17,
+    color: '#1C2622',
   },
 });

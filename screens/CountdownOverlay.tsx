@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, themeDark, typography } from '../theme';
 
 interface Props {
   seconds?: number;
@@ -36,13 +36,13 @@ export function CountdownOverlay({ seconds = 5, onComplete }: Props) {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(11,11,15,0.85)',
+    backgroundColor: 'rgba(30,33,31,0.85)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
     ...typography.subtitle,
-    color: colors.textMuted,
+    color: themeDark.textFaint,
     marginBottom: spacing.sm,
   },
   count: {

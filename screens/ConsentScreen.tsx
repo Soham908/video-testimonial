@@ -10,10 +10,9 @@ interface Props {
 // This is a mandatory gate before any recording - final wording needs a
 // compliance review before shipping, this is a v1 UI scaffold only.
 const CONSENT_POINTS = [
-  'Your camera and microphone will be used to record a short video.',
-  'This video may be edited into a branded testimonial reel.',
-  'A transcript will be generated and analyzed for sentiment and themes.',
-  'You can redo any answer before submitting.',
+  'You will record a video of yourself answering 5 questions about your work.',
+  'Your company may show this video on its website and to other distributors.',
+  'Nothing is shared until you finish and press send. You can stop at any time.',
 ];
 
 export function ConsentScreen({ onAgree }: Props) {
@@ -22,13 +21,17 @@ export function ConsentScreen({ onAgree }: Props) {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.title}>Before we start</Text>
-        {CONSENT_POINTS.map((point) => (
-          <View key={point} style={styles.pointRow}>
-            <View style={styles.bullet} />
-            <Text style={styles.pointText}>{point}</Text>
-          </View>
-        ))}
+        <Text style={styles.title}>Before we begin</Text>
+        <Text style={styles.subtitle}>Please read this — it's important.</Text>
+        <View style={styles.pointsGroup}>
+          {CONSENT_POINTS.map((point) => (
+            <View key={point} style={styles.pointRow}>
+              <View style={styles.bullet} />
+              <Text style={styles.pointText}>{point}</Text>
+            </View>
+          ))}
+        </View>
+        <Text style={styles.link}>Read the full terms</Text>
       </ScrollView>
 
       <Pressable
@@ -39,7 +42,7 @@ export function ConsentScreen({ onAgree }: Props) {
           {agreed && <Text style={styles.checkmark}>✓</Text>}
         </View>
         <Text style={styles.checkboxLabel}>
-          I understand and agree to be recorded.
+          I understand, and I agree to be recorded.
         </Text>
       </Pressable>
 
@@ -48,8 +51,13 @@ export function ConsentScreen({ onAgree }: Props) {
         disabled={!agreed}
         onPress={onAgree}
       >
-        <Text style={styles.buttonText}>Continue</Text>
+        <Text style={[styles.buttonText, !agreed && styles.buttonTextDisabled]}>
+          Agree & continue
+        </Text>
       </Pressable>
+      {!agreed && (
+        <Text style={styles.hint}>Tick the box above to continue</Text>
+      )}
     </View>
   );
 }
@@ -59,6 +67,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     padding: spacing.xl,
+    paddingTop: spacing.xxl,
     paddingBottom: spacing.xxl,
   },
   scrollView: {
@@ -66,73 +75,102 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    paddingTop: spacing.lg,
   },
   title: {
     ...typography.title,
     color: colors.text,
+  },
+  subtitle: {
+    ...typography.subtitle,
+    color: colors.textFaint,
+    marginTop: spacing.xs,
     marginBottom: spacing.lg,
+  },
+  pointsGroup: {
+    gap: spacing.lg,
   },
   pointRow: {
     flexDirection: 'row',
-    marginBottom: spacing.md,
+    gap: spacing.sm + 2,
   },
   bullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
     backgroundColor: colors.accent,
-    marginTop: 8,
-    marginRight: spacing.sm,
+    marginTop: 7,
   },
   pointText: {
     ...typography.body,
-    color: colors.textMuted,
+    color: colors.text,
     flex: 1,
-    lineHeight: 21,
+    lineHeight: 24,
+  },
+  link: {
+    ...typography.body,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.accent,
+    marginTop: spacing.lg,
   },
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
     marginTop: spacing.lg,
     marginBottom: spacing.md,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: radius.sm,
+    padding: spacing.md,
     borderWidth: 1.5,
     borderColor: colors.border,
-    marginRight: spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  checkbox: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.sm,
+    borderWidth: 2,
+    borderColor: colors.textDisabled,
   },
   checkboxChecked: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   checkmark: {
     color: colors.accentText,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
   },
   checkboxLabel: {
     ...typography.body,
+    fontWeight: '600',
     color: colors.text,
     flex: 1,
+    lineHeight: 22,
   },
   button: {
+    height: 60,
     backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
-    opacity: 0.4,
+    backgroundColor: colors.canvas,
   },
   buttonText: {
     ...typography.button,
     color: colors.accentText,
+  },
+  buttonTextDisabled: {
+    color: colors.textDisabled,
+  },
+  hint: {
+    ...typography.caption,
+    color: colors.textFaint,
+    textAlign: 'center',
+    marginTop: spacing.sm + 4,
   },
 });

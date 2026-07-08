@@ -1,5 +1,5 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography } from '../theme';
 
 interface Props {
   // 0-1, or undefined for an indeterminate spinner (real progress will
@@ -14,12 +14,24 @@ export function UploadingScreen({ progress }: Props) {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color={colors.accent} />
-      <Text style={styles.title}>Uploading your video…</Text>
-      {percent != null && <Text style={styles.percent}>{percent}%</Text>}
+      <Text style={styles.title}>Saving your video…</Text>
+      {percent != null ? (
+        <>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${percent}%` }]} />
+          </View>
+          <Text style={styles.progressLabel}>{percent}% saved</Text>
+        </>
+      ) : (
+        <ActivityIndicator
+          size="large"
+          color={colors.accent}
+          style={styles.spinner}
+        />
+      )}
       <Text style={styles.subtitle}>
-        You can leave the app running in the background — this will resume
-        automatically if your connection drops.
+        You can set your phone down or lock it — saving continues on its
+        own. We'll let you know when it's done.
       </Text>
     </View>
   );
@@ -29,25 +41,41 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
   },
   title: {
-    ...typography.subtitle,
+    ...typography.title,
+    fontSize: 27,
     color: colors.text,
+  },
+  progressTrack: {
+    height: 10,
+    borderRadius: radius.pill,
+    backgroundColor: colors.canvas,
+    overflow: 'hidden',
     marginTop: spacing.lg,
   },
-  percent: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
+  progressFill: {
+    height: 10,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+  },
+  progressLabel: {
+    ...typography.body,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textFaint,
+    marginTop: spacing.sm + 4,
+  },
+  spinner: {
+    marginTop: spacing.lg,
+    alignSelf: 'flex-start',
   },
   subtitle: {
-    ...typography.caption,
+    ...typography.body,
     color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.lg,
-    lineHeight: 19,
+    lineHeight: 26,
+    marginTop: spacing.xl + spacing.xs,
   },
 });

@@ -32,13 +32,30 @@ React Native (Expo bare/dev-client) app that guides distributors through recordi
 - Redo-prompt buttons were unclickable — a z-order bug (RecordingScreen's own chrome painted after children); fixed by rendering the overlay as a sibling, not a child.
 - ConsentScreen had a real scroll-container layout bug (missing `flex: 1` on the ScrollView style).
 
+## New laptop setup session (2026-07-08)
+
+Got the dev environment fully working on this (second new) laptop. **Project now lives at `C:\dev\video-testimonial`**, not under `Desktop\Soham\website work\...` — same path-length problem as the very first machine (see `SETUP_LOG.md`), hit again here despite this being a different laptop. Four independent, unrelated problems stacked on top of each other; each only became visible once the previous one was fixed:
+
+1. **Native build failing** — `ninja: error: manifest 'build.ninja' still dirty after 100 tries` on `react-native-fast-tflite`/`react-native-nitro-image`'s CMake build. Root cause: Windows' 260-char `MAX_PATH` limit, same as the original machine.
+   - Enabling Windows' `LongPathsEnabled` registry setting did **not** fix it — `ninja.exe` has the 260-char limit hardcoded in its own code and doesn't consult that setting.
+   - A directory junction (short-path alias) did **not** fix it either — Gradle/Java resolved the alias back to the real long path before generating build paths.
+   - A `subst` virtual drive got further (avoided the resolve-back problem) but broke a different Gradle step — a `providers.exec` call to Node (`expoAutolinking.useExpoModules()` in `settings.gradle`) failed on the substituted drive.
+   - **Actual fix**: moved the project to a genuinely short real path, `C:\dev\video-testimonial` (copied source only — `node_modules`/`android`/`.expo` are gitignored/regenerable, so they were excluded from the copy and rebuilt fresh via `npm install` + prebuild, avoiding the old machine's stale-build-cache-with-hardcoded-paths bug).
+2. **App crashing on launch** — `ClassNotFoundException: expo.modules.splashscreen.SplashScreenManager`. `expo-splash-screen` was never actually added to `package.json`'s dependencies (only implicitly expected), so its native Android module never got linked. Fixed by `npx expo install expo-splash-screen`.
+3. **Blank white screen, app never loading JS bundle** — the laptop's Wi-Fi network was classified by Windows as **Public**, so Windows Firewall silently dropped the phone's inbound connection attempts to Metro (port 8081), even on the same Wi-Fi/subnet. Fixed via `Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private`.
+4. **Still failing after that** — `java.lang.Exception: Failed to open app` / `UnexpectedServerData: Unexpected server error: No returned query result`. Once the firewall was out of the way the phone could reach Metro (confirmed via a live `ESTABLISHED` TCP connection in `netstat`), but manifest serving still failed because the Expo CLI does a background account check (`currentUserAsync` GraphQL query to `api.expo.dev`) on every start, and a stale/invalid cached login session (`~/.expo/state.json`, dated April 2025) was being rejected server-side in a way the CLI didn't handle gracefully. Fixed by `npx expo logout`.
+
+Also installed/configured on this laptop as part of getting here: Android Studio, JDK (via Android Studio's bundled JBR), Android SDK platforms 35 & 36, build-tools 35.0.0 & 36.0.0, NDK 27.1.12297006, CMake 3.22.1, `platform-tools` (adb) — `JAVA_HOME`/`ANDROID_HOME` set as permanent user env vars.
+
+**End state: confirmed working** — `npx expo run:android --device` builds and installs cleanly, the dev-client connects to Metro over Wi-Fi, and the JS bundle loads on a real device.
+
 ## Where things stand right now
-- Last real device test: the durable-storage + cleanup + button-polish changes (commit `f21d261`) were built successfully (`BUILD SUCCESSFUL`), but the **install step failed because the phone had disconnected from USB mid-build**. This was never re-verified on-device — that's the first thing to redo on the new machine (or reconnect the original phone).
-- Everything is committed and pushed to `origin/main` — nothing local/uncommitted was lost.
+- Dev environment on this laptop is fully working end-to-end (see above). Project root is now `C:\dev\video-testimonial`.
+- The durable-storage/cleanup/button-polish changes (commit `f21d261`) have **not yet been re-verified** on-device since the app is only just loading again — this is the immediate next thing to click through.
+- Everything is committed and pushed to `origin/main` — nothing local/uncommitted was lost. The old copy at `Desktop\Soham\website work\video-testimonial` still exists untouched (not deleted); safe to remove once you've confirmed you're working from `C:\dev\video-testimonial` going forward.
 
 ## Next steps (in priority order)
-1. Get the dev environment running on the new laptop: clone the repo, `npm install`, set `JAVA_HOME`/`ANDROID_HOME`, connect an Android phone (not emulator — camera work needs real hardware), `npx expo run:android`.
-2. Re-verify the durable-storage/cleanup/button changes on a real device (never confirmed after the last rebuild).
-3. Decide + implement the TTS approach (pre-generated static audio files recommended, see above) — this unblocks replacing the "Continue" placeholder button with real auto-advancing playback.
-4. Still open/deferred: MediaPipe/BlazeFace performance rewrite (only if lag becomes a blocker), real background/resumable upload to Cloudflare R2, server-side transcription + Claude sentiment analysis + nexrender rendering (all out of mobile-app scope for now).
-5. For deep step-by-step history/reasoning beyond this summary, `FRAME_PROCESSOR_PROGRESS.md` in the repo has a detailed running log of every step taken.
+1. Re-verify the durable-storage/cleanup/button changes on a real device (never confirmed after the last rebuild, and the app only just started loading again on this laptop).
+2. Decide + implement the TTS approach (pre-generated static audio files recommended, see above) — this unblocks replacing the "Continue" placeholder button with real auto-advancing playback.
+3. Still open/deferred: MediaPipe/BlazeFace performance rewrite (only if lag becomes a blocker), real background/resumable upload to Cloudflare R2, server-side transcription + Claude sentiment analysis + nexrender rendering (all out of mobile-app scope for now).
+4. For deep step-by-step history/reasoning beyond this summary, `FRAME_PROCESSOR_PROGRESS.md` in the repo has a detailed running log of every step taken.
