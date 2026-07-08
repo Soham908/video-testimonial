@@ -85,7 +85,23 @@ const DIAGNOSTIC_DISABLE_FPS_CAP = true;
 // directly at ML Kit's native processing stealing cycles from the camera
 // pipeline, independent of anything on the React side. Not meant to ship
 // - experiment/face-detection-diagnostics branch only.
+// RESULT (tested): ruled out - lag persists identically with zero extra
+// UI rendered, detection rate unchanged too.
 const DIAGNOSTIC_HIDE_OVERLAY = true;
+
+// --- Diagnostic-only: is ML Kit itself the direct cause? ---------------
+// Every other variable (recording consumer, fps cap, JS/UI rendering) has
+// now been tested and ruled out or reduced to "partial." This is the last
+// one: remove the face-detector output from the session entirely (not
+// just hide its UI - detach the native output itself), so during
+// alignment the session runs with ONLY the video-recording output,
+// identical to what runs once locked. If the feed is smooth with
+// detection fully off, that's a clean confirmation ML Kit's native
+// processing is the direct cause of the visible lag. Note:
+// handleFacesDetected won't fire at all while this is true, so the
+// fps-diagnostic logs go silent - that's expected. Not meant to ship -
+// experiment/face-detection-diagnostics branch only.
+const DIAGNOSTIC_DISABLE_FACE_DETECTION = true;
 
 const FPS_WINDOW_MS = 5_000;
 
@@ -298,6 +314,9 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     // face-detector output toggles on/off. DIAGNOSTIC_DISABLE_VIDEO_OUTPUT
     // strips the video output entirely, for the dual-consumer-session test.
     const outputs = useMemo<CameraOutput[]>(() => {
+      if (DIAGNOSTIC_DISABLE_FACE_DETECTION) {
+        return [videoOutput];
+      }
       if (DIAGNOSTIC_DISABLE_VIDEO_OUTPUT) {
         return detectionEnabled ? [faceDetectorOutput] : [];
       }
@@ -344,7 +363,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           // for the fps numbers during this test.
           <View style={styles.diagnosticPanel} pointerEvents="none">
             <Text style={styles.diagnosticText}>
-              overlay hidden - see console log for fps
+              overlay hidden{DIAGNOSTIC_DISABLE_FACE_DETECTION ? ' + face detection OFF' : ' - see console log for fps'}
             </Text>
           </View>
         ) : (
