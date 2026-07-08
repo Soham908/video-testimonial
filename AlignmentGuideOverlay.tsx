@@ -20,12 +20,37 @@ function guidanceMessage(signals: AlignmentSignals | null): string {
   return 'Hold still…';
 }
 
+// --- Diagnostic-only: measures this overlay's own re-render rate,
+// independent of CameraAlignment's detection-callback rate. If this stays
+// close to the detection fps, React is keeping up with incoming data and
+// any perceived stutter is a paint/animation cost issue (b), not a data
+// lag issue (a). If it's meaningfully lower than the detection fps, React
+// itself is dropping/batching updates. Not meant to ship -
+// experiment/face-detection-diagnostics branch only.
+const renderTimestamps: number[] = [];
+let lastRenderLogAt = 0;
+function logRenderCadence() {
+  const now = Date.now();
+  renderTimestamps.push(now);
+  const windowStart = now - 5_000;
+  while (renderTimestamps.length > 0 && renderTimestamps[0] < windowStart) {
+    renderTimestamps.shift();
+  }
+  if (now - lastRenderLogAt > 1000) {
+    const spanMs = Math.max(now - renderTimestamps[0], 1);
+    const rate = (renderTimestamps.length / spanMs) * 1000;
+    lastRenderLogAt = now;
+    console.log(`[fps-diagnostic] AlignmentGuideOverlay render rate: ${rate.toFixed(2)}/sec`);
+  }
+}
+
 export function AlignmentGuideOverlay({
   visible,
   signals,
   goodFrameStreak,
   requiredFrames,
 }: Props) {
+  logRenderCadence();
   const opacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {

@@ -44,6 +44,16 @@ const MIN_FACE_SIZE = 0.25;
 const RECHECK_INTERVAL_MS = 10_000;
 const RECHECK_DURATION_MS = 1_000;
 
+// --- Diagnostic-only: dual-consumer-session hypothesis test -----------
+// Flip to true to remove the video-recording output from the session
+// entirely (detection-only, recording will not work). Compare the
+// on-screen measured fps with this true vs false to see whether the
+// camera pipeline is straining under two simultaneous consumer streams
+// (recording + analysis) vs. ML Kit inference cost alone. Not meant to
+// ship - experiment/face-detection-diagnostics branch only.
+const DIAGNOSTIC_DISABLE_VIDEO_OUTPUT = false;
+const FPS_WINDOW_MS = 5_000;
+
 export interface CameraAlignmentHandle {
   startRecording: () => Promise<void>;
   // Finalizes the current recording to a file; triggers onRecordingFinished.
@@ -109,8 +119,40 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     const frameCount = useRef(0);
     const wasLocked = useRef(false);
 
+    // --- Diagnostic-only: measures the real onFacesDetected callback rate
+    // over a rolling FPS_WINDOW_MS window, independent of the configured
+    // fps cap - so we know the actual throughput, not just the target.
+    const callbackTimestamps = useRef<number[]>([]);
+    const lastFpsUiUpdate = useRef(0);
+    const [measuredFps, setMeasuredFps] = useState(0);
+    const [lastCallbackGapMs, setLastCallbackGapMs] = useState(0);
+
     const handleFacesDetected = useCallback(
       (faces: Face[]) => {
+        const now = Date.now();
+        const timestamps = callbackTimestamps.current;
+        const previous = timestamps[timestamps.length - 1];
+        timestamps.push(now);
+        const windowStart = now - FPS_WINDOW_MS;
+        while (timestamps.length > 0 && timestamps[0] < windowStart) {
+          timestamps.shift();
+        }
+
+        // Throttle the diagnostic UI/log update itself to 1/sec so the
+        // measurement doesn't add its own meaningful render overhead.
+        if (now - lastFpsUiUpdate.current > 1000) {
+          const spanMs = Math.max(now - timestamps[0], 1);
+          const fps = (timestamps.length / spanMs) * 1000;
+          setMeasuredFps(fps);
+          setLastCallbackGapMs(previous ? now - previous : 0);
+          lastFpsUiUpdate.current = now;
+          console.log(
+            `[fps-diagnostic] detection callback rate: ${fps.toFixed(2)} fps ` +
+              `(configured cap: ${ALIGNING_FPS_CONSTRAINT[0].fps} fps, ` +
+              `video output attached: ${!DIAGNOSTIC_DISABLE_VIDEO_OUTPUT})`,
+          );
+        }
+
         const currentSignals =
           faces.length > 0
             ? computeAlignmentSignals(faces[0].bounds, width, height)
@@ -218,11 +260,14 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     // `outputs` must be a stable/memoized array (per VisionCamera's docs)
     // or the session reconfigures on every render. The video output stays
     // connected at all times so recording can start immediately; only the
-    // face-detector output toggles on/off.
-    const outputs = useMemo<CameraOutput[]>(
-      () => (detectionEnabled ? [videoOutput, faceDetectorOutput] : [videoOutput]),
-      [detectionEnabled, faceDetectorOutput, videoOutput],
-    );
+    // face-detector output toggles on/off. DIAGNOSTIC_DISABLE_VIDEO_OUTPUT
+    // strips the video output entirely, for the dual-consumer-session test.
+    const outputs = useMemo<CameraOutput[]>(() => {
+      if (DIAGNOSTIC_DISABLE_VIDEO_OUTPUT) {
+        return detectionEnabled ? [faceDetectorOutput] : [];
+      }
+      return detectionEnabled ? [videoOutput, faceDetectorOutput] : [videoOutput];
+    }, [detectionEnabled, faceDetectorOutput, videoOutput]);
     const constraints = useMemo(
       () => (isLocked ? undefined : ALIGNING_FPS_CONSTRAINT),
       [isLocked],
@@ -261,6 +306,19 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           goodFrameStreak={goodFrameStreak}
           requiredFrames={requiredFrames}
         />
+        {/* Diagnostic-only panel - experiment/face-detection-diagnostics
+            branch only, not meant to ship. */}
+        <View style={styles.diagnosticPanel} pointerEvents="none">
+          <Text style={styles.diagnosticText}>
+            detect: {measuredFps.toFixed(1)} fps (cap {ALIGNING_FPS_CONSTRAINT[0].fps})
+          </Text>
+          <Text style={styles.diagnosticText}>
+            last gap: {lastCallbackGapMs}ms
+          </Text>
+          <Text style={styles.diagnosticText}>
+            video output: {DIAGNOSTIC_DISABLE_VIDEO_OUTPUT ? 'DETACHED' : 'attached'}
+          </Text>
+        </View>
       </View>
     );
   },
@@ -282,5 +340,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     textAlign: 'center',
+  },
+  diagnosticPanel: {
+    position: 'absolute',
+    bottom: 110,
+    left: 12,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderRadius: 8,
+    padding: 8,
+  },
+  diagnosticText: {
+    color: '#4ADE80',
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
   },
 });
