@@ -51,7 +51,26 @@ const RECHECK_DURATION_MS = 1_000;
 // camera pipeline is straining under two simultaneous consumer streams
 // (recording + analysis) vs. ML Kit inference cost alone. Not meant to
 // ship - experiment/face-detection-diagnostics branch only.
+// RESULT (tested): ruled out - fps stayed ~2-3fps either way. Reset to
+// false so the next test below is isolated to a single variable.
 const DIAGNOSTIC_DISABLE_VIDEO_OUTPUT = false;
+
+// --- Diagnostic-only: camera-session fps-cap hypothesis test -----------
+// The user reported the visible lag only happens while `!isLocked`
+// (exactly the window ALIGNING_FPS_CONSTRAINT's fps:8 is applied to the
+// <Camera> itself, not just to face detection) and clears up the instant
+// it locks (constraints -> undefined, native fps restored). That's a
+// strong behavioral match, so: flip to true to stop applying the fps cap
+// during alignment too, letting the camera run at native fps throughout.
+// ML Kit's own detection rate (see the fps-diagnostic logs) should stay
+// roughly the same (~2-3fps, it's inference-bound, not delivery-bound) -
+// if the *visible* feed now looks smooth despite that, it confirms the
+// fps cap (not ML Kit itself) was the dominant visible-lag cause. If the
+// feed is still choppy, ML Kit's processing is itself blocking/stalling
+// the shared session. Not meant to ship - experiment/
+// face-detection-diagnostics branch only.
+const DIAGNOSTIC_DISABLE_FPS_CAP = true;
+
 const FPS_WINDOW_MS = 5_000;
 
 export interface CameraAlignmentHandle {
@@ -269,7 +288,8 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
       return detectionEnabled ? [videoOutput, faceDetectorOutput] : [videoOutput];
     }, [detectionEnabled, faceDetectorOutput, videoOutput]);
     const constraints = useMemo(
-      () => (isLocked ? undefined : ALIGNING_FPS_CONSTRAINT),
+      () =>
+        isLocked || DIAGNOSTIC_DISABLE_FPS_CAP ? undefined : ALIGNING_FPS_CONSTRAINT,
       [isLocked],
     );
 
@@ -317,6 +337,9 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           </Text>
           <Text style={styles.diagnosticText}>
             video output: {DIAGNOSTIC_DISABLE_VIDEO_OUTPUT ? 'DETACHED' : 'attached'}
+          </Text>
+          <Text style={styles.diagnosticText}>
+            fps cap: {DIAGNOSTIC_DISABLE_FPS_CAP ? 'REMOVED (native)' : `${ALIGNING_FPS_CONSTRAINT[0].fps} (capped)`}
           </Text>
         </View>
       </View>
