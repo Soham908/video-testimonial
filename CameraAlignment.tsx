@@ -69,7 +69,23 @@ const DIAGNOSTIC_DISABLE_VIDEO_OUTPUT = false;
 // feed is still choppy, ML Kit's processing is itself blocking/stalling
 // the shared session. Not meant to ship - experiment/
 // face-detection-diagnostics branch only.
+// RESULT (tested): partial - detection rate roughly doubled (~2-3fps ->
+// ~4.5-5fps) and the feed felt "a bit smoother," but visible lag is still
+// present. So the fps cap was A cause, not the only one.
 const DIAGNOSTIC_DISABLE_FPS_CAP = true;
+
+// --- Diagnostic-only: overlay-rendering hypothesis test ----------------
+// Detection state/logic (registerFrame, setSignals, the fps-diagnostic
+// logging) keeps running exactly as-is either way - only the on-screen
+// rendering of AlignmentGuideOverlay + the diagnostic panel is stripped
+// when this is true, leaving just the raw camera feed on screen during
+// alignment. If lag disappears with nothing extra rendered, that
+// implicates React/UI re-render overhead competing with the camera's own
+// rendering. If lag persists with zero extra UI on screen, that points
+// directly at ML Kit's native processing stealing cycles from the camera
+// pipeline, independent of anything on the React side. Not meant to ship
+// - experiment/face-detection-diagnostics branch only.
+const DIAGNOSTIC_HIDE_OVERLAY = true;
 
 const FPS_WINDOW_MS = 5_000;
 
@@ -320,28 +336,43 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           constraints={constraints}
           outputs={outputs}
         />
-        <AlignmentGuideOverlay
-          visible={!isLocked}
-          signals={signals}
-          goodFrameStreak={goodFrameStreak}
-          requiredFrames={requiredFrames}
-        />
-        {/* Diagnostic-only panel - experiment/face-detection-diagnostics
-            branch only, not meant to ship. */}
-        <View style={styles.diagnosticPanel} pointerEvents="none">
-          <Text style={styles.diagnosticText}>
-            detect: {measuredFps.toFixed(1)} fps (cap {ALIGNING_FPS_CONSTRAINT[0].fps})
-          </Text>
-          <Text style={styles.diagnosticText}>
-            last gap: {lastCallbackGapMs}ms
-          </Text>
-          <Text style={styles.diagnosticText}>
-            video output: {DIAGNOSTIC_DISABLE_VIDEO_OUTPUT ? 'DETACHED' : 'attached'}
-          </Text>
-          <Text style={styles.diagnosticText}>
-            fps cap: {DIAGNOSTIC_DISABLE_FPS_CAP ? 'REMOVED (native)' : `${ALIGNING_FPS_CONSTRAINT[0].fps} (capped)`}
-          </Text>
-        </View>
+        {DIAGNOSTIC_HIDE_OVERLAY ? (
+          // Static, non-updating label only - deliberately does NOT
+          // participate in the per-detection re-render cycle, so it
+          // doesn't contaminate this test. Detection/signals/logging keep
+          // running underneath exactly as normal; check the console log
+          // for the fps numbers during this test.
+          <View style={styles.diagnosticPanel} pointerEvents="none">
+            <Text style={styles.diagnosticText}>
+              overlay hidden - see console log for fps
+            </Text>
+          </View>
+        ) : (
+          <>
+            <AlignmentGuideOverlay
+              visible={!isLocked}
+              signals={signals}
+              goodFrameStreak={goodFrameStreak}
+              requiredFrames={requiredFrames}
+            />
+            {/* Diagnostic-only panel - experiment/face-detection-diagnostics
+                branch only, not meant to ship. */}
+            <View style={styles.diagnosticPanel} pointerEvents="none">
+              <Text style={styles.diagnosticText}>
+                detect: {measuredFps.toFixed(1)} fps (cap {ALIGNING_FPS_CONSTRAINT[0].fps})
+              </Text>
+              <Text style={styles.diagnosticText}>
+                last gap: {lastCallbackGapMs}ms
+              </Text>
+              <Text style={styles.diagnosticText}>
+                video output: {DIAGNOSTIC_DISABLE_VIDEO_OUTPUT ? 'DETACHED' : 'attached'}
+              </Text>
+              <Text style={styles.diagnosticText}>
+                fps cap: {DIAGNOSTIC_DISABLE_FPS_CAP ? 'REMOVED (native)' : `${ALIGNING_FPS_CONSTRAINT[0].fps} (capped)`}
+              </Text>
+            </View>
+          </>
+        )}
       </View>
     );
   },
