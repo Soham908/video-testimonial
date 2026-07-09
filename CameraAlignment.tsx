@@ -87,7 +87,7 @@ const DIAGNOSTIC_DISABLE_FPS_CAP = true;
 // - experiment/face-detection-diagnostics branch only.
 // RESULT (tested): ruled out - lag persists identically with zero extra
 // UI rendered, detection rate unchanged too.
-const DIAGNOSTIC_HIDE_OVERLAY = true;
+const DIAGNOSTIC_HIDE_OVERLAY = false;
 
 // --- Diagnostic-only: is ML Kit itself the direct cause? ---------------
 // Every other variable (recording consumer, fps cap, JS/UI rendering) has
@@ -101,7 +101,18 @@ const DIAGNOSTIC_HIDE_OVERLAY = true;
 // handleFacesDetected won't fire at all while this is true, so the
 // fps-diagnostic logs go silent - that's expected. Not meant to ship -
 // experiment/face-detection-diagnostics branch only.
-const DIAGNOSTIC_DISABLE_FACE_DETECTION = true;
+const DIAGNOSTIC_DISABLE_FACE_DETECTION = false;
+
+// DIAGNOSTIC: the native busy-flag only releases after onFacesDetected's JS
+// callback returns (see HybridFaceDetectorOutput.kt's addOnCompleteListener),
+// so slow JS-side work here can throttle how fast the NEXT native frame even
+// starts - independent of ML Kit's own inference speed, which we've now
+// separately measured as fast. This flag skips computeAlignmentSignals,
+// registerFrame, and the setSignals/console state updates entirely, keeping
+// only the fps-diagnostic timestamp logging, to isolate whether JS-side
+// processing time is what's actually gating the loop. Not meant to ship -
+// experiment/face-detection-diagnostics branch only.
+const DIAGNOSTIC_SKIP_JS_PROCESSING = false;
 
 const FPS_WINDOW_MS = 5_000;
 
@@ -202,6 +213,10 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
               `(configured cap: ${ALIGNING_FPS_CONSTRAINT[0].fps} fps, ` +
               `video output attached: ${!DIAGNOSTIC_DISABLE_VIDEO_OUTPUT})`,
           );
+        }
+
+        if (DIAGNOSTIC_SKIP_JS_PROCESSING) {
+          return;
         }
 
         const currentSignals =
