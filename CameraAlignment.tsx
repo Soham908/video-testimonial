@@ -53,6 +53,10 @@ interface Props {
   // lock cycle - used to re-run the (lighter) recheck for each question.
   resetToken: number | string;
   onLocked: () => void;
+  // False while the caller is showing something else (e.g. the question
+  // intro/VO) that alignment checking shouldn't run underneath - detection
+  // stays fully off until this flips true, regardless of `isLocked`.
+  alignmentActive: boolean;
   // True for the whole window a real recording is in progress (including
   // while the redo-prompt is up, since the recording is still active until
   // the user chooses keep/redo) - suppresses the periodic detection recheck.
@@ -63,7 +67,15 @@ interface Props {
 
 export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
   function CameraAlignment(
-    { lockMode, resetToken, onLocked, recordingActive, onRecordingFinished, onRecordingError },
+    {
+      lockMode,
+      resetToken,
+      onLocked,
+      alignmentActive,
+      recordingActive,
+      onRecordingFinished,
+      onRecordingError,
+    },
     ref,
   ) {
     const { hasPermission: hasCamera, requestPermission: requestCamera } =
@@ -139,10 +151,12 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
 
     // Detection is continuous until locked, then off except for a brief
     // recheck window every RECHECK_INTERVAL_MS - fully suspended while an
-    // actual recording is in progress.
+    // actual recording is in progress, and fully suspended whenever the
+    // caller says alignment shouldn't be running at all (e.g. the question
+    // intro/VO is showing) regardless of lock state.
     const [detectionEnabled, setDetectionEnabled] = useState(true);
     useEffect(() => {
-      if (recordingActive) {
+      if (recordingActive || !alignmentActive) {
         setDetectionEnabled(false);
         return;
       }
@@ -165,7 +179,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
         clearInterval(interval);
         if (recheckTimeout) clearTimeout(recheckTimeout);
       };
-    }, [isLocked, recordingActive]);
+    }, [isLocked, recordingActive, alignmentActive]);
 
     const faceDetectorOutput = useFaceDetectorOutput({
       onFacesDetected: handleFacesDetected,

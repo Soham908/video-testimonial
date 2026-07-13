@@ -37,15 +37,20 @@ type Screen =
   | 'uploading'
   | 'confirmation';
 
-// Per CLAUDE.md: full alignment lock (~15-20 frames) before question 1,
-// lighter recheck (~5-8 frames) before questions 2-5, guide fades out once
-// locked -> TTS question plays fully -> 5s countdown -> recording
-// auto-starts -> redo prompt (recording stays active until keep/redo is
-// chosen - "keep" finalizes the file, "redo" cancels+deletes it) -> next
-// question.
+// Question VO plays first (full-screen intro, camera not visible) while
+// alignment detection runs silently underneath the whole time - so a
+// person who's already positioned (recheck case, questions 2-5 especially)
+// is often already locked by the time they tap "I'm ready." Tapping ready
+// either jumps straight to the countdown (already locked) or drops into
+// 'aligning' to show the guide until lock completes, then auto-continues -
+// no extra manual step. Per CLAUDE.md: full alignment lock (~15-20 frames)
+// before question 1, lighter recheck (~5-8 frames) before questions 2-5,
+// guide fades out once locked -> countdown -> recording auto-starts ->
+// redo prompt (recording stays active until keep/redo is chosen - "keep"
+// finalizes the file, "redo" cancels+deletes it) -> next question.
 type QuestionPhase =
-  | 'aligning'
   | 'intro'
+  | 'aligning'
   | 'countdown'
   | 'recording'
   | 'redo-prompt';
@@ -69,12 +74,31 @@ const PLACEHOLDER_QUESTIONS = [
 export function AppFlow() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [mainTab, setMainTab] = useState<MainTab>('home');
+  // Question 1 is align-first (nothing to settle into yet, so check
+  // alignment before ever showing a question) - questions 2-5 are
+  // question-first (person's likely still roughly positioned from the
+  // previous take, so let them hear the question while resettling, then
+  // check). `startNewSession` starts question 1 in 'aligning'; every
+  // subsequent question starts in 'intro' via `goToNextQuestion`.
   const [questionIndex, setQuestionIndex] = useState(0);
   const [phase, setPhase] = useState<QuestionPhase>('aligning');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
   const [playingVideo, setPlayingVideo] = useState<RecordedVideo | null>(null);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
+  // Tracks whether alignment has already locked for the *current* question -
+  // read once, synchronously, whenever 'aligning' would otherwise need to
+  // be (re-)entered, so a ref (not state) is enough, no re-render needed.
+  // Reset whenever a new question starts.
+  const lockedForQuestion = useRef(false);
+  // Tracks whether the question intro/VO has already been shown for the
+  // *current* question - distinguishes "this is question 1's align-first
+  // lock, about to show the intro for the first time" from "this is a
+  // question 2-5 lock happening after the intro was already shown and
+  // 'I'm ready' was tapped," since both look identical from inside
+  // `onLocked` (phase === 'aligning') otherwise. Reset alongside
+  // `lockedForQuestion`.
+  const introShownForQuestion = useRef(false);
 
   // Fake elapsed-time ticker while "recording" - the recording itself is
   // real, but this on-screen timer doesn't yet read the Recorder's actual
@@ -94,7 +118,9 @@ export function AppFlow() {
       return;
     }
     setQuestionIndex((i) => i + 1);
-    setPhase('aligning');
+    lockedForQuestion.current = false;
+    introShownForQuestion.current = false;
+    setPhase('intro');
   }
 
   // Only ever fires as a result of "Keep this take" (stopRecording()) -
@@ -117,6 +143,8 @@ export function AppFlow() {
     clearAllRecordings();
     setVideos([]);
     setQuestionIndex(0);
+    lockedForQuestion.current = false;
+    introShownForQuestion.current = false;
     setPhase('aligning');
     setScreen('question');
   }
@@ -204,7 +232,24 @@ export function AppFlow() {
           ref={cameraRef}
           lockMode={lockMode}
           resetToken={questionIndex}
-          onLocked={() => setPhase('intro')}
+          onLocked={() => {
+            // Only ever fires while phase === 'aligning' now, since
+            // detection is fully off otherwise (alignmentActive below).
+            // Two cases look identical here (phase === 'aligning') but
+            // need different destinations: question 1's align-first lock
+            // (intro not shown yet) should reveal the intro; a
+            // post-"I'm ready" lock (intro already shown) should go
+            // straight to the countdown.
+            lockedForQuestion.current = true;
+            setPhase((current) => {
+              if (current !== 'aligning') return current;
+              return introShownForQuestion.current ? 'countdown' : 'intro';
+            });
+          }}
+          // Detection must not run at all while the question intro/VO is
+          // showing - only once the user has actually tapped "I'm ready"
+          // (or, for question 1, from the very start).
+          alignmentActive={phase !== 'intro'}
           recordingActive={phase === 'recording' || phase === 'redo-prompt'}
           onRecordingFinished={handleRecordingFinished}
           onRecordingError={(error) => console.error('[recording]', error)}
@@ -215,11 +260,15 @@ export function AppFlow() {
             questionNumber={questionIndex + 1}
             totalQuestions={TOTAL_QUESTIONS}
             questionText={questionText}
-            onFinishedSpeaking={() => setPhase('countdown')}
+            onFinishedSpeaking={() => {
+              introShownForQuestion.current = true;
+              setPhase(lockedForQuestion.current ? 'countdown' : 'aligning');
+            }}
           />
         )}
         {phase === 'countdown' && (
           <CountdownOverlay
+            seconds={3}
             onComplete={() => {
               cameraRef.current
                 ?.startRecording()

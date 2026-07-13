@@ -2,12 +2,20 @@ import { useCallback, useRef, useState } from 'react';
 
 // Per CLAUDE.md: full lock needs ~15-20 consecutive good frames before
 // question 1; the lighter recheck before questions 2-5 only needs ~5-8,
-// since the person is already positioned.
+// since the person is already positioned. Those counts were tuned back
+// when detection ran at ~2fps (a since-fixed bug - see
+// FACE_DETECTION_LAG_INVESTIGATION.md), so they took several real seconds
+// to satisfy. Detection now genuinely runs at ~30fps, so the original
+// counts complete in a fraction of a second - too fast to read as a real
+// check. Scaled up to land back around a similar felt duration at the
+// real fps; frame-count-based (not time-based) by design, matching
+// CLAUDE.md's existing language, so these numbers are tied to the actual
+// detection rate and may need retuning if that rate changes again.
 export type AlignmentLockMode = 'initial' | 'recheck';
 
 const REQUIRED_GOOD_FRAMES: Record<AlignmentLockMode, number> = {
-  initial: 18,
-  recheck: 6,
+  initial: 40, // ~1.5s at ~30fps
+  recheck: 20, // ~0.4s at ~30fps
 };
 
 export interface AlignmentLockState {
