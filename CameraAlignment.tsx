@@ -22,12 +22,6 @@ import { AlignmentGuideOverlay } from './AlignmentGuideOverlay';
 import { computeAlignmentSignals, isFullyAligned, type AlignmentSignals } from './alignment';
 import { useAlignmentLock, type AlignmentLockMode } from './useAlignmentLock';
 
-// While aligning, ML Kit runs on every frame the session delivers - a lower
-// capture fps directly cuts that inference frequency. A release build
-// ruled out debug-mode JS overhead as the dominant cause, confirming this
-// is genuine inference cost.
-const ALIGNING_FPS_CONSTRAINT = [{ fps: 8 }];
-
 // ML Kit searches across a range of face sizes by default (as small as 15%
 // of frame width) - raising this shrinks that search space (ML Kit's own
 // documented perf tip). Kept below alignment.ts's 0.35 "too far" threshold
@@ -43,78 +37,6 @@ const MIN_FACE_SIZE = 0.25;
 // deferred as a result - not implemented for real yet.
 const RECHECK_INTERVAL_MS = 10_000;
 const RECHECK_DURATION_MS = 1_000;
-
-// --- Diagnostic-only: dual-consumer-session hypothesis test -----------
-// Flip to true to remove the video-recording output from the session
-// entirely (detection-only, recording will not work). Compare the
-// on-screen measured fps with this true vs false to see whether the
-// camera pipeline is straining under two simultaneous consumer streams
-// (recording + analysis) vs. ML Kit inference cost alone. Not meant to
-// ship - experiment/face-detection-diagnostics branch only.
-// RESULT (tested): ruled out - fps stayed ~2-3fps either way. Reset to
-// false so the next test below is isolated to a single variable.
-const DIAGNOSTIC_DISABLE_VIDEO_OUTPUT = false;
-
-// --- Diagnostic-only: camera-session fps-cap hypothesis test -----------
-// The user reported the visible lag only happens while `!isLocked`
-// (exactly the window ALIGNING_FPS_CONSTRAINT's fps:8 is applied to the
-// <Camera> itself, not just to face detection) and clears up the instant
-// it locks (constraints -> undefined, native fps restored). That's a
-// strong behavioral match, so: flip to true to stop applying the fps cap
-// during alignment too, letting the camera run at native fps throughout.
-// ML Kit's own detection rate (see the fps-diagnostic logs) should stay
-// roughly the same (~2-3fps, it's inference-bound, not delivery-bound) -
-// if the *visible* feed now looks smooth despite that, it confirms the
-// fps cap (not ML Kit itself) was the dominant visible-lag cause. If the
-// feed is still choppy, ML Kit's processing is itself blocking/stalling
-// the shared session. Not meant to ship - experiment/
-// face-detection-diagnostics branch only.
-// RESULT (tested): partial - detection rate roughly doubled (~2-3fps ->
-// ~4.5-5fps) and the feed felt "a bit smoother," but visible lag is still
-// present. So the fps cap was A cause, not the only one.
-const DIAGNOSTIC_DISABLE_FPS_CAP = true;
-
-// --- Diagnostic-only: overlay-rendering hypothesis test ----------------
-// Detection state/logic (registerFrame, setSignals, the fps-diagnostic
-// logging) keeps running exactly as-is either way - only the on-screen
-// rendering of AlignmentGuideOverlay + the diagnostic panel is stripped
-// when this is true, leaving just the raw camera feed on screen during
-// alignment. If lag disappears with nothing extra rendered, that
-// implicates React/UI re-render overhead competing with the camera's own
-// rendering. If lag persists with zero extra UI on screen, that points
-// directly at ML Kit's native processing stealing cycles from the camera
-// pipeline, independent of anything on the React side. Not meant to ship
-// - experiment/face-detection-diagnostics branch only.
-// RESULT (tested): ruled out - lag persists identically with zero extra
-// UI rendered, detection rate unchanged too.
-const DIAGNOSTIC_HIDE_OVERLAY = false;
-
-// --- Diagnostic-only: is ML Kit itself the direct cause? ---------------
-// Every other variable (recording consumer, fps cap, JS/UI rendering) has
-// now been tested and ruled out or reduced to "partial." This is the last
-// one: remove the face-detector output from the session entirely (not
-// just hide its UI - detach the native output itself), so during
-// alignment the session runs with ONLY the video-recording output,
-// identical to what runs once locked. If the feed is smooth with
-// detection fully off, that's a clean confirmation ML Kit's native
-// processing is the direct cause of the visible lag. Note:
-// handleFacesDetected won't fire at all while this is true, so the
-// fps-diagnostic logs go silent - that's expected. Not meant to ship -
-// experiment/face-detection-diagnostics branch only.
-const DIAGNOSTIC_DISABLE_FACE_DETECTION = false;
-
-// DIAGNOSTIC: the native busy-flag only releases after onFacesDetected's JS
-// callback returns (see HybridFaceDetectorOutput.kt's addOnCompleteListener),
-// so slow JS-side work here can throttle how fast the NEXT native frame even
-// starts - independent of ML Kit's own inference speed, which we've now
-// separately measured as fast. This flag skips computeAlignmentSignals,
-// registerFrame, and the setSignals/console state updates entirely, keeping
-// only the fps-diagnostic timestamp logging, to isolate whether JS-side
-// processing time is what's actually gating the loop. Not meant to ship -
-// experiment/face-detection-diagnostics branch only.
-const DIAGNOSTIC_SKIP_JS_PROCESSING = false;
-
-const FPS_WINDOW_MS = 5_000;
 
 export interface CameraAlignmentHandle {
   startRecording: () => Promise<void>;
@@ -181,44 +103,8 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     const frameCount = useRef(0);
     const wasLocked = useRef(false);
 
-    // --- Diagnostic-only: measures the real onFacesDetected callback rate
-    // over a rolling FPS_WINDOW_MS window, independent of the configured
-    // fps cap - so we know the actual throughput, not just the target.
-    const callbackTimestamps = useRef<number[]>([]);
-    const lastFpsUiUpdate = useRef(0);
-    const [measuredFps, setMeasuredFps] = useState(0);
-    const [lastCallbackGapMs, setLastCallbackGapMs] = useState(0);
-
     const handleFacesDetected = useCallback(
       (faces: Face[]) => {
-        const now = Date.now();
-        const timestamps = callbackTimestamps.current;
-        const previous = timestamps[timestamps.length - 1];
-        timestamps.push(now);
-        const windowStart = now - FPS_WINDOW_MS;
-        while (timestamps.length > 0 && timestamps[0] < windowStart) {
-          timestamps.shift();
-        }
-
-        // Throttle the diagnostic UI/log update itself to 1/sec so the
-        // measurement doesn't add its own meaningful render overhead.
-        if (now - lastFpsUiUpdate.current > 1000) {
-          const spanMs = Math.max(now - timestamps[0], 1);
-          const fps = (timestamps.length / spanMs) * 1000;
-          setMeasuredFps(fps);
-          setLastCallbackGapMs(previous ? now - previous : 0);
-          lastFpsUiUpdate.current = now;
-          console.log(
-            `[fps-diagnostic] detection callback rate: ${fps.toFixed(2)} fps ` +
-              `(configured cap: ${ALIGNING_FPS_CONSTRAINT[0].fps} fps, ` +
-              `video output attached: ${!DIAGNOSTIC_DISABLE_VIDEO_OUTPUT})`,
-          );
-        }
-
-        if (DIAGNOSTIC_SKIP_JS_PROCESSING) {
-          return;
-        }
-
         const currentSignals =
           faces.length > 0
             ? computeAlignmentSignals(faces[0].bounds, width, height)
@@ -326,21 +212,10 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     // `outputs` must be a stable/memoized array (per VisionCamera's docs)
     // or the session reconfigures on every render. The video output stays
     // connected at all times so recording can start immediately; only the
-    // face-detector output toggles on/off. DIAGNOSTIC_DISABLE_VIDEO_OUTPUT
-    // strips the video output entirely, for the dual-consumer-session test.
-    const outputs = useMemo<CameraOutput[]>(() => {
-      if (DIAGNOSTIC_DISABLE_FACE_DETECTION) {
-        return [videoOutput];
-      }
-      if (DIAGNOSTIC_DISABLE_VIDEO_OUTPUT) {
-        return detectionEnabled ? [faceDetectorOutput] : [];
-      }
-      return detectionEnabled ? [videoOutput, faceDetectorOutput] : [videoOutput];
-    }, [detectionEnabled, faceDetectorOutput, videoOutput]);
-    const constraints = useMemo(
-      () =>
-        isLocked || DIAGNOSTIC_DISABLE_FPS_CAP ? undefined : ALIGNING_FPS_CONSTRAINT,
-      [isLocked],
+    // face-detector output toggles on/off.
+    const outputs = useMemo<CameraOutput[]>(
+      () => (detectionEnabled ? [videoOutput, faceDetectorOutput] : [videoOutput]),
+      [detectionEnabled, faceDetectorOutput, videoOutput],
     );
 
     if (!hasCamera || !hasMic) {
@@ -367,46 +242,14 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           style={StyleSheet.absoluteFill}
           device={device}
           isActive={true}
-          constraints={constraints}
           outputs={outputs}
         />
-        {DIAGNOSTIC_HIDE_OVERLAY ? (
-          // Static, non-updating label only - deliberately does NOT
-          // participate in the per-detection re-render cycle, so it
-          // doesn't contaminate this test. Detection/signals/logging keep
-          // running underneath exactly as normal; check the console log
-          // for the fps numbers during this test.
-          <View style={styles.diagnosticPanel} pointerEvents="none">
-            <Text style={styles.diagnosticText}>
-              overlay hidden{DIAGNOSTIC_DISABLE_FACE_DETECTION ? ' + face detection OFF' : ' - see console log for fps'}
-            </Text>
-          </View>
-        ) : (
-          <>
-            <AlignmentGuideOverlay
-              visible={!isLocked}
-              signals={signals}
-              goodFrameStreak={goodFrameStreak}
-              requiredFrames={requiredFrames}
-            />
-            {/* Diagnostic-only panel - experiment/face-detection-diagnostics
-                branch only, not meant to ship. */}
-            <View style={styles.diagnosticPanel} pointerEvents="none">
-              <Text style={styles.diagnosticText}>
-                detect: {measuredFps.toFixed(1)} fps (cap {ALIGNING_FPS_CONSTRAINT[0].fps})
-              </Text>
-              <Text style={styles.diagnosticText}>
-                last gap: {lastCallbackGapMs}ms
-              </Text>
-              <Text style={styles.diagnosticText}>
-                video output: {DIAGNOSTIC_DISABLE_VIDEO_OUTPUT ? 'DETACHED' : 'attached'}
-              </Text>
-              <Text style={styles.diagnosticText}>
-                fps cap: {DIAGNOSTIC_DISABLE_FPS_CAP ? 'REMOVED (native)' : `${ALIGNING_FPS_CONSTRAINT[0].fps} (capped)`}
-              </Text>
-            </View>
-          </>
-        )}
+        <AlignmentGuideOverlay
+          visible={!isLocked}
+          signals={signals}
+          goodFrameStreak={goodFrameStreak}
+          requiredFrames={requiredFrames}
+        />
       </View>
     );
   },
@@ -428,18 +271,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     textAlign: 'center',
-  },
-  diagnosticPanel: {
-    position: 'absolute',
-    bottom: 110,
-    left: 12,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    borderRadius: 8,
-    padding: 8,
-  },
-  diagnosticText: {
-    color: '#4ADE80',
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
   },
 });

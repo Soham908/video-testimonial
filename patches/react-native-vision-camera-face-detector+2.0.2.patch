@@ -1,0 +1,35 @@
+diff --git a/node_modules/react-native-vision-camera-face-detector/src/hooks/useFaceDetectorOutput.ts b/node_modules/react-native-vision-camera-face-detector/src/hooks/useFaceDetectorOutput.ts
+index c0efa73..bd65344 100644
+--- a/node_modules/react-native-vision-camera-face-detector/src/hooks/useFaceDetectorOutput.ts
++++ b/node_modules/react-native-vision-camera-face-detector/src/hooks/useFaceDetectorOutput.ts
+@@ -45,6 +45,20 @@ export function useFaceDetectorOutput( {
+   const stableOnError = useRef( onError )
+   stableOnError.current = onError
+ 
++  // FIX: `options` is a rest-spread destructure, which produces a
++  // brand-new object reference on every call of this hook regardless of
++  // whether the underlying values changed. Using it directly as a useMemo
++  // dependency defeats the memo entirely - createFaceDetectorOutput() (which
++  // constructs a real native ML Kit client + CameraX/AVFoundation use case)
++  // was re-running on every single render of the calling component, torn
++  // down and rebuilt from scratch on every render. Depending on a stable
++  // JSON serialization instead makes the memo reflect actual value
++  // equality. `options` only ever contains primitives (performanceMode,
++  // minFaceSize, runLandmarks, runContours, runClassifications,
++  // trackingEnabled, autoMode, cameraFacing, windowWidth, windowHeight) -
++  // safe to stringify, no functions/circular refs.
++  const optionsKey = JSON.stringify( options )
++
+   return useMemo(
+     () => createFaceDetectorOutput( {
+       onFacesDetected( faces ) {
+@@ -56,7 +70,8 @@ export function useFaceDetectorOutput( {
+       outputResolution: outputResolution,
+       ...options
+     } ),
+-    [ options ]
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++    [ optionsKey ]
+   )
+ }
+ 
