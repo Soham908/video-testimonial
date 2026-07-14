@@ -55,13 +55,17 @@ type QuestionPhase =
   | 'recording'
   | 'redo-prompt';
 
-const TOTAL_QUESTIONS = 5;
+// TEMPORARY (testing convenience only): CLAUDE.md's locked flow is 5
+// questions - trimmed to 3 here just to make manual test runs faster,
+// not a real product decision. Revert to 5 (and restore the other two
+// PLACEHOLDER_QUESTIONS entries below) once done testing.
+const TOTAL_QUESTIONS = 3;
 const PLACEHOLDER_QUESTIONS = [
   'What made you choose to work with us?',
   'What results have you seen so far?',
   'How has our support been for you?',
-  'What would you say to someone considering us?',
-  'Anything else you would like to share?',
+  // 'What would you say to someone considering us?',
+  // 'Anything else you would like to share?',
 ];
 
 // Not wired into App.tsx/index.ts yet - this is scaffolding for the
