@@ -268,7 +268,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     const faceDetectorOutput = useFaceDetectorOutput({
       onFacesDetected: handleFacesDetected,
       onError: (error) => console.error('[face detector]', error),
-      // RE-TESTED (test #14, FACE_DETECTION_LAG_INVESTIGATION.md): with the
+      // RE-TESTED (see DEV_NOTES.md's "Resolved investigations"): with the
       // real useMemo bug fixed, re-enabling landmarks was tried again to
       // see if the original "too expensive" call was actually just that
       // same bug in disguise. It wasn't - measured ~19-22fps with

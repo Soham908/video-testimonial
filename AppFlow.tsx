@@ -68,13 +68,10 @@ const PLACEHOLDER_QUESTIONS = [
   // 'Anything else you would like to share?',
 ];
 
-// Not wired into App.tsx/index.ts yet - this is scaffolding for the
-// surrounding app flow, built alongside (not on top of) the in-progress
-// camera alignment feature so the two don't collide while both are being
-// tested. TTS playback, real upload, and mid-answer alignment-break
-// detection still don't exist for real - see the "Continue"/"Skip"
-// buttons below and FRAME_PROCESSOR_PROGRESS.md for what's real vs.
-// placeholder. Video recording + storage + playback are all real.
+// Real upload and mid-answer alignment-break detection still don't exist -
+// see the "Skip for now" link below. Question VO, alignment guidance
+// (incl. ambient noise check), and video recording/storage/playback are
+// all real.
 export function AppFlow() {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [mainTab, setMainTab] = useState<MainTab>('home');

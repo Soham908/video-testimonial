@@ -3,8 +3,8 @@ import { useCallback, useRef, useState } from 'react';
 // Per CLAUDE.md: full lock needs ~15-20 consecutive good frames before
 // question 1; the lighter recheck before questions 2-5 only needs ~5-8,
 // since the person is already positioned. Those counts were tuned back
-// when detection ran at ~2fps (a since-fixed bug - see
-// FACE_DETECTION_LAG_INVESTIGATION.md), so they took several real seconds
+// when detection ran at ~2fps (a since-fixed bug - see DEV_NOTES.md's
+// "Resolved investigations"), so they took several real seconds
 // to satisfy. Detection now genuinely runs at ~30fps, so the original
 // counts complete in a fraction of a second - too fast to read as a real
 // check. Scaled up to land back around a similar felt duration at the

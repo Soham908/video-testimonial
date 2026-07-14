@@ -8,8 +8,8 @@ interface Props {
 // Pre-permission explainer (design screen 1d) - shown only when "Record a
 // new testimonial" is tapped, right before the camera screen mounts. Purely
 // a static explainer: CameraAlignment already handles the actual OS
-// camera/mic permission requests (sequenced there, see HANDOFF.md), so this
-// screen doesn't need any permission logic of its own.
+// camera/mic permission requests (sequenced there, see DEV_NOTES.md), so
+// this screen doesn't need any permission logic of its own.
 export function PermissionsScreen({ onContinue }: Props) {
   return (
     <View style={styles.container}>
