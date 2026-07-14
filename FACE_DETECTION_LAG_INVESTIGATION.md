@@ -209,12 +209,18 @@ Plan in progress: `patch-package`.
 - **Regeneration was not completed** — paused to focus back on actually finding the fix first, since patching a fix that isn't confirmed working yet would be premature. Once the `DIAGNOSTIC_SKIP_HYBRID_FACE_PAYLOAD` test above lands on a real fix, clean up the diagnostic-only flags/logging left in the file, then regenerate via `npx patch-package react-native-vision-camera-face-detector` (after confirming `android/build` and `android/.cxx` are clean inside the package folder first), and commit `package.json`, `package-lock.json`, and the new file under `patches/`.
 - **Not yet pushed to remote** — was waiting on the above to be sorted first.
 
-## Next steps (in order)
+## Next steps (in order) — superseded, see resolution below
 
-1. Rebuild (normal build first, see gotchas above) and test the test #10c timing instrumentation. Watch `adb logcat -s core-vc-diagnostic:D` (JS console logs not needed for this one) and report the pattern of `analyze() invoked, gap since previous: Xms` and `ML Kit process() took Xms, faces=N` lines — specifically whether `process()` duration is large (hundreds of ms) or small (a few ms, matching test #7's isolated result).
-2. Based on result (see "What to look for" under test #10c above), either:
-   - (`process()` itself is slow live) → re-verify test #1 (video-output-attached hypothesis) under direct timing rather than fps inference; consider CPU/thermal throttling under sustained real-pipeline load.
-   - (`process()` is fast but gap between calls is large) → add timing right at `addOnCompleteListener` to find the gap between `isBusy` releasing and the next `analyze()` call actually arriving — points at CameraX frame delivery/backpressure, not ML Kit.
-3. Once a real fix is confirmed working, strip out all the diagnostic-only flags/logging from `HybridFaceDetectorOutput.kt` and `CameraAlignment.tsx` (they were explicitly marked "not meant to ship").
-4. Regenerate a clean `patch-package` patch for the final fix.
-5. Commit and push the `experiment/face-detection-diagnostics` branch (not `main`) to remote.
+~~1. Rebuild (normal build first, see gotchas above) and test the test #10c timing instrumentation...~~
+~~2. Based on result...~~
+~~3. Once a real fix is confirmed working, strip out all the diagnostic-only flags/logging...~~
+~~4. Regenerate a clean `patch-package` patch for the final fix.~~
+~~5. Commit and push...~~
+
+**Superseded** — root cause was found and fixed shortly after this was written: a broken `useMemo` dependency in `react-native-vision-camera-face-detector`'s `useFaceDetectorOutput.ts` hook (rest-spread object used as a memo dependency, always a fresh reference, so the native face detector was being torn down and rebuilt on every JS render). Fixed via a one-line `patch-package` patch to that single TS file — no native Kotlin patch needed at all (native side reverted to 100% stock). Confirmed working end-to-end: no lag, `detection callback rate` steady ~29-30fps, alignment locks correctly. All steps above were completed via this different path; items 3-5 are done (diagnostics cleaned from `CameraAlignment.tsx`, patch generated and committed, branch pushed).
+
+## Test #14 (new, separate follow-up): re-testing `runLandmarks`
+
+`runLandmarks` was left `false` throughout this whole investigation under the assumption that landmark detection's extra ML Kit cost was too expensive — but that assumption was never cleanly isolated from the real bug above, which was the actual dominant cost. Re-enabled (`CameraAlignment.tsx`) to measure it for real now that the actual bottleneck is fixed, with the same rolling-window `detection callback rate` console measurement reinstated (`[fps-diagnostic]` tag) for a direct comparison against the confirmed ~29-30fps baseline without landmarks.
+
+**Status: CONFIRMED REGRESSION — reverted.** Measured `~19-22fps` with landmarks on (repeatedly, across multiple samples), vs. the confirmed `~29-30fps` baseline without - a real ~30% drop, not noise. So the original "landmarks are too expensive" call from the initial investigation holds up on its own merits after all, independent of the useMemo bug that was also present at the time. `runLandmarks` reverted to `false`, diagnostic logging removed. `alignment.ts`'s headroom stays bounds-based (not eye-landmark-based) - not revisiting this again unless something changes materially (e.g. a lighter landmark mode becomes available, or the perf budget changes).

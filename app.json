@@ -35,7 +35,8 @@
       "react-native-fast-tflite",
       "expo-video",
       "expo-splash-screen",
-      "expo-font"
+      "expo-font",
+      "expo-audio"
     ]
   }
 }

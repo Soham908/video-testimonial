@@ -19,8 +19,10 @@ import {
 } from 'react-native-vision-camera';
 import { useFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector';
 import { AlignmentGuideOverlay } from './AlignmentGuideOverlay';
+import { AlignmentStatusStrip } from './AlignmentStatusStrip';
 import { computeAlignmentSignals, isFullyAligned, type AlignmentSignals } from './alignment';
 import { useAlignmentLock, type AlignmentLockMode } from './useAlignmentLock';
+import { useAmbientNoiseCheck } from './useAmbientNoiseCheck';
 
 // ML Kit searches across a range of face sizes by default (as small as 15%
 // of frame width) - raising this shrinks that search space (ML Kit's own
@@ -105,15 +107,56 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     const { isLocked, goodFrameStreak, requiredFrames, registerFrame, reset } =
       useAlignmentLock(lockMode);
 
-    // Start a fresh lock cycle whenever the mode or reset token changes
-    // (e.g. moving to the next question).
-    useEffect(() => {
-      reset();
-    }, [lockMode, resetToken, reset]);
-
     const [signals, setSignals] = useState<AlignmentSignals | null>(null);
     const frameCount = useRef(0);
-    const wasLocked = useRef(false);
+    // Stable, sticky "have we left the alignment screen for this question"
+    // flag - deliberately state, not a ref, because visibility/detection
+    // below need to react to it. This is NOT the same thing as
+    // `readyToAdvance` further down: readyToAdvance is a live, fluctuating
+    // value (noise can flip it back to false later, e.g. if the room gets
+    // noisy again during the countdown), whereas `hasAdvanced` only ever
+    // goes false->true once per question and then stays put. Using the
+    // fluctuating value for visibility/detection-enable was the bug in the
+    // previous version of this file: a later noise fluctuation could
+    // reopen the guide/status strip and re-enable full detection mid
+    // countdown, reconfiguring the camera session right as recording was
+    // about to start.
+    const [hasAdvanced, setHasAdvanced] = useState(false);
+
+    // Ambient noise only needs sampling up to the moment we've advanced
+    // past this screen - stopped during the question intro/VO, stopped for
+    // good once advanced (countdown/recording/redo-prompt all have no use
+    // for it), so there's no chance of it competing with the video
+    // recorder for the mic even for a moment. Also gated on `hasMic`:
+    // without this, on question 1 specifically (before mic permission is
+    // confirmed granted), expo-audio's own requestRecordingPermissionsAsync()
+    // call inside useAmbientNoiseCheck could fire concurrently with
+    // VisionCamera's separate requestMic() above - two different libraries
+    // independently negotiating the same OS-level RECORD_AUDIO permission
+    // at once. That's a real candidate for the intermittent "JPromise was
+    // destroyed" error seen only on question 1 (by question 2+, hasMic is
+    // already true from question 1, so there's nothing left to race).
+    const micCheckActive =
+      hasMic && alignmentActive && !recordingActive && !hasAdvanced;
+    const noise = useAmbientNoiseCheck(micCheckActive);
+    const [noiseOverridden, setNoiseOverridden] = useState(false);
+
+    // Start a fresh lock cycle whenever the mode or reset token changes
+    // (e.g. moving to the next question) - the noise override resets the
+    // same way, so a bad-noise override from a previous question doesn't
+    // silently carry over to the next one.
+    useEffect(() => {
+      reset();
+      setNoiseOverridden(false);
+      setHasAdvanced(false);
+    }, [lockMode, resetToken, reset]);
+
+    // Live gate for the one-time "fire onLocked()" trigger only - noise
+    // only ever *holds* the advance it would otherwise already be
+    // triggering, and only in the specific case where it's still bad at
+    // that exact moment. Not used for anything else (see `hasAdvanced`).
+    const noiseReady = noise.status !== 'noisy' || noiseOverridden;
+    const readyToAdvance = isLocked && noiseReady;
 
     const handleFacesDetected = useCallback(
       (faces: Face[]) => {
@@ -121,7 +164,27 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           faces.length > 0
             ? computeAlignmentSignals(faces[0].bounds, width, height)
             : null;
-        registerFrame(currentSignals != null && isFullyAligned(currentSignals));
+        const currentlyAligned =
+          currentSignals != null && isFullyAligned(currentSignals);
+        registerFrame(currentlyAligned);
+
+        // useAlignmentLock's streak is normally sticky once locked (by
+        // design - see its own comments), which was fine when advancing
+        // followed locking almost instantly. During a noise hold the
+        // screen can now stay up well after that, so without this, moving
+        // out of frame while waiting on noise left the streak frozen at
+        // "done" (see e.g. "goodFrameStreak": 40 next to "centered":
+        // false in the diagnostic log) even though alignment had visibly
+        // broken. Explicitly un-locking in just this one case - not the
+        // separate post-advance recheck, which is intentionally different
+        // - re-requires the full streak, which is fine: detection is cheap
+        // enough now (~30fps) that re-accumulating it costs a beat, not a
+        // real delay. Guarded on `!hasAdvanced` so this can only ever fire
+        // while still genuinely waiting on this screen, never during the
+        // separate post-advance recheck.
+        if (!hasAdvanced && isLocked && !noiseReady && !currentlyAligned) {
+          reset();
+        }
 
         // Detection callbacks can still fire faster than we need to
         // visibly update; throttle the UI-facing state update to ~10/sec.
@@ -138,29 +201,50 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           });
         }
       },
-      [width, height, registerFrame, goodFrameStreak, requiredFrames],
+      [
+        width,
+        height,
+        registerFrame,
+        goodFrameStreak,
+        requiredFrames,
+        isLocked,
+        noiseReady,
+        reset,
+        hasAdvanced,
+      ],
     );
 
     useEffect(() => {
-      if (isLocked && !wasLocked.current) {
-        console.log('[alignment] LOCKED — ready to record');
+      if (readyToAdvance && !hasAdvanced) {
+        console.log('[alignment] LOCKED — ready to record', {
+          noiseStatus: noise.status,
+          noiseOverridden,
+        });
+        setHasAdvanced(true);
         onLocked();
       }
-      wasLocked.current = isLocked;
-    }, [isLocked, onLocked]);
+    }, [readyToAdvance, onLocked, hasAdvanced, noise.status, noiseOverridden]);
 
-    // Detection is continuous until locked, then off except for a brief
-    // recheck window every RECHECK_INTERVAL_MS - fully suspended while an
+    // Detection stays fully continuous for as long as the alignment UI is
+    // still visible - which is `!hasAdvanced`, a stable flag, not the live
+    // `readyToAdvance` (see its declaration above for why: a later noise
+    // fluctuation must never reopen this). Gating this on raw `isLocked`
+    // alone (an earlier version of this fix) froze `signals` at whatever
+    // they were the instant the lock completed - so moving out of frame
+    // during a noise hold silently stopped being reflected anywhere on
+    // screen. Only once actually advanced does detection drop to the
+    // periodic-recheck cadence (e.g. during the countdown, where the
+    // guide/strip are hidden again anyway) - fully suspended while an
     // actual recording is in progress, and fully suspended whenever the
     // caller says alignment shouldn't be running at all (e.g. the question
-    // intro/VO is showing) regardless of lock state.
+    // intro/VO is showing).
     const [detectionEnabled, setDetectionEnabled] = useState(true);
     useEffect(() => {
       if (recordingActive || !alignmentActive) {
         setDetectionEnabled(false);
         return;
       }
-      if (!isLocked) {
+      if (!hasAdvanced) {
         setDetectionEnabled(true);
         return;
       }
@@ -179,14 +263,19 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
         clearInterval(interval);
         if (recheckTimeout) clearTimeout(recheckTimeout);
       };
-    }, [isLocked, recordingActive, alignmentActive]);
+    }, [hasAdvanced, recordingActive, alignmentActive]);
 
     const faceDetectorOutput = useFaceDetectorOutput({
       onFacesDetected: handleFacesDetected,
       onError: (error) => console.error('[face detector]', error),
-      // Landmarks/contours aren't used yet - our alignment checks only
-      // read `bounds` - and landmark detection is a meaningfully heavier
-      // ML Kit model, so leave both off until something actually needs them.
+      // RE-TESTED (test #14, FACE_DETECTION_LAG_INVESTIGATION.md): with the
+      // real useMemo bug fixed, re-enabling landmarks was tried again to
+      // see if the original "too expensive" call was actually just that
+      // same bug in disguise. It wasn't - measured ~19-22fps with
+      // landmarks on vs. the confirmed ~29-30fps baseline without, a real
+      // ~30% regression. Reverted to false. Our alignment checks only read
+      // `bounds` anyway.
+      runLandmarks: false,
       performanceMode: 'fast',
       minFaceSize: MIN_FACE_SIZE,
       autoMode: true,
@@ -259,10 +348,18 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           outputs={outputs}
         />
         <AlignmentGuideOverlay
-          visible={!isLocked}
+          visible={!hasAdvanced}
           signals={signals}
           goodFrameStreak={goodFrameStreak}
           requiredFrames={requiredFrames}
+        />
+        <AlignmentStatusStrip
+          visible={!hasAdvanced}
+          signals={signals}
+          noiseStatus={noise.status}
+          noiseSustained={noise.sustainedNoisy}
+          noiseOverridden={noiseOverridden}
+          onOverrideNoise={() => setNoiseOverridden(true)}
         />
       </View>
     );
