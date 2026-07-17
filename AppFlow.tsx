@@ -13,12 +13,14 @@ import { CameraAlignment, type CameraAlignmentHandle } from './CameraAlignment';
 import { QuestionIntroOverlay } from './screens/QuestionIntroOverlay';
 import { CountdownOverlay } from './screens/CountdownOverlay';
 import { RedoPromptOverlay } from './screens/RedoPromptOverlay';
+import { RetakeConfirmOverlay } from './screens/RetakeConfirmOverlay';
 import { UploadingScreen } from './screens/UploadingScreen';
 import { CompletionScreen } from './screens/CompletionScreen';
 import { ConfirmationScreen } from './screens/ConfirmationScreen';
 import {
   moveRecordingToDurableStorage,
   clearAllRecordings,
+  deleteRecording,
   type RecordedVideo,
 } from './recordings';
 import { colors } from './theme';
@@ -86,6 +88,14 @@ export function AppFlow() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
   const [playingVideo, setPlayingVideo] = useState<RecordedVideo | null>(null);
+  // Non-null while retaking a single already-answered question from My
+  // Videos - overrides lockMode to a full lock (this is a cold entry, not
+  // a continuous session) and makes handleRecordingFinished replace that
+  // question's existing entry instead of appending/advancing.
+  const [retakeQuestionIndex, setRetakeQuestionIndex] = useState<number | null>(null);
+  // The video pending the "record again?" confirmation, shown from My
+  // Videos before entering the camera flow at all.
+  const [pendingRetake, setPendingRetake] = useState<RecordedVideo | null>(null);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
   // Tracks whether alignment has already locked for the *current* question -
   // read once, synchronously, whenever 'aligning' would otherwise need to
@@ -130,10 +140,28 @@ export function AppFlow() {
   function handleRecordingFinished(tempFilePath: string) {
     const fileName = `question-${questionIndex + 1}-${Date.now()}.mp4`;
     const durablePath = moveRecordingToDurableStorage(tempFilePath, fileName);
-    setVideos((prev) => [
-      ...prev,
-      { id: `q${questionIndex}-${Date.now()}`, label: `Question ${questionIndex + 1}`, filePath: durablePath },
-    ]);
+    const newVideo: RecordedVideo = {
+      id: `q${questionIndex}-${Date.now()}`,
+      label: `Question ${questionIndex + 1}`,
+      filePath: durablePath,
+      questionIndex,
+    };
+
+    if (retakeQuestionIndex !== null) {
+      // Replace in place - same list position in My Videos, not a new
+      // entry appended alongside the old one.
+      setVideos((prev) => {
+        const previous = prev.find((v) => v.questionIndex === questionIndex);
+        if (previous) deleteRecording(previous.filePath);
+        return prev.map((v) => (v.questionIndex === questionIndex ? newVideo : v));
+      });
+      setRetakeQuestionIndex(null);
+      setMainTab('myVideos');
+      setScreen('main');
+      return;
+    }
+
+    setVideos((prev) => [...prev, newVideo]);
     goToNextQuestion();
   }
 
@@ -144,6 +172,20 @@ export function AppFlow() {
     clearAllRecordings();
     setVideos([]);
     setQuestionIndex(0);
+    setRetakeQuestionIndex(null);
+    lockedForQuestion.current = false;
+    introShownForQuestion.current = false;
+    setPhase('aligning');
+    setScreen('question');
+  }
+
+  // Entered only via My Videos' retake confirmation. Mirrors question 1's
+  // cold-start sequence (align first, full lock) rather than questions
+  // 2-5's lighter recheck, since there's no continuous camera session
+  // behind this entry to justify a lighter check.
+  function startRetake(video: RecordedVideo) {
+    setQuestionIndex(video.questionIndex);
+    setRetakeQuestionIndex(video.questionIndex);
     lockedForQuestion.current = false;
     introShownForQuestion.current = false;
     setPhase('aligning');
@@ -179,13 +221,23 @@ export function AppFlow() {
           <MyVideosScreen
             videos={videos}
             onPressVideo={(video) => setPlayingVideo(video)}
-            onRetake={(video) =>
-              console.log('[my-videos] retake tapped (placeholder)', video.id)
-            }
+            onRetake={(video) => setPendingRetake(video)}
           />
         )}
         {mainTab === 'profile' && <ProfileScreen />}
         <BottomTabBar activeTab={mainTab} onTabPress={setMainTab} />
+
+        {pendingRetake && (
+          <RetakeConfirmOverlay
+            questionNumber={pendingRetake.questionIndex + 1}
+            onCancel={() => setPendingRetake(null)}
+            onConfirm={() => {
+              const video = pendingRetake;
+              setPendingRetake(null);
+              startRetake(video);
+            }}
+          />
+        )}
       </View>
     );
   }
@@ -217,7 +269,11 @@ export function AppFlow() {
 
   // screen === 'question'
   const questionText = PLACEHOLDER_QUESTIONS[questionIndex] ?? '';
-  const lockMode = questionIndex === 0 ? 'initial' : 'recheck';
+  // Retake is always a cold entry (no continuous camera session behind
+  // it) - full lock regardless of which question index it targets, same
+  // as question 1's first-time entry.
+  const lockMode =
+    retakeQuestionIndex !== null || questionIndex === 0 ? 'initial' : 'recheck';
 
   return (
     <View style={{ flex: 1 }}>

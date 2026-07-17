@@ -7,6 +7,10 @@ export interface RecordedVideo {
   // recordings.ts) - not a public gallery, moved there from VisionCamera's
   // temp cache once the recording is finalized.
   filePath: string;
+  // 0-based - which question this answer belongs to. Used to find/replace
+  // the right entry on retake (id isn't usable for that: it embeds a
+  // timestamp, so it changes on every re-record of the same question).
+  questionIndex: number;
 }
 
 const RECORDINGS_DIR_NAME = 'recordings';
@@ -42,5 +46,14 @@ export function clearAllRecordings(): void {
   const dir = getRecordingsDirectory();
   if (dir.exists) {
     dir.delete();
+  }
+}
+
+// Used by retake: the new take replaces the old one in `videos` state, but
+// the old take's file on disk isn't cleaned up by that alone.
+export function deleteRecording(filePath: string): void {
+  const file = new File(filePath);
+  if (file.exists) {
+    file.delete();
   }
 }

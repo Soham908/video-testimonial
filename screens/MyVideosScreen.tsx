@@ -5,8 +5,8 @@ import { colors, radius, spacing, typography } from '../theme';
 interface Props {
   videos: RecordedVideo[];
   onPressVideo: (video: RecordedVideo) => void;
-  // Placeholder for now - real retake (re-entering the recording flow for
-  // a single already-answered question) isn't implemented yet.
+  // Caller shows a confirmation prompt before entering the camera flow -
+  // this just reports the tap.
   onRetake: (video: RecordedVideo) => void;
 }
 
