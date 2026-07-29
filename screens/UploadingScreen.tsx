@@ -1,16 +1,36 @@
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing, typography } from '../theme';
 
 interface Props {
   // 0-1, or undefined for an indeterminate spinner (real progress will
   // come from the resumable/background upload client per CLAUDE.md -
-  // react-native-background-upload or a tus-based client).
+  // react-native-background-upload or a tus-based client). Currently
+  // driven by segment count (n of N uploaded), not upload bytes - plain
+  // fetch doesn't expose byte-level progress, see upload.ts.
   progress?: number;
+  // Present only when the upload sequence has failed - swaps the
+  // progress/spinner view for an error message and a retry action.
+  error?: string | null;
+  onRetry?: () => void;
 }
 
-export function UploadingScreen({ progress }: Props) {
+export function UploadingScreen({ progress, error, onRetry }: Props) {
   const percent =
     progress != null ? Math.round(Math.min(Math.max(progress, 0), 1) * 100) : null;
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Couldn't save your video</Text>
+        <Text style={styles.subtitle}>{error}</Text>
+        {onRetry && (
+          <Pressable style={styles.retryButton} onPress={onRetry}>
+            <Text style={styles.retryButtonText}>Try again</Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -77,5 +97,19 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 26,
     marginTop: spacing.xl + spacing.xs,
+  },
+  retryButton: {
+    height: 58,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xl,
+  },
+  retryButtonText: {
+    ...typography.button,
+    fontSize: 17,
+    color: colors.accent,
   },
 });

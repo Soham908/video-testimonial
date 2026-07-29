@@ -11,6 +11,10 @@ export interface RecordedVideo {
   // the right entry on retake (id isn't usable for that: it embeds a
   // timestamp, so it changes on every re-record of the same question).
   questionIndex: number;
+  // Wall-clock duration of the recording in seconds - measured from when
+  // startRecording() was called to when the file was finalized. Required
+  // by POST /segments/confirm per API_CONTRACT.md.
+  durationSeconds: number;
 }
 
 const RECORDINGS_DIR_NAME = 'recordings';

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { LoginScreen } from './screens/LoginScreen';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ConsentScreen } from './screens/ConsentScreen';
 import { PermissionsScreen } from './screens/PermissionsScreen';
 import { HomeScreen } from './screens/HomeScreen';
-import { MyVideosScreen } from './screens/MyVideosScreen';
+import { MyVideosScreen, type AnswerRow, type BrandedRow } from './screens/MyVideosScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { BottomTabBar, type MainTab } from './screens/BottomTabBar';
-import { VideoPlayerScreen } from './screens/VideoPlayerScreen';
+import { VideoPlayerScreen, type PlayableVideo } from './screens/VideoPlayerScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
 import { CameraAlignment, type CameraAlignmentHandle } from './CameraAlignment';
 import { QuestionIntroOverlay } from './screens/QuestionIntroOverlay';
@@ -24,12 +25,17 @@ import {
   type RecordedVideo,
 } from './recordings';
 import { colors } from './theme';
+import { restoreSession } from './auth';
+import { uploadSegment } from './upload';
+import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
 
 // Lightweight state-based flow - no navigation library added yet, so this
 // doesn't require any new native dependencies/rebuild. Swap for
 // React Navigation later if the flow grows more complex (e.g. back
 // gestures, deep links).
 type Screen =
+  | 'sessionLoading'
+  | 'login'
   | 'welcome'
   | 'consent'
   | 'main'
@@ -75,7 +81,7 @@ const PLACEHOLDER_QUESTIONS = [
 // (incl. ambient noise check), and video recording/storage/playback are
 // all real.
 export function AppFlow() {
-  const [screen, setScreen] = useState<Screen>('welcome');
+  const [screen, setScreen] = useState<Screen>('sessionLoading');
   const [mainTab, setMainTab] = useState<MainTab>('home');
   // Question 1 is align-first (nothing to settle into yet, so check
   // alignment before ever showing a question) - questions 2-5 are
@@ -87,15 +93,23 @@ export function AppFlow() {
   const [phase, setPhase] = useState<QuestionPhase>('aligning');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
-  const [playingVideo, setPlayingVideo] = useState<RecordedVideo | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<PlayableVideo | null>(null);
   // Non-null while retaking a single already-answered question from My
   // Videos - overrides lockMode to a full lock (this is a cold entry, not
   // a continuous session) and makes handleRecordingFinished replace that
   // question's existing entry instead of appending/advancing.
   const [retakeQuestionIndex, setRetakeQuestionIndex] = useState<number | null>(null);
-  // The video pending the "record again?" confirmation, shown from My
-  // Videos before entering the camera flow at all.
-  const [pendingRetake, setPendingRetake] = useState<RecordedVideo | null>(null);
+  // The question index pending the "record again?" confirmation, shown
+  // from My Videos before entering the camera flow at all. Just the
+  // index, not a full RecordedVideo - My Videos rows are backend-driven
+  // now (see the myVideos fetch effect below), and retake only ever needs
+  // to know *which* question, not any of that row's other data.
+  const [pendingRetake, setPendingRetake] = useState<number | null>(null);
+  const [myVideosLoading, setMyVideosLoading] = useState(false);
+  const [myVideosError, setMyVideosError] = useState<string | null>(null);
+  const [answerRows, setAnswerRows] = useState<AnswerRow[]>([]);
+  const [brandedRows, setBrandedRows] = useState<BrandedRow[]>([]);
+  const [myVideosRefreshToken, setMyVideosRefreshToken] = useState(0);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
   // Tracks whether alignment has already locked for the *current* question -
   // read once, synchronously, whenever 'aligning' would otherwise need to
@@ -110,6 +124,124 @@ export function AppFlow() {
   // `onLocked` (phase === 'aligning') otherwise. Reset alongside
   // `lockedForQuestion`.
   const introShownForQuestion = useRef(false);
+  // Set right when startRecording() is called (not when 'recording' phase
+  // is entered - those happen in the same tick anyway, but this is the
+  // actual moment being measured). Read in handleRecordingFinished to
+  // compute durationSeconds - the on-screen elapsedSeconds ticker isn't
+  // usable for this, it's reset to 0 the instant phase leaves 'recording',
+  // which happens before the finished callback fires.
+  const recordingStartedAtRef = useRef(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadAttempt, setUploadAttempt] = useState(0);
+
+  // Runs once on launch - a stored token merely being present doesn't mean
+  // it's still valid, so restoreSession() confirms it against GET /me
+  // before skipping the login screen. No dependency on `screen` - this
+  // must only ever run once per app launch, not on every re-render.
+  useEffect(() => {
+    restoreSession().then((valid) => {
+      setScreen(valid ? 'welcome' : 'login');
+    });
+  }, []);
+
+  // Uploads every recorded segment for this session, sequentially, when
+  // the 'uploading' screen is entered - real presigned-URL upload +
+  // confirm per segment (see upload.ts), replacing the old SkipLink mock.
+  // `uploadAttempt` exists only to let the retry button re-run this same
+  // effect without changing `screen`.
+  useEffect(() => {
+    if (screen !== 'uploading') return;
+    let cancelled = false;
+    setUploadError(null);
+    setUploadProgress(0);
+
+    (async () => {
+      for (let i = 0; i < videos.length; i++) {
+        if (cancelled) return;
+        try {
+          await uploadSegment(videos[i]);
+        } catch (error) {
+          if (!cancelled) {
+            setUploadError(error instanceof Error ? error.message : 'Upload failed.');
+          }
+          return;
+        }
+        if (!cancelled) setUploadProgress((i + 1) / videos.length);
+      }
+      if (!cancelled) setScreen('confirmation');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, uploadAttempt]);
+
+  // Fetches My Videos' data whenever that tab is opened while on 'main' -
+  // not continuously polled (no push/notification system exists yet per
+  // CLAUDE.md, so "reopen the tab" is the refresh mechanism for now).
+  // `myVideosRefreshToken` lets the error state's retry button re-run this
+  // without needing to leave and re-enter the tab.
+  useEffect(() => {
+    if (screen !== 'main' || mainTab !== 'myVideos') return;
+    let cancelled = false;
+    setMyVideosLoading(true);
+    setMyVideosError(null);
+
+    (async () => {
+      try {
+        const [segments, renderedVideos] = await Promise.all([
+          fetchSegments(),
+          fetchRenderedVideos(),
+        ]);
+        if (cancelled) return;
+
+        const answers: AnswerRow[] = segments.map((segment) => {
+          const questionIndex = segment.question_index - 1;
+          const label = `Question ${segment.question_index}`;
+          const local = videos.find((v) => v.questionIndex === questionIndex);
+          // checkAndSyncCache also updates the cache as a side effect - see
+          // myVideos.ts. Only trust the local file if the server's copy of
+          // this segment hasn't changed since we last synced against it.
+          const useLocal = !!local && checkAndSyncCache(questionIndex, segment.updated_at);
+          return {
+            questionIndex,
+            label,
+            play: useLocal
+              ? { filePath: local!.filePath, label }
+              : { filePath: segment.playback_url, label },
+          };
+        });
+
+        const branded: BrandedRow[] = renderedVideos.map((rv) => {
+          const label = `Question ${rv.question_index}`;
+          return {
+            questionIndex: rv.question_index - 1,
+            label,
+            status: renderedUserStatus(rv.status),
+            play: rv.playback_url ? { filePath: rv.playback_url, label } : null,
+          };
+        });
+
+        setAnswerRows(answers);
+        setBrandedRows(branded);
+      } catch (error) {
+        if (!cancelled) {
+          setMyVideosError(
+            error instanceof Error ? error.message : 'Could not load your videos.',
+          );
+        }
+      } finally {
+        if (!cancelled) setMyVideosLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, mainTab, myVideosRefreshToken]);
 
   // Fake elapsed-time ticker while "recording" - the recording itself is
   // real, but this on-screen timer doesn't yet read the Recorder's actual
@@ -140,11 +272,15 @@ export function AppFlow() {
   function handleRecordingFinished(tempFilePath: string) {
     const fileName = `question-${questionIndex + 1}-${Date.now()}.mp4`;
     const durablePath = moveRecordingToDurableStorage(tempFilePath, fileName);
+    const durationSeconds = recordingStartedAtRef.current
+      ? (Date.now() - recordingStartedAtRef.current) / 1000
+      : 0;
     const newVideo: RecordedVideo = {
       id: `q${questionIndex}-${Date.now()}`,
       label: `Question ${questionIndex + 1}`,
       filePath: durablePath,
       questionIndex,
+      durationSeconds,
     };
 
     if (retakeQuestionIndex !== null) {
@@ -183,9 +319,9 @@ export function AppFlow() {
   // cold-start sequence (align first, full lock) rather than questions
   // 2-5's lighter recheck, since there's no continuous camera session
   // behind this entry to justify a lighter check.
-  function startRetake(video: RecordedVideo) {
-    setQuestionIndex(video.questionIndex);
-    setRetakeQuestionIndex(video.questionIndex);
+  function startRetake(questionIndex: number) {
+    setQuestionIndex(questionIndex);
+    setRetakeQuestionIndex(questionIndex);
     lockedForQuestion.current = false;
     introShownForQuestion.current = false;
     setPhase('aligning');
@@ -199,6 +335,18 @@ export function AppFlow() {
         onClose={() => setPlayingVideo(null)}
       />
     );
+  }
+
+  if (screen === 'sessionLoading') {
+    return (
+      <View style={styles.sessionLoading}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (screen === 'login') {
+    return <LoginScreen onLoggedIn={() => setScreen('welcome')} />;
   }
 
   if (screen === 'welcome') {
@@ -219,22 +367,27 @@ export function AppFlow() {
         {mainTab === 'home' && <HomeScreen onCreateNew={() => setScreen('permissions')} />}
         {mainTab === 'myVideos' && (
           <MyVideosScreen
-            videos={videos}
-            onPressVideo={(video) => setPlayingVideo(video)}
-            onRetake={(video) => setPendingRetake(video)}
+            loading={myVideosLoading}
+            error={myVideosError}
+            onRetryLoad={() => setMyVideosRefreshToken((n) => n + 1)}
+            answers={answerRows}
+            branded={brandedRows}
+            onPressAnswer={(row) => setPlayingVideo(row.play)}
+            onPressBranded={(row) => row.play && setPlayingVideo(row.play)}
+            onRetake={(questionIndex) => setPendingRetake(questionIndex)}
           />
         )}
         {mainTab === 'profile' && <ProfileScreen />}
         <BottomTabBar activeTab={mainTab} onTabPress={setMainTab} />
 
-        {pendingRetake && (
+        {pendingRetake !== null && (
           <RetakeConfirmOverlay
-            questionNumber={pendingRetake.questionIndex + 1}
+            questionNumber={pendingRetake + 1}
             onCancel={() => setPendingRetake(null)}
             onConfirm={() => {
-              const video = pendingRetake;
+              const questionIndex = pendingRetake;
               setPendingRetake(null);
-              startRetake(video);
+              startRetake(questionIndex);
             }}
           />
         )}
@@ -248,10 +401,11 @@ export function AppFlow() {
 
   if (screen === 'uploading') {
     return (
-      <View style={{ flex: 1 }}>
-        <UploadingScreen />
-        <SkipLink onPress={() => setScreen('confirmation')} />
-      </View>
+      <UploadingScreen
+        progress={uploadError ? undefined : uploadProgress}
+        error={uploadError}
+        onRetry={() => setUploadAttempt((n) => n + 1)}
+      />
     );
   }
 
@@ -327,6 +481,7 @@ export function AppFlow() {
           <CountdownOverlay
             seconds={3}
             onComplete={() => {
+              recordingStartedAtRef.current = Date.now();
               cameraRef.current
                 ?.startRecording()
                 .catch((error) => console.error('[recording] start failed', error));
@@ -359,25 +514,11 @@ export function AppFlow() {
   );
 }
 
-function SkipLink({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable style={styles.skipLink} onPress={onPress}>
-      <Text style={styles.skipLinkText}>Skip for now</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  skipLink: {
-    position: 'absolute',
-    bottom: 60,
-    alignSelf: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  skipLinkText: {
-    fontSize: 13,
-    color: colors.textFaint,
-    textDecorationLine: 'underline',
+  sessionLoading: {
+    flex: 1,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

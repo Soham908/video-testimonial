@@ -1,20 +1,77 @@
-import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
-import type { RecordedVideo } from '../recordings';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import type { PlayableVideo } from './VideoPlayerScreen';
+import type { UserFacingStatus } from '../myVideos';
 import { colors, radius, spacing, typography } from '../theme';
 
-interface Props {
-  videos: RecordedVideo[];
-  onPressVideo: (video: RecordedVideo) => void;
-  // Caller shows a confirmation prompt before entering the camera flow -
-  // this just reports the tap.
-  onRetake: (video: RecordedVideo) => void;
+export interface AnswerRow {
+  questionIndex: number;
+  label: string;
+  play: PlayableVideo;
 }
 
-// Design screen 2b. Per-question status always shows "Ready" - real
-// server-side processing status isn't wired up yet. The branded video
-// section is a full placeholder - the render pipeline (nexrender + After
-// Effects, per CLAUDE.md) doesn't exist yet either.
-export function MyVideosScreen({ videos, onPressVideo, onRetake }: Props) {
+export interface BrandedRow {
+  questionIndex: number;
+  label: string;
+  status: UserFacingStatus;
+  play: PlayableVideo | null;
+}
+
+interface Props {
+  loading: boolean;
+  error: string | null;
+  onRetryLoad: () => void;
+  answers: AnswerRow[];
+  branded: BrandedRow[];
+  onPressAnswer: (row: AnswerRow) => void;
+  onPressBranded: (row: BrandedRow) => void;
+  // Caller shows a confirmation prompt before entering the camera flow -
+  // this just reports the tap.
+  onRetake: (questionIndex: number) => void;
+}
+
+const STATUS_LABEL: Record<UserFacingStatus, string> = {
+  processing: 'Processing',
+  ready: 'Ready',
+  failed: 'Failed',
+};
+
+// Design screen 2b. Backed by GET /distributors/me/segments (answers) and
+// GET /distributors/me/rendered-videos (branded reels) per API_CONTRACT.md -
+// raw answer status always reads "Ready" once listed at all, since a
+// segment appearing here already means it's durably uploaded; backend
+// `failed` on a segment is about the (invisible-to-the-user) transcription
+// pipeline, not the video itself. The branded section is the one place
+// with a real processing/ready/failed distinction worth showing.
+export function MyVideosScreen({
+  loading,
+  error,
+  onRetryLoad,
+  answers,
+  branded,
+  onPressAnswer,
+  onPressBranded,
+  onRetake,
+}: Props) {
+  if (error) {
+    return (
+      <View style={styles.centeredContainer}>
+        <Text style={styles.errorTitle}>Couldn't load your videos</Text>
+        <Text style={styles.errorSubtitle}>{error}</Text>
+        <Pressable style={styles.retryButton} onPress={onRetryLoad}>
+          <Text style={styles.retryButtonText}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (loading && answers.length === 0 && branded.length === 0) {
+    return (
+      <View style={styles.centeredContainer}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={styles.container}
@@ -23,7 +80,7 @@ export function MyVideosScreen({ videos, onPressVideo, onRetake }: Props) {
       <Text style={styles.title}>My videos</Text>
 
       <Text style={styles.sectionLabel}>YOUR ANSWERS</Text>
-      {videos.length === 0 ? (
+      {answers.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>
             You haven't recorded any answers yet.
@@ -31,23 +88,23 @@ export function MyVideosScreen({ videos, onPressVideo, onRetake }: Props) {
         </View>
       ) : (
         <View style={styles.answersCard}>
-          {videos.map((video, index) => (
+          {answers.map((row, index) => (
             <Pressable
-              key={video.id}
+              key={row.questionIndex}
               style={[
                 styles.answerRow,
-                index < videos.length - 1 && styles.answerRowDivider,
+                index < answers.length - 1 && styles.answerRowDivider,
               ]}
-              onPress={() => onPressVideo(video)}
+              onPress={() => onPressAnswer(row)}
             >
               <View style={styles.answerIndex}>
                 <Text style={styles.answerIndexText}>{index + 1}</Text>
               </View>
-              <Text style={styles.answerLabel}>{video.label}</Text>
+              <Text style={styles.answerLabel}>{row.label}</Text>
               <View style={styles.statusPill}>
                 <Text style={styles.statusPillText}>Ready</Text>
               </View>
-              <Pressable onPress={() => onRetake(video)} hitSlop={8}>
+              <Pressable onPress={() => onRetake(row.questionIndex)} hitSlop={8}>
                 <Text style={styles.retakeText}>Retake</Text>
               </Pressable>
             </Pressable>
@@ -56,16 +113,51 @@ export function MyVideosScreen({ videos, onPressVideo, onRetake }: Props) {
       )}
 
       <Text style={styles.sectionLabel}>YOUR BRANDED VIDEO</Text>
-      <View style={styles.brandedCard}>
-        <View style={styles.brandedThumb}>
-          <View style={styles.playCircle}>
-            <View style={styles.playTriangle} />
+      {branded.length === 0 ? (
+        <View style={styles.brandedCard}>
+          <View style={styles.brandedThumb}>
+            <View style={styles.playCircle}>
+              <View style={styles.playTriangle} />
+            </View>
           </View>
+          <Text style={styles.brandedHint}>
+            Your branded video will appear here once it's ready.
+          </Text>
         </View>
-        <Text style={styles.brandedHint}>
-          Your branded video will appear here once it's ready.
-        </Text>
-      </View>
+      ) : (
+        <View style={styles.answersCard}>
+          {branded.map((row, index) => {
+            const pillStyle =
+              row.status === 'ready'
+                ? styles.statusPill
+                : row.status === 'failed'
+                  ? styles.statusPillDanger
+                  : styles.statusPillProcessing;
+            const pillTextStyle =
+              row.status === 'failed' ? styles.statusPillTextDanger : styles.statusPillText;
+
+            return (
+              <Pressable
+                key={row.questionIndex}
+                style={[
+                  styles.answerRow,
+                  index < branded.length - 1 && styles.answerRowDivider,
+                ]}
+                onPress={() => onPressBranded(row)}
+                disabled={row.status !== 'ready'}
+              >
+                <View style={styles.answerIndex}>
+                  <Text style={styles.answerIndexText}>{index + 1}</Text>
+                </View>
+                <Text style={styles.answerLabel}>{row.label}</Text>
+                <View style={pillStyle}>
+                  <Text style={pillTextStyle}>{STATUS_LABEL[row.status]}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -78,6 +170,41 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.xl,
     paddingBottom: spacing.xxl,
+  },
+  centeredContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  errorTitle: {
+    ...typography.title,
+    fontSize: 22,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  errorSubtitle: {
+    ...typography.body,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  retryButton: {
+    height: 52,
+    paddingHorizontal: spacing.xl,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+  },
+  retryButtonText: {
+    ...typography.button,
+    fontSize: 16,
+    color: colors.accent,
   },
   title: {
     ...typography.title,
@@ -146,11 +273,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.xs,
   },
+  statusPillProcessing: {
+    backgroundColor: colors.processingSoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+  },
+  statusPillDanger: {
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+  },
   statusPillText: {
     ...typography.caption,
     fontSize: 12,
     fontWeight: '700',
     color: colors.accentStrong,
+  },
+  statusPillTextDanger: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.danger,
   },
   retakeText: {
     ...typography.body,

@@ -20,6 +20,7 @@ export const colors = {
   processing: '#8A8474',
   processingSoft: '#F3F0E9',
   danger: '#E04F4F',
+  dangerSoft: '#FBE9E9',
 };
 
 // Full-bleed camera screens (setup/recording/review) render over the live
