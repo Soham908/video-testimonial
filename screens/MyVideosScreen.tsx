@@ -1,7 +1,14 @@
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { useMemo } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { PlayableVideo } from './VideoPlayerScreen';
 import type { UserFacingStatus } from '../myVideos';
-import { colors, radius, spacing, typography } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import type { PaletteColors } from '../theme/palettes';
+import type { Spacing } from '../theme/spacing';
+import type { Radius } from '../theme/radius';
+import type { Typography } from '../theme/typography';
+import { Button } from '../components/ui/Button';
+import { Carousel } from '../components/ui/Carousel';
 
 export interface AnswerRow {
   questionIndex: number;
@@ -20,13 +27,18 @@ interface Props {
   loading: boolean;
   error: string | null;
   onRetryLoad: () => void;
+  totalQuestions: number;
   answers: AnswerRow[];
   branded: BrandedRow[];
+  /** Whether there's anything local worth (re-)sending - drives the header upload button. */
+  hasPendingUpload: boolean;
   onPressAnswer: (row: AnswerRow) => void;
   onPressBranded: (row: BrandedRow) => void;
   // Caller shows a confirmation prompt before entering the camera flow -
-  // this just reports the tap.
+  // this just reports the tap. Used both for "record this one" (not yet
+  // answered) and "change" (already answered).
   onRetake: (questionIndex: number) => void;
+  onUploadAll: () => void;
 }
 
 const STATUS_LABEL: Record<UserFacingStatus, string> = {
@@ -35,31 +47,35 @@ const STATUS_LABEL: Record<UserFacingStatus, string> = {
   failed: 'Failed',
 };
 
-// Design screen 2b. Backed by GET /distributors/me/segments (answers) and
-// GET /distributors/me/rendered-videos (branded reels) per API_CONTRACT.md -
-// raw answer status always reads "Ready" once listed at all, since a
-// segment appearing here already means it's durably uploaded; backend
-// `failed` on a segment is about the (invisible-to-the-user) transcription
-// pipeline, not the video itself. The branded section is the one place
-// with a real processing/ready/failed distinction worth showing.
+// Design screens 6C (branded reels as a carousel) + 6E (no take
+// thumbnails - a recorded row just says which take is chosen and offers
+// Change; a missing row carries the only button that looks like a
+// button). Post-render, the branded section moves above the answers
+// (DECISIONS.md: "flips post-render, reels on top, questions below").
+// Backed by GET /distributors/me/segments + GET
+// /distributors/me/rendered-videos per API_CONTRACT.md.
 export function MyVideosScreen({
   loading,
   error,
   onRetryLoad,
+  totalQuestions,
   answers,
   branded,
+  hasPendingUpload,
   onPressAnswer,
   onPressBranded,
   onRetake,
+  onUploadAll,
 }: Props) {
+  const { colors, spacing, radius, typography } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+
   if (error) {
     return (
       <View style={styles.centeredContainer}>
         <Text style={styles.errorTitle}>Couldn't load your videos</Text>
         <Text style={styles.errorSubtitle}>{error}</Text>
-        <Pressable style={styles.retryButton} onPress={onRetryLoad}>
-          <Text style={styles.retryButtonText}>Try again</Text>
-        </Pressable>
+        <Button label="Try again" onPress={onRetryLoad} variant="secondary" style={{ marginTop: spacing.lg }} />
       </View>
     );
   }
@@ -72,275 +88,193 @@ export function MyVideosScreen({
     );
   }
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-    >
-      <Text style={styles.title}>My videos</Text>
+  const hasAnyReady = branded.some((b) => b.status === 'ready');
 
-      <Text style={styles.sectionLabel}>YOUR ANSWERS</Text>
-      {answers.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>
-            You haven't recorded any answers yet.
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.answersCard}>
-          {answers.map((row, index) => (
-            <Pressable
-              key={row.questionIndex}
-              style={[
-                styles.answerRow,
-                index < answers.length - 1 && styles.answerRowDivider,
-              ]}
-              onPress={() => onPressAnswer(row)}
-            >
-              <View style={styles.answerIndex}>
-                <Text style={styles.answerIndexText}>{index + 1}</Text>
+  const answersSection = (
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>Your answers</Text>
+      <View style={styles.rowsCard}>
+        {Array.from({ length: totalQuestions }).map((_, questionIndex) => {
+          const answer = answers.find((a) => a.questionIndex === questionIndex);
+          const isLast = questionIndex === totalQuestions - 1;
+          return (
+            <View key={questionIndex} style={[styles.row, !isLast && styles.rowDivider]}>
+              <View style={styles.rowIndex}>
+                <Text style={styles.rowIndexText}>{questionIndex + 1}</Text>
               </View>
-              <Text style={styles.answerLabel}>{row.label}</Text>
-              <View style={styles.statusPill}>
-                <Text style={styles.statusPillText}>Ready</Text>
-              </View>
-              <Pressable onPress={() => onRetake(row.questionIndex)} hitSlop={8}>
-                <Text style={styles.retakeText}>Retake</Text>
-              </Pressable>
-            </Pressable>
-          ))}
-        </View>
-      )}
-
-      <Text style={styles.sectionLabel}>YOUR BRANDED VIDEO</Text>
-      {branded.length === 0 ? (
-        <View style={styles.brandedCard}>
-          <View style={styles.brandedThumb}>
-            <View style={styles.playCircle}>
-              <View style={styles.playTriangle} />
+              <Text style={styles.rowLabel} onPress={answer ? () => onPressAnswer(answer) : undefined}>
+                {answer ? `Question ${questionIndex + 1}` : `Question ${questionIndex + 1} · not recorded yet`}
+              </Text>
+              {answer ? (
+                <Text style={styles.changeText} onPress={() => onRetake(questionIndex)}>
+                  Change
+                </Text>
+              ) : (
+                <Button label="Record" onPress={() => onRetake(questionIndex)} variant="quiet" />
+              )}
             </View>
-          </View>
-          <Text style={styles.brandedHint}>
-            Your branded video will appear here once it's ready.
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  const brandedSection = (
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>Your branded videos</Text>
+      {branded.length === 0 ? (
+        <View style={styles.emptyBrandedCard}>
+          <View style={styles.emptyBrandedThumb} />
+          <Text style={styles.emptyBrandedText}>
+            Your branded videos will appear here once every answer has been sent and made.
           </Text>
         </View>
       ) : (
-        <View style={styles.answersCard}>
-          {branded.map((row, index) => {
-            const pillStyle =
-              row.status === 'ready'
-                ? styles.statusPill
-                : row.status === 'failed'
-                  ? styles.statusPillDanger
-                  : styles.statusPillProcessing;
-            const pillTextStyle =
-              row.status === 'failed' ? styles.statusPillTextDanger : styles.statusPillText;
-
-            return (
-              <Pressable
-                key={row.questionIndex}
+        <Carousel>
+          {branded.map((row) => (
+            <View
+              key={row.questionIndex}
+              onTouchEnd={() => row.status === 'ready' && onPressBranded(row)}
+              style={styles.brandedCard}
+            >
+              <View style={styles.brandedThumb}>
+                {row.status === 'ready' && <View style={styles.playCircle}><View style={styles.playTriangle} /></View>}
+              </View>
+              <Text style={styles.brandedLabel}>{row.label}</Text>
+              <View
                 style={[
-                  styles.answerRow,
-                  index < branded.length - 1 && styles.answerRowDivider,
+                  styles.statusPill,
+                  row.status === 'processing' && { backgroundColor: colors.processingSoft },
+                  row.status === 'failed' && { backgroundColor: colors.dangerSoft },
                 ]}
-                onPress={() => onPressBranded(row)}
-                disabled={row.status !== 'ready'}
               >
-                <View style={styles.answerIndex}>
-                  <Text style={styles.answerIndexText}>{index + 1}</Text>
-                </View>
-                <Text style={styles.answerLabel}>{row.label}</Text>
-                <View style={pillStyle}>
-                  <Text style={pillTextStyle}>{STATUS_LABEL[row.status]}</Text>
-                </View>
-              </Pressable>
-            );
-          })}
+                <Text
+                  style={[
+                    styles.statusPillText,
+                    row.status === 'failed' && { color: colors.danger },
+                  ]}
+                >
+                  {STATUS_LABEL[row.status]}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </Carousel>
+      )}
+    </View>
+  );
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>My videos</Text>
+          {hasPendingUpload && <Text style={styles.headerSubtitle}>You have answers not sent yet</Text>}
         </View>
+        {hasPendingUpload && <Button label="Upload" onPress={onUploadAll} variant="secondary" />}
+      </View>
+
+      {hasAnyReady ? (
+        <>
+          {brandedSection}
+          {answersSection}
+        </>
+      ) : (
+        <>
+          {answersSection}
+          {brandedSection}
+        </>
       )}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: spacing.xl,
-    paddingBottom: spacing.xxl,
-  },
-  centeredContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl,
-  },
-  errorTitle: {
-    ...typography.title,
-    fontSize: 22,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  errorSubtitle: {
-    ...typography.body,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  retryButton: {
-    height: 52,
-    paddingHorizontal: spacing.xl,
-    borderWidth: 2,
-    borderColor: colors.accent,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.lg,
-  },
-  retryButtonText: {
-    ...typography.button,
-    fontSize: 16,
-    color: colors.accent,
-  },
-  title: {
-    ...typography.title,
-    fontSize: 24,
-    color: colors.text,
-  },
-  sectionLabel: {
-    ...typography.label,
-    color: colors.textFaint,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  emptyCard: {
-    padding: spacing.lg,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-  },
-  emptyText: {
-    ...typography.body,
-    color: colors.textFaint,
-    textAlign: 'center',
-  },
-  answersCard: {
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md - 2,
-  },
-  answerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm + 4,
-    height: 52,
-  },
-  answerRowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.canvas,
-  },
-  answerIndex: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  answerIndexText: {
-    ...typography.body,
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.accentStrong,
-  },
-  answerLabel: {
-    ...typography.body,
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-    flex: 1,
-  },
-  statusPill: {
-    backgroundColor: colors.accentSoft,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-  },
-  statusPillProcessing: {
-    backgroundColor: colors.processingSoft,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-  },
-  statusPillDanger: {
-    backgroundColor: colors.dangerSoft,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-  },
-  statusPillText: {
-    ...typography.caption,
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.accentStrong,
-  },
-  statusPillTextDanger: {
-    ...typography.caption,
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.danger,
-  },
-  retakeText: {
-    ...typography.body,
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  brandedCard: {
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    padding: spacing.md - 4,
-  },
-  brandedThumb: {
-    height: 130,
-    borderRadius: radius.md - 2,
-    backgroundColor: '#1E211F',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playTriangle: {
-    width: 0,
-    height: 0,
-    borderTopWidth: 8,
-    borderBottomWidth: 8,
-    borderLeftWidth: 13,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    borderLeftColor: colors.text,
-    marginLeft: 4,
-  },
-  brandedHint: {
-    ...typography.caption,
-    fontSize: 13,
-    color: colors.textFaint,
-    textAlign: 'center',
-    marginTop: spacing.sm + 2,
-  },
-});
+function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.lg },
+    centeredContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+    errorTitle: { ...typography.title, fontSize: 22, color: colors.text, textAlign: 'center', marginBottom: spacing.sm },
+    errorSubtitle: { ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 22 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    title: { ...typography.title, fontSize: 24, color: colors.text },
+    headerSubtitle: { ...typography.caption, color: colors.textFaint, marginTop: 2 },
+    section: { gap: spacing.sm },
+    sectionLabel: {
+      fontSize: 11.5,
+      letterSpacing: 1.8,
+      textTransform: 'uppercase',
+      color: colors.textFaint,
+      fontWeight: '700',
+    },
+    rowsCard: {
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md - 2,
+    },
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, minHeight: 56, paddingVertical: spacing.xs },
+    rowDivider: { borderBottomWidth: 1, borderBottomColor: colors.canvas },
+    rowIndex: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowIndexText: { fontSize: 13, fontWeight: '700', color: colors.accentStrong },
+    rowLabel: { ...typography.body, fontSize: 14.5, fontWeight: '600', color: colors.text, flex: 1 },
+    changeText: { fontSize: 13.5, fontWeight: '700', color: colors.accent },
+    emptyBrandedCard: {
+      borderWidth: 1.5,
+      borderColor: colors.borderStrong,
+      borderStyle: 'dashed',
+      borderRadius: radius.lg,
+      padding: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm + 2,
+    },
+    emptyBrandedThumb: { width: 44, height: 58, borderRadius: 9, backgroundColor: colors.canvas },
+    emptyBrandedText: { ...typography.caption, color: colors.textFaint, flex: 1, lineHeight: 19 },
+    brandedCard: {
+      width: 128,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      padding: spacing.sm,
+      gap: spacing.xs + 1,
+    },
+    brandedThumb: {
+      height: 90,
+      borderRadius: radius.md - 2,
+      backgroundColor: '#1E211F',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    playCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+    playTriangle: {
+      width: 0,
+      height: 0,
+      borderTopWidth: 6,
+      borderBottomWidth: 6,
+      borderLeftWidth: 10,
+      borderTopColor: 'transparent',
+      borderBottomColor: 'transparent',
+      borderLeftColor: '#241E1A',
+      marginLeft: 3,
+    },
+    brandedLabel: { fontSize: 12.5, fontWeight: '700', color: colors.text },
+    statusPill: {
+      alignSelf: 'flex-start',
+      backgroundColor: colors.accentSoft,
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 2,
+    },
+    statusPillText: { fontSize: 10.5, fontWeight: '700', color: colors.accentStrong },
+  });
+}

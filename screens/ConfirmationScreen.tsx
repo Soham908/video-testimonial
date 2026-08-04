@@ -1,103 +1,62 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, typography } from '../theme';
+import { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
+import type { PaletteColors } from '../theme/palettes';
+import type { Spacing } from '../theme/spacing';
+import type { Radius } from '../theme/radius';
+import type { Typography } from '../theme/typography';
+import { Button } from '../components/ui/Button';
 
 interface Props {
   onDone: () => void;
-  onRecordAnother: () => void;
 }
 
-// Post-upload confirmation (design screen 1k) - distinct from
-// CompletionScreen's pre-save "all done" moment (1i).
-export function ConfirmationScreen({ onDone, onRecordAnother }: Props) {
+// Released state's tail end (design 7c) - reached once the real upload
+// sequence finishes successfully. "Record another" doesn't fit the locked
+// product shape any more (5 fixed questions, one batch, no "another
+// product" concept) - the only real exit is back to Home.
+export function ConfirmationScreen({ onDone }: Props) {
+  const { colors, spacing, radius, typography } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
         <View style={styles.checkCircle}>
           <Text style={styles.checkmark}>✓</Text>
         </View>
-        <Text style={styles.title}>Your video has been sent</Text>
+        <Text style={styles.title}>Your answers are on their way</Text>
         <Text style={styles.subtitle}>
-          Thank you! Your company will review it. There is nothing more you
-          need to do.
+          We'll let you know the moment your branded videos are ready.
         </Text>
       </View>
-      <Pressable style={styles.button} onPress={onDone}>
-        <Text style={styles.buttonText}>Done</Text>
-      </Pressable>
-      <Pressable style={styles.secondaryButton} onPress={onRecordAnother}>
-        <Text style={styles.secondaryButtonText}>
-          Record for another product
-        </Text>
-      </Pressable>
+      <Button label="Back to Home" onPress={onDone} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    padding: spacing.xl,
-    paddingTop: spacing.xxl * 1.5,
-    paddingBottom: spacing.xxl,
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  checkCircle: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xl,
-  },
-  checkmark: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: colors.accentText,
-  },
-  title: {
-    ...typography.title,
-    fontSize: 27,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    ...typography.body,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  button: {
-    width: '100%',
-    height: 60,
-    backgroundColor: colors.accent,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    ...typography.button,
-    color: colors.accentText,
-  },
-  secondaryButton: {
-    width: '100%',
-    height: 58,
-    borderWidth: 2,
-    borderColor: colors.accent,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.md - 4,
-  },
-  secondaryButtonText: {
-    ...typography.button,
-    fontSize: 17,
-    color: colors.accent,
-  },
-});
+function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      alignItems: 'center',
+      padding: spacing.xl,
+      paddingTop: spacing.xxl * 1.5,
+      paddingBottom: spacing.xxl,
+    },
+    content: { flex: 1, alignItems: 'center' },
+    checkCircle: {
+      width: 104,
+      height: 104,
+      borderRadius: 52,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.xl,
+    },
+    checkmark: { fontSize: 40, fontWeight: '700', color: colors.accentText },
+    title: { ...typography.title, fontSize: 26, color: colors.text, textAlign: 'center', marginBottom: spacing.sm },
+    subtitle: { ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 24 },
+  });
+}

@@ -37,7 +37,14 @@
       "expo-splash-screen",
       "expo-font",
       "expo-audio",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to save your finished branded video to your photos.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save your finished branded video to your photos."
+        }
+      ]
     ]
   }
 }

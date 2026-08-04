@@ -1,115 +1,141 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing, typography } from '../theme';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
+import type { PaletteColors } from '../theme/palettes';
+import type { Spacing } from '../theme/spacing';
+import type { Radius } from '../theme/radius';
+import type { Typography } from '../theme/typography';
+import { Button } from '../components/ui/Button';
+import { ProgressBar } from '../components/ui/ProgressBar';
+import { PopupSheet } from '../components/ui/Modal';
 
-interface Props {
-  // 0-1, or undefined for an indeterminate spinner (real progress will
-  // come from the resumable/background upload client per CLAUDE.md -
-  // react-native-background-upload or a tus-based client). Currently
-  // driven by segment count (n of N uploaded), not upload bytes - plain
-  // fetch doesn't expose byte-level progress, see upload.ts.
-  progress?: number;
-  // Present only when the upload sequence has failed - swaps the
-  // progress/spinner view for an error message and a retry action.
-  error?: string | null;
-  onRetry?: () => void;
+export interface UploadItem {
+  questionIndex: number;
+  label: string;
 }
 
-export function UploadingScreen({ progress, error, onRetry }: Props) {
-  const percent =
-    progress != null ? Math.round(Math.min(Math.max(progress, 0), 1) * 100) : null;
+interface Props {
+  items: UploadItem[];
+  /** True once the user has confirmed and the real upload sequence is running. */
+  uploading: boolean;
+  // 0-1, driven by segment count (n of N uploaded), not upload bytes -
+  // plain fetch doesn't expose byte-level progress, see upload.ts.
+  progress: number;
+  error: string | null;
+  onConfirm: () => void;
+  onRetry: () => void;
+  onGoHome: () => void;
+  onSendLater: () => void;
+}
+
+// Design 7a/7b/7c as one continuous screen: a plain list of everything
+// going out (nothing individually selectable), a confirmation pop-up, then
+// - once confirmed - the button itself becomes the progress bar and the
+// list stops being interactive. No per-question upload any more; this is
+// always the whole batch (DECISIONS.md).
+export function UploadingScreen({
+  items,
+  uploading,
+  progress,
+  error,
+  onConfirm,
+  onRetry,
+  onGoHome,
+  onSendLater,
+}: Props) {
+  const { colors, spacing, radius, typography } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const [confirming, setConfirming] = useState(false);
 
   if (error) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Couldn't save your video</Text>
-        <Text style={styles.subtitle}>{error}</Text>
-        {onRetry && (
-          <Pressable style={styles.retryButton} onPress={onRetry}>
-            <Text style={styles.retryButtonText}>Try again</Text>
-          </Pressable>
-        )}
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <Text style={styles.title}>Sending stopped partway</Text>
+          <Text style={styles.subtitle}>{error}</Text>
+        </View>
+        <View style={{ gap: spacing.sm }}>
+          <Button label="Try again" onPress={onRetry} />
+          <Button label="Send later" onPress={onSendLater} variant="secondary" />
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Saving your video…</Text>
-      {percent != null ? (
-        <>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${percent}%` }]} />
-          </View>
-          <Text style={styles.progressLabel}>{percent}% saved</Text>
-        </>
-      ) : (
-        <ActivityIndicator
-          size="large"
-          color={colors.accent}
-          style={styles.spinner}
-        />
-      )}
+      <Text style={styles.title}>Sending your answers</Text>
       <Text style={styles.subtitle}>
-        You can set your phone down or lock it — saving continues on its
-        own. We'll let you know when it's done.
+        {items.length} question{items.length === 1 ? '' : 's'}, going together.
       </Text>
+
+      <ScrollView style={styles.list} contentContainerStyle={{ gap: spacing.xs + 1 }}>
+        {items.map((item) => (
+          <View key={item.questionIndex} style={[styles.row, uploading && styles.rowMuted]}>
+            <Text style={styles.rowLabel}>{item.label}</Text>
+          </View>
+        ))}
+      </ScrollView>
+
+      {uploading ? (
+        <View style={styles.progressArea}>
+          <View style={styles.progressButton}>
+            <ProgressBar progress={progress} onSolid />
+          </View>
+          <Text style={styles.guidance}>
+            Keep the internet on and don't close the app - it finishes on its own.
+          </Text>
+          <Button label="Back to Home" onPress={onGoHome} variant="quiet" />
+        </View>
+      ) : (
+        <Button label="Send all" onPress={() => setConfirming(true)} />
+      )}
+
+      <PopupSheet visible={confirming} onDismiss={() => setConfirming(false)}>
+        <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+          Send everything now?
+        </Text>
+        <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 20, marginBottom: 20 }}>
+          All {items.length} answers go together. Your branded videos come back afterward.
+        </Text>
+        <View style={{ gap: 10 }}>
+          <Button
+            label="Send now"
+            onPress={() => {
+              setConfirming(false);
+              onConfirm();
+            }}
+          />
+          <Button label="Not yet" variant="secondary" onPress={() => setConfirming(false)} />
+        </View>
+      </PopupSheet>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    padding: spacing.xl,
-  },
-  title: {
-    ...typography.title,
-    fontSize: 27,
-    color: colors.text,
-  },
-  progressTrack: {
-    height: 10,
-    borderRadius: radius.pill,
-    backgroundColor: colors.canvas,
-    overflow: 'hidden',
-    marginTop: spacing.lg,
-  },
-  progressFill: {
-    height: 10,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  progressLabel: {
-    ...typography.body,
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textFaint,
-    marginTop: spacing.sm + 4,
-  },
-  spinner: {
-    marginTop: spacing.lg,
-    alignSelf: 'flex-start',
-  },
-  subtitle: {
-    ...typography.body,
-    color: colors.textMuted,
-    lineHeight: 26,
-    marginTop: spacing.xl + spacing.xs,
-  },
-  retryButton: {
-    height: 58,
-    borderWidth: 2,
-    borderColor: colors.accent,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.xl,
-  },
-  retryButtonText: {
-    ...typography.button,
-    fontSize: 17,
-    color: colors.accent,
-  },
-});
+function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background, padding: spacing.xl, paddingTop: spacing.xxl, gap: spacing.md },
+    title: { ...typography.title, fontSize: 25, color: colors.text },
+    subtitle: { ...typography.body, color: colors.textMuted },
+    list: { flex: 1, marginTop: spacing.sm },
+    row: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm + 2,
+      paddingHorizontal: spacing.md,
+    },
+    rowMuted: { opacity: 0.6 },
+    rowLabel: { ...typography.body, fontSize: 14.5, fontWeight: '600', color: colors.text },
+    progressArea: { gap: spacing.sm },
+    progressButton: {
+      backgroundColor: colors.accent,
+      borderRadius: radius.lg,
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+    },
+    guidance: { ...typography.caption, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
+  });
+}

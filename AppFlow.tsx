@@ -1,30 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { LoginScreen } from './screens/LoginScreen';
-import { WelcomeScreen } from './screens/WelcomeScreen';
+import { SplashScreen } from './screens/SplashScreen';
+import { WhatsAppInviteScreen } from './screens/WhatsAppInviteScreen';
+import { IdentityConfirmScreen } from './screens/IdentityConfirmScreen';
+import { OnboardingScreen } from './screens/OnboardingScreen';
 import { ConsentScreen } from './screens/ConsentScreen';
 import { PermissionsScreen } from './screens/PermissionsScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { MyVideosScreen, type AnswerRow, type BrandedRow } from './screens/MyVideosScreen';
+import { HelpScreen } from './screens/HelpScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { BottomTabBar, type MainTab } from './screens/BottomTabBar';
 import { VideoPlayerScreen, type PlayableVideo } from './screens/VideoPlayerScreen';
+import { QuestionBriefScreen } from './screens/QuestionBriefScreen';
+import { RehearseScreen } from './screens/RehearseScreen';
+import { CameraCheckScreen } from './screens/CameraCheckScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
+import { ReviewTrimScreen } from './screens/ReviewTrimScreen';
 import { CameraAlignment, type CameraAlignmentHandle } from './CameraAlignment';
-import { QuestionIntroOverlay } from './screens/QuestionIntroOverlay';
-import { CountdownOverlay } from './screens/CountdownOverlay';
-import { RedoPromptOverlay } from './screens/RedoPromptOverlay';
 import { RetakeConfirmOverlay } from './screens/RetakeConfirmOverlay';
 import { UploadingScreen } from './screens/UploadingScreen';
-import { CompletionScreen } from './screens/CompletionScreen';
 import { ConfirmationScreen } from './screens/ConfirmationScreen';
+import { DevEntryMenu } from './components/dev/DevEntryMenu';
+import { PopupSheet } from './components/ui/Modal';
+import { Button } from './components/ui/Button';
 import {
   moveRecordingToDurableStorage,
   clearAllRecordings,
   deleteRecording,
   type RecordedVideo,
 } from './recordings';
-import { colors } from './theme';
+import { useTheme } from './theme/ThemeContext';
 import { restoreSession } from './auth';
 import { uploadSegment } from './upload';
 import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
@@ -36,74 +43,90 @@ import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStat
 type Screen =
   | 'sessionLoading'
   | 'login'
-  | 'welcome'
+  // Entry-cluster screens (splash / WhatsApp-invite open / identity
+  // confirmation / onboarding) - reachable for now only via the
+  // __DEV__-gated DevEntryMenu below since real deep-link routing isn't
+  // wired yet (DECISIONS.md).
+  | 'splash'
+  | 'whatsappInvite'
+  | 'identityConfirm'
+  | 'onboarding'
   | 'consent'
   | 'main'
   | 'permissions'
   | 'question'
-  | 'complete'
   | 'uploading'
   | 'confirmation';
 
-// Question VO plays first (full-screen intro, camera not visible) while
-// alignment detection runs silently underneath the whole time - so a
-// person who's already positioned (recheck case, questions 2-5 especially)
-// is often already locked by the time they tap "I'm ready." Tapping ready
-// either jumps straight to the countdown (already locked) or drops into
-// 'aligning' to show the guide until lock completes, then auto-continues -
-// no extra manual step. Per CLAUDE.md: full alignment lock (~15-20 frames)
-// before question 1, lighter recheck (~5-8 frames) before questions 2-5,
-// guide fades out once locked -> countdown -> recording auto-starts ->
-// redo prompt (recording stays active until keep/redo is chosen - "keep"
-// finalizes the file, "redo" cancels+deletes it) -> next question.
+// Question Brief is shown before every question (not just question 1) and
+// always requires an explicit tap - Start recording or Rehearse - never
+// auto-advances. Camera Check (framing/distance/sound) always runs right
+// before recording, whichever path got there. Review & Trim is mandatory
+// after every take, replacing the old conditional "alignment broke ->
+// redo prompt" overlay: DECISIONS.md - "checks revealed one at a time,
+// executed in parallel" (Camera Check) and "quality over smoothness"
+// (mandatory review) apply throughout.
 type QuestionPhase =
-  | 'intro'
-  | 'aligning'
+  | 'brief'
+  | 'rehearse'
+  | 'cameraCheck'
   | 'countdown'
   | 'recording'
-  | 'redo-prompt';
+  | 'reviewTrim';
 
-// TEMPORARY (testing convenience only): CLAUDE.md's locked flow is 5
-// questions - trimmed to 3 here just to make manual test runs faster,
-// not a real product decision. Revert to 5 (and restore the other two
-// PLACEHOLDER_QUESTIONS entries below) once done testing.
-const TOTAL_QUESTIONS = 3;
+const MAX_TAKES = 3;
+const COUNTDOWN_SECONDS = 3;
+
+// CLAUDE.md/DECISIONS.md's locked flow is 5 questions - was trimmed to 3
+// during earlier manual testing (see git history); restored here per
+// DECISIONS.md's "Question config narrowed to 1-5" build-order item. UI
+// side is on mock data - the backend currently only accepts question
+// indices 1-3 per API_CONTRACT.md, a known gap for Phase 7's real wiring,
+// not this pass.
+const TOTAL_QUESTIONS = 5;
 const PLACEHOLDER_QUESTIONS = [
   'What made you choose to work with us?',
   'What results have you seen so far?',
   'How has our support been for you?',
-  // 'What would you say to someone considering us?',
-  // 'Anything else you would like to share?',
+  'What would you say to someone considering us?',
+  'Anything else you would like to share?',
+];
+const PLACEHOLDER_TALKING_POINTS = [
+  ['What you were looking for', 'Why we stood out', 'How the decision felt'],
+  ['A specific result or number', 'How it changed day to day', 'What surprised you'],
+  ['A time support helped', 'How quickly you got a reply', 'Why your trust has held'],
+  ['What made you confident', 'What stood out most', 'Who it would suit'],
+  ['Anything left unsaid', 'A moment worth mentioning', 'Advice for someone starting out'],
+];
+const PLACEHOLDER_PROMPTS = [
+  ['What you needed', 'Why us', 'How it felt'],
+  ['A result', 'Day to day', 'What surprised you'],
+  ["Support's help", 'Reply speed', 'Your trust'],
+  ['Your confidence', 'What stood out', 'Who it suits'],
+  ['One more thing', 'A moment', 'Your advice'],
 ];
 
-// Real upload and mid-answer alignment-break detection still don't exist -
-// see the "Skip for now" link below. Question VO, alignment guidance
+// Real upload is real (see upload.ts); mid-answer alignment-break detection
+// during a live take still doesn't exist. Question VO, alignment guidance
 // (incl. ambient noise check), and video recording/storage/playback are
 // all real.
 export function AppFlow() {
+  const { colors } = useTheme();
   const [screen, setScreen] = useState<Screen>('sessionLoading');
   const [mainTab, setMainTab] = useState<MainTab>('home');
-  // Question 1 is align-first (nothing to settle into yet, so check
-  // alignment before ever showing a question) - questions 2-5 are
-  // question-first (person's likely still roughly positioned from the
-  // previous take, so let them hear the question while resettling, then
-  // check). `startNewSession` starts question 1 in 'aligning'; every
-  // subsequent question starts in 'intro' via `goToNextQuestion`.
   const [questionIndex, setQuestionIndex] = useState(0);
-  const [phase, setPhase] = useState<QuestionPhase>('aligning');
+  const [phase, setPhase] = useState<QuestionPhase>('brief');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [countdownRemaining, setCountdownRemaining] = useState(COUNTDOWN_SECONDS);
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
   const [playingVideo, setPlayingVideo] = useState<PlayableVideo | null>(null);
   // Non-null while retaking a single already-answered question from My
   // Videos - overrides lockMode to a full lock (this is a cold entry, not
-  // a continuous session) and makes handleRecordingFinished replace that
-  // question's existing entry instead of appending/advancing.
+  // a continuous session) and makes handleKeepTake replace that question's
+  // existing entry instead of appending/advancing.
   const [retakeQuestionIndex, setRetakeQuestionIndex] = useState<number | null>(null);
   // The question index pending the "record again?" confirmation, shown
-  // from My Videos before entering the camera flow at all. Just the
-  // index, not a full RecordedVideo - My Videos rows are backend-driven
-  // now (see the myVideos fetch effect below), and retake only ever needs
-  // to know *which* question, not any of that row's other data.
+  // from My Videos before entering the camera flow at all.
   const [pendingRetake, setPendingRetake] = useState<number | null>(null);
   const [myVideosLoading, setMyVideosLoading] = useState(false);
   const [myVideosError, setMyVideosError] = useState<string | null>(null);
@@ -111,19 +134,36 @@ export function AppFlow() {
   const [brandedRows, setBrandedRows] = useState<BrandedRow[]>([]);
   const [myVideosRefreshToken, setMyVideosRefreshToken] = useState(0);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
-  // Tracks whether alignment has already locked for the *current* question -
-  // read once, synchronously, whenever 'aligning' would otherwise need to
-  // be (re-)entered, so a ref (not state) is enough, no re-render needed.
-  // Reset whenever a new question starts.
-  const lockedForQuestion = useRef(false);
-  // Tracks whether the question intro/VO has already been shown for the
-  // *current* question - distinguishes "this is question 1's align-first
-  // lock, about to show the intro for the first time" from "this is a
-  // question 2-5 lock happening after the intro was already shown and
-  // 'I'm ready' was tapped," since both look identical from inside
-  // `onLocked` (phase === 'aligning') otherwise. Reset alongside
-  // `lockedForQuestion`.
-  const introShownForQuestion = useRef(false);
+
+  // Whether the Camera Check screen's toggle auto-starts the countdown once
+  // checks pass, or waits for an explicit "Start recording" tap - no
+  // backing state existed for this before (countdown-after-lock was
+  // unconditional); this is genuinely new, not a reskin. Not reset
+  // per-question - it's a standing preference the person sets once.
+  const [autoStart, setAutoStart] = useState(true);
+  // True once CameraAlignment's onLocked has fired for the current attempt
+  // (framing/distance locked and sound clear or overridden) - drives
+  // whether Camera Check's Start button is tappable.
+  const [checksReady, setChecksReady] = useState(false);
+  // Bumped every time a fresh Camera Check attempt begins (initial entry
+  // from Brief/Rehearse, or "Record another" from Review & Trim) - folded
+  // into CameraAlignment's `resetToken` so its internal lock cycle actually
+  // restarts even when questionIndex itself hasn't changed.
+  const [takeAttempt, setTakeAttempt] = useState(0);
+
+  // Up to MAX_TAKES retained recordings per question, kept until one is
+  // explicitly kept via Review & Trim (DECISIONS.md: takes capped at 3,
+  // oldest replaced). Cleared for a question once a take from it is kept.
+  const [takesByQuestion, setTakesByQuestion] = useState<Record<number, RecordedVideo[]>>({});
+  const [selectedTakeId, setSelectedTakeId] = useState<string | null>(null);
+  // Trim metadata only - see recordings.ts. No media is actually cut here.
+  const [trimStartSeconds, setTrimStartSeconds] = useState(0);
+  const [trimEndSeconds, setTrimEndSeconds] = useState(0);
+  const [removeLastTwoSeconds, setRemoveLastTwoSeconds] = useState(false);
+  // Shown after "Keep this take" on any question except the last one -
+  // DECISIONS.md's "post-keep prompt: next question / my videos / home".
+  const [showPostKeepPrompt, setShowPostKeepPrompt] = useState(false);
+
   // Set right when startRecording() is called (not when 'recording' phase
   // is entered - those happen in the same tick anyway, but this is the
   // actual moment being measured). Read in handleRecordingFinished to
@@ -134,6 +174,18 @@ export function AppFlow() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadAttempt, setUploadAttempt] = useState(0);
+  // Gates the actual upload effect below - the new Upload screen shows a
+  // plain list + confirmation pop-up first (design 7a/7b), and nothing
+  // actually goes out until that's confirmed. Reset to false every time
+  // 'uploading' is entered fresh, from either Home or My Videos.
+  const [uploadConfirmed, setUploadConfirmed] = useState(false);
+  // True once a batch has been sent successfully at least once - drives
+  // Home's "submitted, being prepared" state. Deliberately does NOT hide
+  // the upload entry point in My Videos afterward - a retake after
+  // submitting still needs a way to send the updated video (this is the
+  // fix for the retake-never-reuploads gap: My Videos' Upload button
+  // always re-sends whatever is currently in `videos`, retaken or not).
+  const [hasSubmittedBatch, setHasSubmittedBatch] = useState(false);
 
   // Runs once on launch - a stored token merely being present doesn't mean
   // it's still valid, so restoreSession() confirms it against GET /me
@@ -141,17 +193,16 @@ export function AppFlow() {
   // must only ever run once per app launch, not on every re-render.
   useEffect(() => {
     restoreSession().then((valid) => {
-      setScreen(valid ? 'welcome' : 'login');
+      setScreen(valid ? 'onboarding' : 'login');
     });
   }, []);
 
   // Uploads every recorded segment for this session, sequentially, when
   // the 'uploading' screen is entered - real presigned-URL upload +
-  // confirm per segment (see upload.ts), replacing the old SkipLink mock.
-  // `uploadAttempt` exists only to let the retry button re-run this same
-  // effect without changing `screen`.
+  // confirm per segment (see upload.ts). `uploadAttempt` exists only to
+  // let the retry button re-run this same effect without changing `screen`.
   useEffect(() => {
-    if (screen !== 'uploading') return;
+    if (screen !== 'uploading' || !uploadConfirmed) return;
     let cancelled = false;
     setUploadError(null);
     setUploadProgress(0);
@@ -169,20 +220,21 @@ export function AppFlow() {
         }
         if (!cancelled) setUploadProgress((i + 1) / videos.length);
       }
-      if (!cancelled) setScreen('confirmation');
+      if (!cancelled) {
+        setHasSubmittedBatch(true);
+        setScreen('confirmation');
+      }
     })();
 
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, uploadAttempt]);
+  }, [screen, uploadConfirmed, uploadAttempt]);
 
   // Fetches My Videos' data whenever that tab is opened while on 'main' -
   // not continuously polled (no push/notification system exists yet per
   // CLAUDE.md, so "reopen the tab" is the refresh mechanism for now).
-  // `myVideosRefreshToken` lets the error state's retry button re-run this
-  // without needing to leave and re-enter the tab.
   useEffect(() => {
     if (screen !== 'main' || mainTab !== 'myVideos') return;
     let cancelled = false;
@@ -198,15 +250,12 @@ export function AppFlow() {
         if (cancelled) return;
 
         const answers: AnswerRow[] = segments.map((segment) => {
-          const questionIndex = segment.question_index - 1;
+          const qIndex = segment.question_index - 1;
           const label = `Question ${segment.question_index}`;
-          const local = videos.find((v) => v.questionIndex === questionIndex);
-          // checkAndSyncCache also updates the cache as a side effect - see
-          // myVideos.ts. Only trust the local file if the server's copy of
-          // this segment hasn't changed since we last synced against it.
-          const useLocal = !!local && checkAndSyncCache(questionIndex, segment.updated_at);
+          const local = videos.find((v) => v.questionIndex === qIndex);
+          const useLocal = !!local && checkAndSyncCache(qIndex, segment.updated_at);
           return {
-            questionIndex,
+            questionIndex: qIndex,
             label,
             play: useLocal
               ? { filePath: local!.filePath, label }
@@ -255,27 +304,45 @@ export function AppFlow() {
     return () => clearInterval(interval);
   }, [phase]);
 
-  function goToNextQuestion() {
-    if (questionIndex + 1 >= TOTAL_QUESTIONS) {
-      setScreen('complete');
+  // Replaces the old CountdownOverlay component - the countdown now
+  // renders inline inside CameraCheckScreen's own chrome (design 3.1B), so
+  // this just ticks the shared number down and starts the real recording
+  // once it reaches zero.
+  useEffect(() => {
+    if (phase !== 'countdown') {
+      setCountdownRemaining(COUNTDOWN_SECONDS);
       return;
     }
-    setQuestionIndex((i) => i + 1);
-    lockedForQuestion.current = false;
-    introShownForQuestion.current = false;
-    setPhase('intro');
+    if (countdownRemaining <= 0) {
+      recordingStartedAtRef.current = Date.now();
+      cameraRef.current
+        ?.startRecording()
+        .catch((error) => console.error('[recording] start failed', error));
+      setPhase('recording');
+      return;
+    }
+    const timeout = setTimeout(() => setCountdownRemaining((r) => r - 1), 1000);
+    return () => clearTimeout(timeout);
+  }, [phase, countdownRemaining]);
+
+  function enterCameraCheck() {
+    setTakeAttempt((n) => n + 1);
+    setChecksReady(false);
+    setPhase('cameraCheck');
   }
 
-  // Only ever fires as a result of "Keep this take" (stopRecording()) -
-  // "Redo answer" uses cancelRecording() instead, which doesn't finalize
-  // a file, so this is unambiguous.
+  // Only ever fires once a take has actually been finalized
+  // (stopRecording() was called from "I'm done answering") - adds it to
+  // this question's takes list (capped at MAX_TAKES, oldest dropped) and
+  // always routes into Review & Trim, which is now mandatory after every
+  // take rather than a conditional "alignment broke" overlay.
   function handleRecordingFinished(tempFilePath: string) {
     const fileName = `question-${questionIndex + 1}-${Date.now()}.mp4`;
     const durablePath = moveRecordingToDurableStorage(tempFilePath, fileName);
     const durationSeconds = recordingStartedAtRef.current
       ? (Date.now() - recordingStartedAtRef.current) / 1000
       : 0;
-    const newVideo: RecordedVideo = {
+    const newTake: RecordedVideo = {
       id: `q${questionIndex}-${Date.now()}`,
       label: `Question ${questionIndex + 1}`,
       filePath: durablePath,
@@ -283,13 +350,52 @@ export function AppFlow() {
       durationSeconds,
     };
 
+    setTakesByQuestion((prev) => {
+      const existing = prev[questionIndex] ?? [];
+      const updated = [...existing, newTake];
+      if (updated.length <= MAX_TAKES) {
+        return { ...prev, [questionIndex]: updated };
+      }
+      const [oldest, ...rest] = updated;
+      deleteRecording(oldest.filePath);
+      return { ...prev, [questionIndex]: rest };
+    });
+    setSelectedTakeId(newTake.id);
+    setTrimStartSeconds(0);
+    setTrimEndSeconds(durationSeconds);
+    setRemoveLastTwoSeconds(false);
+    setPhase('reviewTrim');
+  }
+
+  // "Keep this take" - finalizes the selected take (with its trim
+  // metadata) into `videos`, discards the question's other pending takes'
+  // files, and routes onward: retakes go straight back to My Videos;
+  // otherwise the last question goes to the existing 'complete' screen
+  // unchanged, and every other question shows the post-keep prompt.
+  function handleKeepTake() {
+    const currentTakes = takesByQuestion[questionIndex] ?? [];
+    const kept = currentTakes.find((t) => t.id === selectedTakeId) ?? currentTakes[currentTakes.length - 1];
+    if (!kept) return;
+
+    currentTakes.filter((t) => t.id !== kept.id).forEach((t) => deleteRecording(t.filePath));
+    const finalized: RecordedVideo = {
+      ...kept,
+      trimStartSeconds,
+      trimEndSeconds,
+      removeLastTwoSeconds,
+    };
+
+    setTakesByQuestion((prev) => {
+      const next = { ...prev };
+      delete next[questionIndex];
+      return next;
+    });
+
     if (retakeQuestionIndex !== null) {
-      // Replace in place - same list position in My Videos, not a new
-      // entry appended alongside the old one.
       setVideos((prev) => {
         const previous = prev.find((v) => v.questionIndex === questionIndex);
         if (previous) deleteRecording(previous.filePath);
-        return prev.map((v) => (v.questionIndex === questionIndex ? newVideo : v));
+        return prev.map((v) => (v.questionIndex === questionIndex ? finalized : v));
       });
       setRetakeQuestionIndex(null);
       setMainTab('myVideos');
@@ -297,8 +403,30 @@ export function AppFlow() {
       return;
     }
 
-    setVideos((prev) => [...prev, newVideo]);
-    goToNextQuestion();
+    setVideos((prev) => [...prev, finalized]);
+
+    // Last question: land on Home, whose "all recorded" state (built in
+    // Phase 4b) already carries the "Send all five" CTA - no separate
+    // completion screen needed any more. Every other question: the
+    // post-keep prompt.
+    if (questionIndex + 1 >= TOTAL_QUESTIONS) {
+      setMainTab('home');
+      setScreen('main');
+    } else {
+      setShowPostKeepPrompt(true);
+    }
+  }
+
+  function handleRecordAnother() {
+    enterCameraCheck();
+  }
+
+  function goToNextQuestion() {
+    setShowPostKeepPrompt(false);
+    setQuestionIndex((i) => i + 1);
+    setChecksReady(false);
+    setTakeAttempt(0);
+    setPhase('brief');
   }
 
   // Testing convenience: clears prior recordings so My Videos doesn't grow
@@ -307,11 +435,13 @@ export function AppFlow() {
   function startNewSession() {
     clearAllRecordings();
     setVideos([]);
+    setTakesByQuestion({});
     setQuestionIndex(0);
     setRetakeQuestionIndex(null);
-    lockedForQuestion.current = false;
-    introShownForQuestion.current = false;
-    setPhase('aligning');
+    setChecksReady(false);
+    setTakeAttempt(0);
+    setAutoStart(true);
+    setPhase('brief');
     setScreen('question');
   }
 
@@ -319,12 +449,17 @@ export function AppFlow() {
   // cold-start sequence (align first, full lock) rather than questions
   // 2-5's lighter recheck, since there's no continuous camera session
   // behind this entry to justify a lighter check.
-  function startRetake(questionIndex: number) {
-    setQuestionIndex(questionIndex);
-    setRetakeQuestionIndex(questionIndex);
-    lockedForQuestion.current = false;
-    introShownForQuestion.current = false;
-    setPhase('aligning');
+  function startRetake(qIndex: number) {
+    setQuestionIndex(qIndex);
+    setRetakeQuestionIndex(qIndex);
+    setTakesByQuestion((prev) => {
+      const next = { ...prev };
+      delete next[qIndex];
+      return next;
+    });
+    setChecksReady(false);
+    setTakeAttempt(0);
+    setPhase('brief');
     setScreen('question');
   }
 
@@ -339,18 +474,49 @@ export function AppFlow() {
 
   if (screen === 'sessionLoading') {
     return (
-      <View style={styles.sessionLoading}>
+      <View style={[styles.sessionLoading, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   if (screen === 'login') {
-    return <LoginScreen onLoggedIn={() => setScreen('welcome')} />;
+    return (
+      <View style={{ flex: 1 }}>
+        <LoginScreen onLoggedIn={() => setScreen('onboarding')} />
+        {__DEV__ && (
+          <DevEntryMenu
+            items={[
+              { label: 'Splash', onPress: () => setScreen('splash') },
+              { label: 'WhatsApp invite → identity → onboarding', onPress: () => setScreen('whatsappInvite') },
+              { label: 'Onboarding only', onPress: () => setScreen('onboarding') },
+            ]}
+          />
+        )}
+      </View>
+    );
   }
 
-  if (screen === 'welcome') {
-    return <WelcomeScreen onGetStarted={() => setScreen('consent')} />;
+  // Real WhatsApp deep-link routing isn't wired yet - "Splash" here just
+  // simulates a returning-user cold start (splash -> login), reachable via
+  // the dev entry menu above. See DECISIONS.md.
+  if (screen === 'splash') {
+    return <SplashScreen onContinue={() => setScreen('login')} />;
+  }
+
+  // The full new-user chain: invite -> identity confirmation -> onboarding
+  // -> consent, simulated end-to-end from the dev entry menu until real
+  // deep-linking exists.
+  if (screen === 'whatsappInvite') {
+    return <WhatsAppInviteScreen onContinue={() => setScreen('identityConfirm')} />;
+  }
+
+  if (screen === 'identityConfirm') {
+    return <IdentityConfirmScreen onConfirm={() => setScreen('onboarding')} />;
+  }
+
+  if (screen === 'onboarding') {
+    return <OnboardingScreen onGetStarted={() => setScreen('consent')} />;
   }
 
   if (screen === 'consent') {
@@ -364,19 +530,55 @@ export function AppFlow() {
   if (screen === 'main') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        {mainTab === 'home' && <HomeScreen onCreateNew={() => setScreen('permissions')} />}
+        {mainTab === 'home' && (
+          <HomeScreen
+            // Mock identity - no real account backend wired yet (Phase
+            // 4f/7), matches the identity-confirmation mock default.
+            distributorName="Mahesh"
+            businessName="Agrawal Traders"
+            city="Nagpur"
+            totalQuestions={TOTAL_QUESTIONS}
+            questionsAnswered={videos.length}
+            hasSubmittedBatch={hasSubmittedBatch}
+            renderedReadyCount={brandedRows.filter((b) => b.status === 'ready').length}
+            nextQuestion={
+              videos.length < TOTAL_QUESTIONS
+                ? {
+                    index: videos.length + 1,
+                    text: PLACEHOLDER_QUESTIONS[videos.length] ?? '',
+                    estimate: '45–60 second answer · about 3 minutes',
+                  }
+                : null
+            }
+            readyReel={null}
+            onStartNextQuestion={() => setScreen('permissions')}
+            onSendAll={() => {
+              setUploadConfirmed(false);
+              setScreen('uploading');
+            }}
+            onOpenMyVideos={() => setMainTab('myVideos')}
+            onShareReadyReel={() => {}}
+          />
+        )}
         {mainTab === 'myVideos' && (
           <MyVideosScreen
             loading={myVideosLoading}
             error={myVideosError}
             onRetryLoad={() => setMyVideosRefreshToken((n) => n + 1)}
+            totalQuestions={TOTAL_QUESTIONS}
             answers={answerRows}
             branded={brandedRows}
+            hasPendingUpload={videos.length > 0}
             onPressAnswer={(row) => setPlayingVideo(row.play)}
-            onPressBranded={(row) => row.play && setPlayingVideo(row.play)}
-            onRetake={(questionIndex) => setPendingRetake(questionIndex)}
+            onPressBranded={(row) => row.play && setPlayingVideo({ ...row.play, celebratory: true })}
+            onRetake={(qIndex) => setPendingRetake(qIndex)}
+            onUploadAll={() => {
+              setUploadConfirmed(false);
+              setScreen('uploading');
+            }}
           />
         )}
+        {mainTab === 'help' && <HelpScreen />}
         {mainTab === 'profile' && <ProfileScreen />}
         <BottomTabBar activeTab={mainTab} onTabPress={setMainTab} />
 
@@ -385,9 +587,9 @@ export function AppFlow() {
             questionNumber={pendingRetake + 1}
             onCancel={() => setPendingRetake(null)}
             onConfirm={() => {
-              const questionIndex = pendingRetake;
+              const qIndex = pendingRetake;
               setPendingRetake(null);
-              startRetake(questionIndex);
+              startRetake(qIndex);
             }}
           />
         )}
@@ -395,16 +597,23 @@ export function AppFlow() {
     );
   }
 
-  if (screen === 'complete') {
-    return <CompletionScreen onSave={() => setScreen('uploading')} />;
-  }
-
   if (screen === 'uploading') {
     return (
       <UploadingScreen
-        progress={uploadError ? undefined : uploadProgress}
+        items={videos.map((v) => ({ questionIndex: v.questionIndex, label: `Question ${v.questionIndex + 1}` }))}
+        uploading={uploadConfirmed}
+        progress={uploadProgress}
         error={uploadError}
+        onConfirm={() => setUploadConfirmed(true)}
         onRetry={() => setUploadAttempt((n) => n + 1)}
+        onGoHome={() => {
+          setMainTab('home');
+          setScreen('main');
+        }}
+        onSendLater={() => {
+          setMainTab('home');
+          setScreen('main');
+        }}
       />
     );
   }
@@ -416,97 +625,144 @@ export function AppFlow() {
           setMainTab('home');
           setScreen('main');
         }}
-        onRecordAnother={() => setScreen('permissions')}
       />
     );
   }
 
   // screen === 'question'
   const questionText = PLACEHOLDER_QUESTIONS[questionIndex] ?? '';
+  const talkingPoints = PLACEHOLDER_TALKING_POINTS[questionIndex] ?? [];
+  const prompts = PLACEHOLDER_PROMPTS[questionIndex] ?? [];
   // Retake is always a cold entry (no continuous camera session behind
   // it) - full lock regardless of which question index it targets, same
   // as question 1's first-time entry.
-  const lockMode =
-    retakeQuestionIndex !== null || questionIndex === 0 ? 'initial' : 'recheck';
+  const lockMode = retakeQuestionIndex !== null || questionIndex === 0 ? 'initial' : 'recheck';
+  const resetToken = `${questionIndex}-${takeAttempt}`;
+  const currentTakes = takesByQuestion[questionIndex] ?? [];
 
-  return (
-    <View style={{ flex: 1 }}>
-      <RecordingScreen
+  if (phase === 'brief') {
+    return (
+      <QuestionBriefScreen
         questionNumber={questionIndex + 1}
         totalQuestions={TOTAL_QUESTIONS}
         questionText={questionText}
-        isRecording={phase === 'recording'}
-        elapsedSeconds={elapsedSeconds}
-        onFinishAnswer={() => setPhase('redo-prompt')}
-      >
-        <CameraAlignment
-          ref={cameraRef}
-          lockMode={lockMode}
-          resetToken={questionIndex}
-          onLocked={() => {
-            // Only ever fires while phase === 'aligning' now, since
-            // detection is fully off otherwise (alignmentActive below).
-            // Two cases look identical here (phase === 'aligning') but
-            // need different destinations: question 1's align-first lock
-            // (intro not shown yet) should reveal the intro; a
-            // post-"I'm ready" lock (intro already shown) should go
-            // straight to the countdown.
-            lockedForQuestion.current = true;
-            setPhase((current) => {
-              if (current !== 'aligning') return current;
-              return introShownForQuestion.current ? 'countdown' : 'intro';
-            });
+        talkingPoints={talkingPoints}
+        onStartRecording={enterCameraCheck}
+        onRehearse={() => setPhase('rehearse')}
+      />
+    );
+  }
+
+  if (phase === 'reviewTrim') {
+    const activeTakeId = selectedTakeId ?? currentTakes[currentTakes.length - 1]?.id ?? '';
+    return (
+      <View style={{ flex: 1 }}>
+        <ReviewTrimScreen
+          questionNumber={questionIndex + 1}
+          takes={currentTakes.map((t) => ({ id: t.id, filePath: t.filePath, durationSeconds: t.durationSeconds }))}
+          selectedTakeId={activeTakeId}
+          onSelectTake={(id) => {
+            setSelectedTakeId(id);
+            const take = currentTakes.find((t) => t.id === id);
+            setTrimStartSeconds(0);
+            setTrimEndSeconds(take?.durationSeconds ?? 0);
           }}
-          // Detection must not run at all while the question intro/VO is
-          // showing - only once the user has actually tapped "I'm ready"
-          // (or, for question 1, from the very start).
-          alignmentActive={phase !== 'intro'}
-          recordingActive={phase === 'recording' || phase === 'redo-prompt'}
-          onRecordingFinished={handleRecordingFinished}
-          onRecordingError={(error) => console.error('[recording]', error)}
+          removeLastTwoSeconds={removeLastTwoSeconds}
+          onToggleRemoveLastTwoSeconds={setRemoveLastTwoSeconds}
+          trimStartSeconds={trimStartSeconds}
+          trimEndSeconds={trimEndSeconds}
+          onChangeTrim={(s, e) => {
+            setTrimStartSeconds(s);
+            setTrimEndSeconds(e);
+          }}
+          onRecordAnother={handleRecordAnother}
+          onKeep={handleKeepTake}
         />
 
-        {phase === 'intro' && (
-          <QuestionIntroOverlay
-            questionNumber={questionIndex + 1}
-            totalQuestions={TOTAL_QUESTIONS}
-            questionText={questionText}
-            onFinishedSpeaking={() => {
-              introShownForQuestion.current = true;
-              setPhase(lockedForQuestion.current ? 'countdown' : 'aligning');
-            }}
-          />
-        )}
-        {phase === 'countdown' && (
-          <CountdownOverlay
-            seconds={3}
-            onComplete={() => {
-              recordingStartedAtRef.current = Date.now();
-              cameraRef.current
-                ?.startRecording()
-                .catch((error) => console.error('[recording] start failed', error));
-              setPhase('recording');
-            }}
-          />
-        )}
-      </RecordingScreen>
+        <PopupSheet visible={showPostKeepPrompt} onDismiss={() => setShowPostKeepPrompt(false)} dismissable={false}>
+          <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 16 }}>
+            Answer saved. What's next?
+          </Text>
+          <View style={{ gap: 10 }}>
+            <Button label="Next question" onPress={goToNextQuestion} />
+            <Button
+              label="My Videos"
+              variant="secondary"
+              onPress={() => {
+                setShowPostKeepPrompt(false);
+                setMainTab('myVideos');
+                setScreen('main');
+              }}
+            />
+            <Button
+              label="Home"
+              variant="secondary"
+              onPress={() => {
+                setShowPostKeepPrompt(false);
+                setMainTab('home');
+                setScreen('main');
+              }}
+            />
+          </View>
+        </PopupSheet>
+      </View>
+    );
+  }
 
-      {/* Rendered outside RecordingScreen (not in its children) so it
-          always paints above the question bar / rec indicator / progress
-          badge - those are RecordingScreen's own chrome, layered after its
-          children, and would otherwise sit on top of and block this. */}
-      {phase === 'redo-prompt' && (
-        <RedoPromptOverlay
-          onKeep={() => {
+  // rehearse / cameraCheck / countdown / recording all share one
+  // continuously-mounted <CameraAlignment/> - swapping which chrome
+  // component wraps it (rather than layering chrome as siblings) would
+  // remount the camera session mid-flow, right as recording is about to
+  // start. See CameraCheckScreen's comment.
+  return (
+    <View style={{ flex: 1 }}>
+      <CameraAlignment
+        ref={cameraRef}
+        lockMode={lockMode}
+        resetToken={resetToken}
+        onLocked={() => {
+          setChecksReady(true);
+          if (autoStart) setPhase('countdown');
+        }}
+        alignmentActive
+        recordingActive={phase === 'recording'}
+        onRecordingFinished={handleRecordingFinished}
+        onRecordingError={(error) => console.error('[recording]', error)}
+      />
+
+      {phase === 'rehearse' && (
+        <RehearseScreen
+          questionText={questionText}
+          onRecordForReal={enterCameraCheck}
+          onBackToBrief={() => setPhase('brief')}
+        />
+      )}
+
+      {(phase === 'cameraCheck' || phase === 'countdown') && (
+        <CameraCheckScreen
+          questionNumber={questionIndex + 1}
+          totalQuestions={TOTAL_QUESTIONS}
+          autoStart={autoStart}
+          onToggleAutoStart={setAutoStart}
+          checksReady={checksReady}
+          countingDown={phase === 'countdown'}
+          countdownSeconds={countdownRemaining}
+          onStartRecording={() => setPhase('countdown')}
+        />
+      )}
+
+      {phase === 'recording' && (
+        <RecordingScreen
+          questionNumber={questionIndex + 1}
+          totalQuestions={TOTAL_QUESTIONS}
+          questionText={questionText}
+          prompts={prompts}
+          isRecording={phase === 'recording'}
+          elapsedSeconds={elapsedSeconds}
+          onFinishAnswer={() => {
             cameraRef.current
               ?.stopRecording()
               .catch((error) => console.error('[recording] stop failed', error));
-          }}
-          onRedo={() => {
-            cameraRef.current
-              ?.cancelRecording()
-              .catch((error) => console.error('[recording] cancel failed', error));
-            setPhase('countdown');
           }}
         />
       )}
@@ -517,7 +773,6 @@ export function AppFlow() {
 const styles = StyleSheet.create({
   sessionLoading: {
     flex: 1,
-    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },

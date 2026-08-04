@@ -1,228 +1,398 @@
-import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
-import { colors, radius, spacing, typography } from '../theme';
+import { useMemo } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
+import type { PaletteColors } from '../theme/palettes';
+import type { Spacing } from '../theme/spacing';
+import type { Radius } from '../theme/radius';
+import type { Typography } from '../theme/typography';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { Carousel } from '../components/ui/Carousel';
 
-interface Props {
-  onCreateNew: () => void;
+interface NextQuestion {
+  index: number;
+  text: string;
+  estimate: string;
 }
 
-const OTHER_TESTIMONIALS = ['Sunita · Indore', 'Vijay · Nagpur', 'Meena · Patna'];
+interface ReadyReel {
+  label: string;
+}
 
-// Return-visit dashboard (design screen 2a) - greeting, primary record CTA,
-// and two placeholder content sections (how-it-works video, other
-// distributors' testimonials) that don't have real data/backends yet.
-export function HomeScreen({ onCreateNew }: Props) {
+interface Props {
+  distributorName: string;
+  businessName: string;
+  city: string;
+  totalQuestions: number;
+  /** Recorded locally so far this cycle - not necessarily submitted yet. */
+  questionsAnswered: number;
+  /** True once "Send all five" has actually been pressed. */
+  hasSubmittedBatch: boolean;
+  /** How many branded reels have come back for the current batch. */
+  renderedReadyCount: number;
+  nextQuestion: NextQuestion | null;
+  /** The one exception to "Home doesn't show your own reels" - a single ready reel worth a banner. */
+  readyReel: ReadyReel | null;
+  onStartNextQuestion: () => void;
+  onSendAll: () => void;
+  onOpenMyVideos: () => void;
+  onShareReadyReel: () => void;
+}
+
+const HOW_TO_VIDEOS = [
+  { title: 'Where to stand for good light', duration: '1:10' },
+  { title: 'Speaking without a script', duration: '0:48' },
+];
+
+const SAMPLE_VIDEOS = [
+  { title: 'A good answer', duration: '0:48' },
+  { title: 'Keeping it short', duration: '0:39' },
+  { title: 'Speaking plainly', duration: '0:52' },
+];
+
+// Home's job is prompting the next action - the distributor's own content
+// lives in My Videos, not here (DECISIONS.md). Five states derived from
+// progress, not passed in directly, so real data can drive this the same
+// way once wired in Phase 7: first-time, in-progress, all-recorded (not
+// submitted), submitted (being prepared), reels-ready. The last of these is
+// still an open design decision - kept to a light placeholder rather than
+// over-built.
+export function HomeScreen({
+  distributorName,
+  businessName,
+  city,
+  totalQuestions,
+  questionsAnswered,
+  hasSubmittedBatch,
+  renderedReadyCount,
+  nextQuestion,
+  readyReel,
+  onStartNextQuestion,
+  onSendAll,
+  onOpenMyVideos,
+  onShareReadyReel,
+}: Props) {
+  const { colors, spacing, radius, typography } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+
+  const allRecorded = questionsAnswered >= totalQuestions;
+  const allRendered = renderedReadyCount >= totalQuestions;
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-    >
-      <Text style={styles.greeting}>Welcome back</Text>
-      <Text style={styles.subGreeting}>Distributor</Text>
-
-      <Pressable style={styles.ctaCard} onPress={onCreateNew}>
-        <View style={styles.ctaIconCircle}>
-          <View style={styles.ctaIconCamera}>
-            <View style={styles.ctaIconLens} />
-          </View>
-        </View>
-        <View style={styles.ctaText}>
-          <Text style={styles.ctaTitle}>Record a new testimonial</Text>
-          <Text style={styles.ctaSubtitle}>For your next campaign</Text>
-        </View>
-      </Pressable>
-
-      <View style={styles.howItWorksCard}>
-        <View style={styles.howItWorksThumb}>
-          <View style={styles.playCircle}>
-            <View style={styles.playTriangle} />
-          </View>
-        </View>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.header}>
         <View>
-          <Text style={styles.howItWorksLabel}>HOW IT WORKS</Text>
-          <Text style={styles.howItWorksTitle}>Watch a 1-minute guide</Text>
+          <Text style={styles.greeting}>
+            {questionsAnswered === 0 ? 'Welcome, ' : 'Welcome back, '}
+            {distributorName}
+          </Text>
+          <Text style={styles.subGreeting}>
+            {businessName} · {city}
+          </Text>
+        </View>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {distributorName
+              .split(' ')
+              .map((p) => p[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase()}
+          </Text>
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>See what others are saying</Text>
-      <View style={styles.carousel}>
-        {OTHER_TESTIMONIALS.map((name) => (
-          <View key={name} style={styles.carouselItem}>
-            <View style={styles.carouselThumb}>
-              <View style={styles.playCircleSmall}>
-                <View style={styles.playTriangleSmall} />
-              </View>
+      {readyReel && (
+        <View style={styles.readyBanner}>
+          <View style={styles.readyBannerThumb} />
+          <Text style={styles.readyBannerText}>{readyReel.label} is ready to share</Text>
+          <Button label="Share" onPress={onShareReadyReel} variant="quiet" style={styles.readyBannerButton} />
+        </View>
+      )}
+
+      {allRendered ? (
+        <Card style={styles.stateCard}>
+          <Text style={styles.stateEyebrow}>All five are ready</Text>
+          <Text style={styles.stateTitle}>Your branded videos are waiting for you</Text>
+          <Text style={styles.stateBody}>Head to My Videos to watch and share them.</Text>
+          <Button label="Go to My Videos" onPress={onOpenMyVideos} style={{ marginTop: spacing.md }} />
+        </Card>
+      ) : hasSubmittedBatch ? (
+        <Card style={[styles.stateCard, styles.stateCardDark]}>
+          <Text style={[styles.stateEyebrow, { color: '#C9A184' }]}>Sent, being made</Text>
+          <Text style={[styles.stateTitle, { color: '#FFFFFF' }]}>
+            We're turning your answers into branded videos
+          </Text>
+          <Text style={[styles.stateBody, { color: 'rgba(255,255,255,0.72)' }]}>
+            Keep the app installed - we'll let you know the moment they're ready.
+          </Text>
+        </Card>
+      ) : allRecorded ? (
+        <Card style={[styles.stateCard, styles.stateCardDark]}>
+          <View style={styles.progressRow}>
+            <Text style={[styles.stateEyebrow, { color: '#C9A184' }]}>All five answered</Text>
+            <ProgressDots done={totalQuestions} total={totalQuestions} accent="#C9A184" />
+          </View>
+          <Text style={[styles.stateTitle, { color: '#FFFFFF' }]}>
+            Send them to us and we'll make your videos
+          </Text>
+          <Text style={[styles.stateBody, { color: 'rgba(255,255,255,0.72)' }]}>
+            They're still only on your phone.
+          </Text>
+          <Button label="Send all five" onPress={onSendAll} style={{ marginTop: spacing.md }} />
+        </Card>
+      ) : (
+        nextQuestion && (
+          <Card emphasized style={styles.stateCard}>
+            <View style={styles.progressRow}>
+              <Text style={styles.stateEyebrow}>
+                Question {nextQuestion.index} of {totalQuestions}
+              </Text>
+              <ProgressDots done={questionsAnswered} total={totalQuestions} accent={colors.accent} />
             </View>
-            <Text style={styles.carouselName}>{name}</Text>
+            <Text style={styles.stateTitle}>{nextQuestion.text}</Text>
+            <Text style={styles.stateBody}>{nextQuestion.estimate}</Text>
+            <Button
+              label={questionsAnswered === 0 ? 'Start your first question' : 'Start this question'}
+              onPress={onStartNextQuestion}
+              style={{ marginTop: spacing.md }}
+            />
+          </Card>
+        )
+      )}
+
+      {questionsAnswered === 0 && (
+        <View style={styles.emptyVideosHint}>
+          <Text style={styles.emptyVideosHintText}>
+            Your finished videos appear here after you answer all five and send them.
+          </Text>
+        </View>
+      )}
+
+      <SectionHeader title="How to record well" onSeeAll={() => {}} styles={styles} />
+      <View style={styles.howToRow}>
+        {HOW_TO_VIDEOS.map((v) => (
+          <View key={v.title} style={styles.howToItem}>
+            <View style={styles.howToThumb}>
+              <PlayGlyph size={32} />
+              <Text style={styles.thumbDuration}>{v.duration}</Text>
+            </View>
+            <Text style={styles.howToTitle}>{v.title}</Text>
           </View>
         ))}
       </View>
+
+      <View style={styles.statLine}>
+        <View style={styles.statAvatars}>
+          <View style={[styles.statAvatarDot, { backgroundColor: '#C9A184' }]} />
+          <View style={[styles.statAvatarDot, { backgroundColor: '#A9846A', marginLeft: -9 }]} />
+          <View style={[styles.statAvatarDot, { backgroundColor: '#7E6B5C', marginLeft: -9 }]} />
+        </View>
+        <Text style={styles.statText}>
+          <Text style={{ fontWeight: '700' }}>41 distributors</Text> have already finished all five
+          questions
+        </Text>
+      </View>
+
+      <SectionHeader title="Sample videos" subtitle="Made by the company to show what a good answer looks like" styles={styles} />
+      <Carousel>
+        {SAMPLE_VIDEOS.map((v) => (
+          <View key={v.title} style={styles.sampleThumb}>
+            <View style={styles.exampleTag}>
+              <Text style={styles.exampleTagText}>EXAMPLE</Text>
+            </View>
+            <Text style={styles.sampleTitle}>{v.title}</Text>
+            <Text style={styles.sampleDuration}>{v.duration}</Text>
+          </View>
+        ))}
+      </Carousel>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: spacing.xl,
-    paddingBottom: spacing.xxl,
-  },
-  greeting: {
-    ...typography.title,
-    fontSize: 24,
-    color: colors.text,
-  },
-  subGreeting: {
-    ...typography.body,
-    fontSize: 14,
-    color: colors.textFaint,
-    marginTop: 2,
-  },
-  ctaCard: {
-    marginTop: spacing.lg - 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md - 2,
-    padding: spacing.md + 2,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-  },
-  ctaIconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaIconCamera: {
-    width: 26,
-    height: 19,
-    borderRadius: 5,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaIconLens: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: colors.accent,
-  },
-  ctaText: {
-    gap: 2,
-  },
-  ctaTitle: {
-    ...typography.body,
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  ctaSubtitle: {
-    ...typography.caption,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  howItWorksCard: {
-    marginTop: spacing.md - 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md - 2,
-    padding: spacing.sm + 4,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-  },
-  howItWorksThumb: {
-    width: 110,
-    height: 64,
-    borderRadius: radius.sm + 2,
-    backgroundColor: '#1E211F',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playTriangle: {
-    width: 0,
-    height: 0,
-    borderTopWidth: 6,
-    borderBottomWidth: 6,
-    borderLeftWidth: 10,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    borderLeftColor: colors.text,
-    marginLeft: 3,
-  },
-  howItWorksLabel: {
-    ...typography.label,
-    fontSize: 12,
-    color: colors.accent,
-  },
-  howItWorksTitle: {
-    ...typography.body,
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 3,
-    lineHeight: 20,
-  },
-  sectionTitle: {
-    ...typography.body,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    marginTop: spacing.lg + 2,
-  },
-  carousel: {
-    flexDirection: 'row',
-    gap: spacing.md - 4,
-    marginTop: spacing.md - 4,
-  },
-  carouselItem: {
-    width: 112,
-  },
-  carouselThumb: {
-    width: 112,
-    height: 150,
-    borderRadius: radius.md - 2,
-    backgroundColor: '#1E211F',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playCircleSmall: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playTriangleSmall: {
-    width: 0,
-    height: 0,
-    borderTopWidth: 6,
-    borderBottomWidth: 6,
-    borderLeftWidth: 9,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    borderLeftColor: colors.text,
-    marginLeft: 3,
-  },
-  carouselName: {
-    ...typography.caption,
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginTop: spacing.xs + 2,
-  },
-});
+function ProgressDots({ done, total, accent }: { done: number; total: number; accent: string }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 4 }}>
+      {Array.from({ length: total }).map((_, i) => (
+        <View
+          key={i}
+          style={{
+            width: 14,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: i < done ? accent : 'rgba(140,131,122,0.35)',
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+function PlayGlyph({ size }: { size: number }) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: 'rgba(255,255,255,0.94)',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <View
+        style={{
+          width: 0,
+          height: 0,
+          borderTopWidth: size * 0.2,
+          borderBottomWidth: size * 0.2,
+          borderLeftWidth: size * 0.3,
+          borderTopColor: 'transparent',
+          borderBottomColor: 'transparent',
+          borderLeftColor: '#241E1A',
+          marginLeft: 3,
+        }}
+      />
+    </View>
+  );
+}
+
+function SectionHeader({
+  title,
+  subtitle,
+  onSeeAll,
+  styles,
+}: {
+  title: string;
+  subtitle?: string;
+  onSeeAll?: () => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <View>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {onSeeAll && (
+          <Text style={styles.sectionSeeAll} onPress={onSeeAll}>
+            See all
+          </Text>
+        )}
+      </View>
+      {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+    </View>
+  );
+}
+
+function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.md },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    greeting: { ...typography.title, fontSize: 22, color: colors.text },
+    subGreeting: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: { fontSize: 14, fontWeight: '700', color: colors.accent },
+    readyBanner: {
+      backgroundColor: colors.text,
+      borderRadius: radius.lg,
+      padding: spacing.sm + 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm + 2,
+    },
+    readyBannerThumb: { width: 26, height: 34, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.2)' },
+    readyBannerText: { flex: 1, color: '#FFFFFF', fontSize: 13.5, fontWeight: '600', lineHeight: 18 },
+    readyBannerButton: { backgroundColor: '#FFFFFF', paddingVertical: 7, paddingHorizontal: 14 },
+    stateCard: { gap: 4 },
+    stateCardDark: { backgroundColor: colors.text, borderColor: colors.text },
+    progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    stateEyebrow: {
+      fontSize: 11.5,
+      letterSpacing: 1.8,
+      textTransform: 'uppercase',
+      color: colors.accent,
+      fontWeight: '700',
+    },
+    stateTitle: {
+      ...typography.body,
+      fontSize: 20.5,
+      fontWeight: '600',
+      color: colors.text,
+      marginTop: 4,
+      lineHeight: 27,
+    },
+    stateBody: { ...typography.caption, color: colors.textFaint, marginTop: 4 },
+    emptyVideosHint: {
+      borderWidth: 1.5,
+      borderColor: colors.borderStrong,
+      borderStyle: 'dashed',
+      borderRadius: radius.lg,
+      padding: spacing.md,
+    },
+    emptyVideosHintText: { ...typography.caption, color: colors.textFaint, lineHeight: 20 },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      marginTop: spacing.sm,
+    },
+    sectionTitle: {
+      fontSize: 11.5,
+      letterSpacing: 1.8,
+      textTransform: 'uppercase',
+      color: colors.textFaint,
+      fontWeight: '700',
+    },
+    sectionSeeAll: { fontSize: 13, fontWeight: '700', color: colors.accent },
+    sectionSubtitle: { ...typography.caption, color: colors.textFaint, marginTop: 4, lineHeight: 18 },
+    howToRow: { flexDirection: 'row', gap: spacing.sm + 3 },
+    howToItem: { flex: 1, gap: spacing.sm - 1 },
+    howToThumb: {
+      height: 74,
+      borderRadius: radius.md - 1,
+      backgroundColor: '#2B2521',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    thumbDuration: { position: 'absolute', right: 8, bottom: 7, color: 'rgba(255,255,255,0.75)', fontSize: 10.5 },
+    howToTitle: { ...typography.caption, fontSize: 13.5, fontWeight: '600', color: colors.text, lineHeight: 18 },
+    statLine: {
+      backgroundColor: colors.canvas,
+      borderRadius: radius.lg,
+      padding: spacing.sm + 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm + 2,
+    },
+    statAvatars: { flexDirection: 'row' },
+    statAvatarDot: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.canvas },
+    statText: { ...typography.caption, fontSize: 13.5, color: colors.textMuted, flex: 1, lineHeight: 19 },
+    sampleThumb: {
+      width: 104,
+      height: 116,
+      borderRadius: radius.md,
+      backgroundColor: '#2B2521',
+      padding: spacing.sm,
+      justifyContent: 'flex-end',
+    },
+    exampleTag: {
+      position: 'absolute',
+      top: 8,
+      left: 8,
+      backgroundColor: 'rgba(255,255,255,0.18)',
+      borderRadius: 999,
+      paddingVertical: 3,
+      paddingHorizontal: 7,
+    },
+    exampleTagText: { color: '#FFFFFF', fontSize: 9, fontWeight: '700', letterSpacing: 1 },
+    sampleTitle: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '700', lineHeight: 16 },
+    sampleDuration: { color: 'rgba(255,255,255,0.62)', fontSize: 11 },
+  });
+}

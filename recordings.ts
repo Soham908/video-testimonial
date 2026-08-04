@@ -15,6 +15,13 @@ export interface RecordedVideo {
   // startRecording() was called to when the file was finalized. Required
   // by POST /segments/confirm per API_CONTRACT.md.
   durationSeconds: number;
+  // Trim metadata only - Review & Trim's timeline doesn't do any actual
+  // media processing (no frame thumbnails/waveform, no bundled video/audio
+  // decode dependency - see DECISIONS.md). These are just the chosen
+  // in/out points and toggle state, applied at upload/render time.
+  trimStartSeconds?: number;
+  trimEndSeconds?: number;
+  removeLastTwoSeconds?: boolean;
 }
 
 const RECORDINGS_DIR_NAME = 'recordings';

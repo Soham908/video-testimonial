@@ -1,9 +1,10 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { AlignmentSignals } from './alignment';
 import type { NoiseCheckStatus } from './useAmbientNoiseCheck';
-import { colors, radius, spacing, themeDark, typography } from './theme';
-
-type ItemStatus = 'checking' | 'good' | 'noisy';
+import { useTheme } from './theme/ThemeContext';
+import type { Spacing } from './theme/spacing';
+import { ChecklistRow, type CheckStatus } from './components/ui/ChecklistRow';
 
 interface Props {
   visible: boolean;
@@ -16,12 +17,15 @@ interface Props {
   onOverrideNoise: () => void;
 }
 
-// Thin, compact layer over the camera feed - all checks visible and live
-// from the moment this mounts, each independently flipping checking->good
-// as its own data resolves. Not a step-by-step wizard: nothing here needs
-// a tap to acknowledge a pass. Only the noise row can additionally show an
-// inline override action, since it's the one check the person can't
-// necessarily fix just by repositioning.
+// Reveal order/timing is a pure UI staging device - each row's underlying
+// signal is already live and computed in parallel the moment it appears
+// (DECISIONS.md: "checks revealed one at a time, executed in parallel").
+// Framing/Distance are omitted from the mockup's row -> which sub-signal
+// mapping isn't 1:1, so this combines centered+headroomOk into "Framing"
+// and distanceOk alone into "Distance". Light/brightness is intentionally
+// not a row here - that detection was never built (see DECISIONS.md).
+const REVEAL_DELAYS_MS = { framing: 0, distance: 400, sound: 800 };
+
 export function AlignmentStatusStrip({
   visible,
   signals,
@@ -30,107 +34,61 @@ export function AlignmentStatusStrip({
   noiseOverridden,
   onOverrideNoise,
 }: Props) {
+  const { spacing } = useTheme();
+  const styles = useMemo(() => makeStyles(spacing), [spacing]);
+
+  const [revealed, setRevealed] = useState({ framing: false, distance: false, sound: false });
+
+  useEffect(() => {
+    if (!visible) {
+      setRevealed({ framing: false, distance: false, sound: false });
+      return;
+    }
+    const timers = (Object.keys(REVEAL_DELAYS_MS) as (keyof typeof REVEAL_DELAYS_MS)[]).map((key) =>
+      setTimeout(() => setRevealed((prev) => ({ ...prev, [key]: true })), REVEAL_DELAYS_MS[key]),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [visible]);
+
   if (!visible) return null;
 
-  const showNoiseOverride =
-    noiseStatus === 'noisy' && noiseSustained && !noiseOverridden;
-  const noiseItemStatus: ItemStatus = noiseOverridden
-    ? 'good'
-    : noiseStatus === 'noisy'
-      ? 'noisy'
-      : noiseStatus;
+  const framingStatus: CheckStatus = !revealed.framing
+    ? 'pending'
+    : signals?.centered && signals?.headroomOk
+      ? 'good'
+      : 'checking';
+  const distanceStatus: CheckStatus = !revealed.distance ? 'pending' : signals?.distanceOk ? 'good' : 'checking';
+  const soundGood = noiseOverridden || noiseStatus === 'good';
+  const soundStatus: CheckStatus = !revealed.sound ? 'pending' : soundGood ? 'good' : 'checking';
+
+  const showSkip = revealed.sound && noiseStatus === 'noisy' && noiseSustained && !noiseOverridden;
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-      <StatusRow label="Centering" status={boolStatus(signals?.centered)} />
-      <StatusRow label="Distance" status={boolStatus(signals?.distanceOk)} />
-      <StatusRow label="Headroom" status={boolStatus(signals?.headroomOk)} />
-      <StatusRow
-        label="Noise"
-        status={noiseItemStatus}
-        action={
-          showNoiseOverride
-            ? { label: 'Continue anyway', onPress: onOverrideNoise }
-            : undefined
-        }
-      />
-    </View>
-  );
-}
-
-function boolStatus(ok: boolean | undefined): ItemStatus {
-  return ok ? 'good' : 'checking';
-}
-
-function StatusRow({
-  label,
-  status,
-  action,
-}: {
-  label: string;
-  status: ItemStatus;
-  action?: { label: string; onPress: () => void };
-}) {
-  return (
-    <View style={styles.row}>
-      <View style={[styles.dot, dotStyleFor(status)]} />
-      <Text style={styles.label}>{label}</Text>
-      {action && (
-        <Pressable style={styles.action} onPress={action.onPress} hitSlop={8}>
-          <Text style={styles.actionText}>{action.label}</Text>
+      <View style={styles.rows}>
+        <ChecklistRow label="Framing" status={framingStatus} />
+        <ChecklistRow label="Distance" status={distanceStatus} />
+        <ChecklistRow label="Sound" status={soundStatus} />
+      </View>
+      {showSkip && (
+        <Pressable style={styles.skipRow} onPress={onOverrideNoise} hitSlop={8}>
+          <Text style={styles.skipText}>Skip anyway</Text>
         </Pressable>
       )}
     </View>
   );
 }
 
-function dotStyleFor(status: ItemStatus) {
-  if (status === 'good') return styles.dotGood;
-  if (status === 'noisy') return styles.dotNoisy;
-  return styles.dotChecking;
+function makeStyles(spacing: Spacing) {
+  return StyleSheet.create({
+    container: {
+      position: 'absolute',
+      left: spacing.md + 4,
+      right: spacing.md + 4,
+      bottom: 150,
+    },
+    rows: { gap: spacing.xs + 1 },
+    skipRow: { alignItems: 'center', marginTop: spacing.md },
+    skipText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
+  });
 }
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: spacing.xl,
-    left: spacing.md,
-    backgroundColor: themeDark.chrome,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    gap: spacing.xs,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  dotChecking: {
-    backgroundColor: 'rgba(255,255,255,0.35)',
-  },
-  dotGood: {
-    backgroundColor: colors.accent,
-  },
-  dotNoisy: {
-    backgroundColor: colors.warning,
-  },
-  label: {
-    ...typography.caption,
-    color: themeDark.textMuted,
-  },
-  action: {
-    marginLeft: spacing.xs,
-  },
-  actionText: {
-    ...typography.caption,
-    color: colors.warning,
-    textDecorationLine: 'underline',
-    fontWeight: '600',
-  },
-});

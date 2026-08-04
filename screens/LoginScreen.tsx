@@ -1,6 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, radius, spacing, typography } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import type { PaletteColors } from '../theme/palettes';
+import type { Spacing } from '../theme/spacing';
+import type { Radius } from '../theme/radius';
+import type { Typography } from '../theme/typography';
 import { login } from '../auth';
 
 interface Props {
@@ -12,6 +16,9 @@ interface Props {
 // testing convenience while Soham is the only person signing in; revisit
 // before this goes to real distributors.
 export function LoginScreen({ onLoggedIn }: Props) {
+  const { colors, spacing, radius, typography } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+
   const [username, setUsername] = useState('kumar');
   const [password, setPassword] = useState('kumar123');
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +55,7 @@ export function LoginScreen({ onLoggedIn }: Props) {
           autoCapitalize="none"
           autoCorrect={false}
           editable={!submitting}
+          placeholderTextColor={colors.textDisabled}
         />
 
         <Text style={styles.label}>Password</Text>
@@ -59,6 +67,7 @@ export function LoginScreen({ onLoggedIn }: Props) {
           autoCorrect={false}
           secureTextEntry
           editable={!submitting}
+          placeholderTextColor={colors.textDisabled}
         />
 
         {error && <Text style={styles.error}>{error}</Text>}
@@ -79,79 +88,81 @@ export function LoginScreen({ onLoggedIn }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: spacing.xl,
-    paddingTop: spacing.xxl,
-    paddingBottom: spacing.xxl,
-  },
-  content: {
-    flex: 1,
-  },
-  logoPlaceholder: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.lg,
-    backgroundColor: colors.canvas,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-  },
-  logoPlaceholderText: {
-    ...typography.caption,
-    fontSize: 10,
-    color: colors.textDisabled,
-  },
-  title: {
-    ...typography.title,
-    fontSize: 27,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    ...typography.subtitle,
-    color: colors.textMuted,
-    lineHeight: 24,
-    marginBottom: spacing.xl,
-  },
-  label: {
-    ...typography.label,
-    color: colors.textFaint,
-    marginBottom: spacing.sm - 4,
-  },
-  input: {
-    ...typography.body,
-    height: 52,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md - 2,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  error: {
-    ...typography.body,
-    fontSize: 14,
-    color: colors.danger,
-    marginTop: spacing.xs,
-  },
-  button: {
-    height: 60,
-    backgroundColor: colors.accent,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    ...typography.button,
-    color: colors.accentText,
-  },
-});
+function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      padding: spacing.xl,
+      paddingTop: spacing.xxl,
+      paddingBottom: spacing.xxl,
+    },
+    content: {
+      flex: 1,
+    },
+    logoPlaceholder: {
+      width: 64,
+      height: 64,
+      borderRadius: radius.lg,
+      backgroundColor: colors.canvas,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.lg,
+    },
+    logoPlaceholderText: {
+      ...typography.caption,
+      fontSize: 10,
+      color: colors.textDisabled,
+    },
+    title: {
+      ...typography.title,
+      fontSize: 27,
+      color: colors.text,
+      marginBottom: spacing.sm,
+    },
+    subtitle: {
+      ...typography.subtitle,
+      color: colors.textMuted,
+      lineHeight: 24,
+      marginBottom: spacing.xl,
+    },
+    label: {
+      ...typography.label,
+      color: colors.textFaint,
+      marginBottom: spacing.sm - 4,
+    },
+    input: {
+      ...typography.body,
+      height: 52,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md - 2,
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    error: {
+      ...typography.body,
+      fontSize: 14,
+      color: colors.danger,
+      marginTop: spacing.xs,
+    },
+    button: {
+      height: 60,
+      backgroundColor: colors.accent,
+      borderRadius: radius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    buttonDisabled: {
+      opacity: 0.7,
+    },
+    buttonText: {
+      ...typography.button,
+      color: colors.accentText,
+    },
+  });
+}
