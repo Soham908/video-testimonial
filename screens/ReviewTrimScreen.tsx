@@ -91,6 +91,11 @@ export function ReviewTrimScreen({
                   { borderColor: take.id === selected?.id ? colors.accent : colors.border },
                 ]}
               >
+                {take.id === selected?.id && (
+                  <View style={styles.usingBadge}>
+                    <Text style={styles.usingBadgeText}>Using</Text>
+                  </View>
+                )}
                 <Text style={styles.takeThumbLabel}>Take {i + 1}</Text>
                 <Text style={styles.takeThumbDuration}>{formatTime(take.durationSeconds)}</Text>
               </View>
@@ -253,6 +258,16 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius) {
       justifyContent: 'center',
       backgroundColor: colors.surface,
     },
+    usingBadge: {
+      position: 'absolute',
+      top: 5,
+      right: 5,
+      backgroundColor: colors.accent,
+      borderRadius: 3,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+    },
+    usingBadgeText: { fontSize: 8, fontWeight: '700', color: colors.accentText },
     takeThumbLabel: { fontSize: 12.5, fontWeight: '700', color: colors.text },
     takeThumbDuration: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
     toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

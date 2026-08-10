@@ -27,6 +27,8 @@ export interface PaletteColors {
   processingSoft: string;
   danger: string;
   dangerSoft: string;
+  success: string;
+  successSoft: string;
 }
 
 // Full-bleed camera-mode palette (setup/recording/review render over the
@@ -60,6 +62,11 @@ const sharedSemantic = {
   processingSoft: '#F3F0E9',
   danger: '#E04F4F',
   dangerSoft: '#FBE9E9',
+  // Reassurance/safety messaging (e.g. "nothing is recorded yet", "your
+  // takes are safe") - a recurring green accent in the design mockup,
+  // distinct from the brand accent and from the other semantic colors.
+  success: '#4A7A5C',
+  successSoft: '#EAF1EC',
 };
 
 const sharedDarkBase = {

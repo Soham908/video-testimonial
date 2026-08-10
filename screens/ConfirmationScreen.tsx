@@ -29,6 +29,11 @@ export function ConfirmationScreen({ onDone }: Props) {
         <Text style={styles.subtitle}>
           We'll let you know the moment your branded videos are ready.
         </Text>
+        <View style={styles.reassuranceBox}>
+          <Text style={styles.reassuranceRow}>✓ Keep your internet on until it finishes</Text>
+          <Text style={styles.reassuranceRow}>✓ Please don't close the app while it is uploading</Text>
+          <Text style={styles.reassuranceRow}>✓ We'll message you when your videos are ready</Text>
+        </View>
       </View>
       <Button label="Back to Home" onPress={onDone} />
     </View>
@@ -58,5 +63,14 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     checkmark: { fontSize: 40, fontWeight: '700', color: colors.accentText },
     title: { ...typography.title, fontSize: 26, color: colors.text, textAlign: 'center', marginBottom: spacing.sm },
     subtitle: { ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 24 },
+    reassuranceBox: {
+      marginTop: spacing.xl,
+      alignSelf: 'stretch',
+      gap: spacing.sm,
+      backgroundColor: colors.canvas,
+      borderRadius: radius.lg,
+      padding: spacing.md,
+    },
+    reassuranceRow: { ...typography.caption, fontSize: 14, color: colors.text, lineHeight: 20 },
   });
 }

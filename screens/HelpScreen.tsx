@@ -66,6 +66,7 @@ export function HelpScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Help</Text>
+      <Text style={styles.subtitle}>Short answers and short videos</Text>
 
       <View style={styles.chipsRow}>
         {QUICK_TIPS.map((tip) => (
@@ -189,7 +190,8 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     container: { flex: 1, backgroundColor: colors.background },
     content: { padding: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.md },
     title: { ...typography.title, fontSize: 24, color: colors.text },
-    chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    subtitle: { ...typography.caption, fontSize: 13.5, color: colors.textMuted, marginTop: -4 },
+    chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
     sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: spacing.sm },
     sectionTitle: { fontSize: 11.5, letterSpacing: 1.8, textTransform: 'uppercase', color: colors.textFaint, fontWeight: '700' },
     sectionSeeAll: { fontSize: 13, fontWeight: '700', color: colors.accent },

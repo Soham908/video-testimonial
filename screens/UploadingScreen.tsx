@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -12,6 +12,9 @@ import { PopupSheet } from '../components/ui/Modal';
 export interface UploadItem {
   questionIndex: number;
   label: string;
+  questionText?: string;
+  takeLabel?: string;
+  durationSeconds?: number;
 }
 
 interface Props {
@@ -26,6 +29,15 @@ interface Props {
   onRetry: () => void;
   onGoHome: () => void;
   onSendLater: () => void;
+  /** Row tap - back to that question's review/trim (design 7a). */
+  onReviewItem?: (questionIndex: number) => void;
+  onBack?: () => void;
+}
+
+function formatTime(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 // Design 7a/7b/7c as one continuous screen: a plain list of everything
@@ -42,6 +54,8 @@ export function UploadingScreen({
   onRetry,
   onGoHome,
   onSendLater,
+  onReviewItem,
+  onBack,
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
@@ -62,19 +76,61 @@ export function UploadingScreen({
     );
   }
 
+  const totalSeconds = items.reduce((sum, item) => sum + (item.durationSeconds ?? 0), 0);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Sending your answers</Text>
+      {onBack && (
+        <Text style={styles.backLink} onPress={onBack}>
+          ‹ Back to My Videos
+        </Text>
+      )}
+      <Text style={styles.title}>
+        {uploading ? 'Uploading' : 'Sending'} your answers
+      </Text>
       <Text style={styles.subtitle}>
         {items.length} question{items.length === 1 ? '' : 's'}, going together.
       </Text>
+      {!uploading && <Text style={styles.hint}>Tap a video to review it again.</Text>}
 
       <ScrollView style={styles.list} contentContainerStyle={{ gap: spacing.xs + 1 }}>
-        {items.map((item) => (
-          <View key={item.questionIndex} style={[styles.row, uploading && styles.rowMuted]}>
-            <Text style={styles.rowLabel}>{item.label}</Text>
-          </View>
-        ))}
+        {items.map((item) => {
+          const rowContent = (
+            <>
+              <View style={styles.rowThumb}>
+                <Text style={styles.rowThumbGlyph}>▶</Text>
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.rowLabel}>
+                  {item.questionIndex + 1} · {item.questionText ?? item.label}
+                </Text>
+                <Text style={styles.rowSubLabel}>
+                  {item.takeLabel ?? 'Take 1'}
+                  {item.durationSeconds != null ? ` · ${formatTime(item.durationSeconds)}` : ''}
+                </Text>
+              </View>
+              {onReviewItem && !uploading && <Text style={styles.rowChevron}>›</Text>}
+            </>
+          );
+          return onReviewItem && !uploading ? (
+            <Pressable
+              key={item.questionIndex}
+              style={styles.row}
+              onPress={() => onReviewItem(item.questionIndex)}
+            >
+              {rowContent}
+            </Pressable>
+          ) : (
+            <View key={item.questionIndex} style={[styles.row, uploading && styles.rowMuted]}>
+              {rowContent}
+            </View>
+          );
+        })}
+        {!uploading && totalSeconds > 0 && (
+          <Text style={styles.sizeNote}>
+            ✓ About {formatTime(totalSeconds)} of video in total. Your videos stay on your phone as well.
+          </Text>
+        )}
       </ScrollView>
 
       {uploading ? (
@@ -88,25 +144,35 @@ export function UploadingScreen({
           <Button label="Back to Home" onPress={onGoHome} variant="quiet" />
         </View>
       ) : (
-        <Button label="Send all" onPress={() => setConfirming(true)} />
+        <View style={{ gap: spacing.sm }}>
+          <Button label="Send all" onPress={() => setConfirming(true)} />
+          <Text style={styles.notNow} onPress={onSendLater}>
+            Not now
+          </Text>
+        </View>
       )}
 
       <PopupSheet visible={confirming} onDismiss={() => setConfirming(false)}>
-        <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-          Send everything now?
+        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+          Send all {items.length} to us?
         </Text>
-        <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 20, marginBottom: 20 }}>
-          All {items.length} answers go together. Your branded videos come back afterward.
+        <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
+          All {items.length} answers go up together, using the takes you chose. After sending, they can't be
+          changed.
         </Text>
-        <View style={{ gap: 10 }}>
+        <View style={styles.confirmReassuranceBox}>
+          <Text style={styles.confirmReassuranceRow}>✓ Your videos stay on your phone too</Text>
+          <Text style={styles.confirmReassuranceRow}>✓ Your branded videos come back after this</Text>
+        </View>
+        <View style={{ gap: 10, marginTop: 16 }}>
           <Button
-            label="Send now"
+            label="Yes, upload them"
             onPress={() => {
               setConfirming(false);
               onConfirm();
             }}
           />
-          <Button label="Not yet" variant="secondary" onPress={() => setConfirming(false)} />
+          <Button label="Go back" variant="secondary" onPress={() => setConfirming(false)} />
         </View>
       </PopupSheet>
     </View>
@@ -115,11 +181,16 @@ export function UploadingScreen({
 
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background, padding: spacing.xl, paddingTop: spacing.xxl, gap: spacing.md },
+    container: { flex: 1, backgroundColor: colors.background, padding: spacing.xl, paddingTop: spacing.xxl, gap: spacing.xs + 2 },
+    backLink: { ...typography.body, fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: spacing.xs },
     title: { ...typography.title, fontSize: 25, color: colors.text },
     subtitle: { ...typography.body, color: colors.textMuted },
+    hint: { ...typography.caption, fontSize: 13.5, color: colors.textFaint },
     list: { flex: 1, marginTop: spacing.sm },
     row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm + 2,
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
@@ -128,7 +199,27 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       paddingHorizontal: spacing.md,
     },
     rowMuted: { opacity: 0.6 },
+    rowThumb: {
+      width: 44,
+      height: 52,
+      borderRadius: radius.sm + 2,
+      backgroundColor: '#2B2521',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowThumbGlyph: { color: 'rgba(255,255,255,0.9)', fontSize: 11 },
     rowLabel: { ...typography.body, fontSize: 14.5, fontWeight: '600', color: colors.text },
+    rowSubLabel: { ...typography.caption, fontSize: 12.5, color: colors.textFaint },
+    rowChevron: { fontSize: 20, fontWeight: '700', color: colors.accent },
+    sizeNote: { ...typography.caption, fontSize: 13.5, color: colors.textMuted, lineHeight: 20, marginTop: spacing.xs },
+    notNow: { ...typography.body, fontSize: 15, fontWeight: '600', color: colors.textMuted, textAlign: 'center' },
+    confirmReassuranceBox: {
+      gap: spacing.sm - 2,
+      backgroundColor: colors.canvas,
+      borderRadius: radius.lg,
+      padding: spacing.md,
+    },
+    confirmReassuranceRow: { ...typography.caption, fontSize: 14, color: colors.text },
     progressArea: { gap: spacing.sm },
     progressButton: {
       backgroundColor: colors.accent,

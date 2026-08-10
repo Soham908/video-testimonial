@@ -10,11 +10,13 @@ export type MainTab = 'home' | 'myVideos' | 'help' | 'profile';
 interface Props {
   activeTab: MainTab;
   onTabPress: (tab: MainTab) => void;
+  /** Small dot on My Videos (DECISIONS.md) - e.g. a branded reel came back that hasn't been opened yet. */
+  myVideosHasNotification?: boolean;
 }
 
 // Plain state-based tab switching, consistent with the rest of the app's
 // lightweight screen-state pattern - no navigation library added.
-export function BottomTabBar({ activeTab, onTabPress }: Props) {
+export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }: Props) {
   const { colors, spacing, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, typography), [colors, spacing, typography]);
   const inactive = colors.textDisabled;
@@ -29,6 +31,7 @@ export function BottomTabBar({ activeTab, onTabPress }: Props) {
         <View style={[styles.videosIconFrame, activeTab === 'myVideos' && styles.iconActiveBorder]}>
           <View style={[styles.videosIconTriangle, activeTab === 'myVideos' && styles.iconActiveTriangle]} />
         </View>
+        {myVideosHasNotification && <View style={styles.notificationDot} />}
       </TabItem>
       <TabItem label="Help" active={activeTab === 'help'} onPress={() => onTabPress('help')} styles={styles}>
         {/* Basic placeholder glyph - real icon treatment lands with the
@@ -77,7 +80,18 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typogra
       backgroundColor: colors.surface,
     },
     item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs + 1 },
-    iconSlot: { alignItems: 'center', justifyContent: 'center', height: 18 },
+    iconSlot: { alignItems: 'center', justifyContent: 'center', height: 18, position: 'relative' },
+    notificationDot: {
+      position: 'absolute',
+      top: -3,
+      right: -6,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.accent,
+      borderWidth: 1.5,
+      borderColor: colors.surface,
+    },
     label: { ...typography.caption, fontSize: 12, fontWeight: '600', color: inactive },
     labelActive: { fontWeight: '700', color: colors.accent },
     homeIconRoof: {

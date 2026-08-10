@@ -9,11 +9,16 @@ import { Button } from '../components/ui/Button';
 import { ListRow } from '../components/ui/ListRow';
 import { PopupSheet } from '../components/ui/Modal';
 
+interface Props {
+  /** "Consent and privacy" row (design 9C) - re-opens the consent gate for reference. */
+  onOpenConsent?: () => void;
+}
+
 // Design 9C + 9D - the two earlier layouts merged: who you are at the top,
 // the reel-name card that appears on your videos in the middle with one
 // edit action, account rows and settings below. Mock data only - no real
 // account backend wired yet (DECISIONS.md's own "mock data first" order).
-export function ProfileScreen() {
+export function ProfileScreen({ onOpenConsent }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
@@ -22,6 +27,10 @@ export function ProfileScreen() {
   const [reelBusiness, setReelBusiness] = useState('Agrawal Traders');
   const [showYears, setShowYears] = useState(true);
   const [years, setYears] = useState('6');
+  // Settings-only mock toggles - no notification/network-policy backend
+  // wired yet, same "mock data first" order as the rest of this screen.
+  const [notifyOnReady, setNotifyOnReady] = useState(true);
+  const [wifiOnly, setWifiOnly] = useState(false);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -52,13 +61,30 @@ export function ProfileScreen() {
         <View style={{ gap: spacing.sm }}>
           <ListRow title="Phone" subtitle="+91 98765 43210" />
           <ListRow title="Distributor ID" subtitle="AA-4521" />
+          <ListRow
+            title="Distributor for"
+            subtitle={`${reelBusiness} · ${years} years`}
+          />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Settings</Text>
         <View style={{ gap: spacing.sm }}>
+          <ListRow
+            title="Notify me when videos are ready"
+            trailing={<Switch value={notifyOnReady} onValueChange={setNotifyOnReady} trackColor={{ true: colors.accent }} />}
+          />
+          <ListRow
+            title="Upload on Wi-Fi only"
+            trailing={<Switch value={wifiOnly} onValueChange={setWifiOnly} trackColor={{ true: colors.accent }} />}
+          />
           <ListRow title="Language" subtitle="English" />
+          <ListRow
+            title="Consent and privacy"
+            onPress={onOpenConsent}
+            trailing={<Text style={styles.rowChevron}>›</Text>}
+          />
         </View>
       </View>
 
@@ -154,6 +180,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       fontWeight: '700',
     },
     version: { textAlign: 'center', fontSize: 12, color: colors.textDisabled, marginTop: spacing.md },
+    rowChevron: { fontSize: 20, fontWeight: '700', color: colors.accent },
     fieldLabel: { fontSize: 12.5, fontWeight: '700', color: colors.textFaint, marginBottom: 6 },
     fieldInput: {
       ...typography.body,

@@ -1,4 +1,4 @@
-import { Pressable, Text, StyleSheet } from 'react-native';
+import { Pressable, Text, View, StyleSheet } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 
 interface ChipProps {
@@ -21,22 +21,15 @@ export function Chip({ label, onPress, selected, onDark }: ChipProps) {
       : colors.canvas;
   const textColor = onDark ? '#FFFFFF' : selected ? colors.accent : colors.textMuted;
 
-  const Wrapper = onPress ? Pressable : Text;
-  return (
-    <Wrapper
-      onPress={onPress}
-      style={
-        onPress
-          ? [styles.base, { backgroundColor: background, borderRadius: radius.pill }]
-          : undefined
-      }
-    >
-      {onPress ? (
-        <Text style={[styles.label, { color: textColor }]}>{label}</Text>
-      ) : (
-        label
-      )}
-    </Wrapper>
+  const pillStyle = [styles.base, { backgroundColor: background, borderRadius: radius.pill }];
+  const content = <Text style={[styles.label, { color: textColor }]}>{label}</Text>;
+
+  return onPress ? (
+    <Pressable onPress={onPress} style={pillStyle}>
+      {content}
+    </Pressable>
+  ) : (
+    <View style={pillStyle}>{content}</View>
   );
 }
 

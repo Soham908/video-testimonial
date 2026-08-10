@@ -17,6 +17,7 @@ interface Props {
   talkingPoints: string[];
   onStartRecording: () => void;
   onRehearse: () => void;
+  onBack?: () => void;
 }
 
 // Static ElevenLabs VO, one file per question - same assets QuestionIntroOverlay
@@ -29,6 +30,18 @@ const QUESTION_AUDIO: Record<number, number> = {
   5: require('../assets/audio/question5.mp3'),
 };
 
+// Placeholder sample-answer clips (design 2D) - same convention as Home's
+// hardcoded HOW_TO_VIDEOS/SAMPLE_VIDEOS, no playback wired yet, no backend
+// source for these exists. Cycles across a few company-produced examples so
+// it doesn't look identical on every question.
+const SAMPLE_ANSWERS: { name: string; business: string; duration: string }[] = [
+  { name: 'Suresh', business: 'Patil Enterprises, Kolhapur', duration: '0:38' },
+  { name: 'Deepak', business: 'Bansal Hardware, Indore', duration: '0:44' },
+  { name: 'Ritu', business: 'Sharma & Sons, Jaipur', duration: '0:41' },
+  { name: 'Anil', business: 'Verma Traders, Lucknow', duration: '0:52' },
+  { name: 'Kavita', business: 'Joshi Retail, Pune', duration: '0:36' },
+];
+
 // Replaces the old QuestionIntroOverlay breather - a real prep screen
 // (design 2D) shown before every take, always requiring an explicit tap to
 // proceed (either Start recording or Rehearse), never auto-advancing.
@@ -39,12 +52,14 @@ export function QuestionBriefScreen({
   talkingPoints,
   onStartRecording,
   onRehearse,
+  onBack,
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
   const [readToMe, setReadToMe] = useState(false);
   const player = useVideoPlayer(QUESTION_AUDIO[questionNumber] ?? QUESTION_AUDIO[1]);
+  const sampleAnswer = SAMPLE_ANSWERS[(questionNumber - 1) % SAMPLE_ANSWERS.length];
 
   function toggleReadToMe(next: boolean) {
     setReadToMe(next);
@@ -59,7 +74,14 @@ export function QuestionBriefScreen({
   return (
     <View style={styles.container}>
       <View style={styles.topRow}>
-        <Text style={styles.eyebrow}>Question {questionNumber}</Text>
+        <View style={styles.topRowLeft}>
+          {onBack && (
+            <Text style={styles.backChevron} onPress={onBack}>
+              ‹
+            </Text>
+          )}
+          <Text style={styles.eyebrow}>Getting ready</Text>
+        </View>
         <View style={[styles.readToMe, readToMe && { backgroundColor: colors.accentSoft }]}>
           <Text
             style={[styles.readToMeText, { color: readToMe ? colors.accent : colors.textMuted }]}
@@ -71,6 +93,7 @@ export function QuestionBriefScreen({
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.questionNumberLabel}>Question {questionNumber}</Text>
         <Text style={styles.title}>{questionText}</Text>
 
         <Text style={styles.sectionLabel}>A good answer usually covers</Text>
@@ -85,6 +108,20 @@ export function QuestionBriefScreen({
 
         <View style={styles.addPromptRow}>
           <Text style={styles.addPromptText}>+ Add your own prompts</Text>
+        </View>
+
+        <View style={styles.sampleRow}>
+          <View style={styles.sampleThumb}>
+            <View style={styles.sampleThumbPlay}>
+              <Text style={styles.sampleThumbPlayGlyph}>▶</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.sampleTitle}>Hear how {sampleAnswer.name} answered</Text>
+            <Text style={styles.sampleSubtitle}>
+              {sampleAnswer.business} · {sampleAnswer.duration}
+            </Text>
+          </View>
         </View>
 
         <View style={{ gap: spacing.sm }}>
@@ -120,15 +157,25 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       alignItems: 'center',
       paddingHorizontal: spacing.xl,
     },
+    topRowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 },
+    backChevron: { fontSize: 24, fontWeight: '700', color: colors.text, lineHeight: 24 },
     eyebrow: { fontSize: 15, fontWeight: '600', color: colors.text },
     readToMe: { flexDirection: 'row', alignItems: 'center', borderRadius: 999, paddingVertical: 7, paddingHorizontal: 13 },
     readToMeText: { fontSize: 13, fontWeight: '700' },
     scrollContent: { padding: spacing.xl, paddingTop: spacing.lg, gap: spacing.md },
+    questionNumberLabel: {
+      fontSize: 11.5,
+      letterSpacing: 1.8,
+      textTransform: 'uppercase',
+      color: colors.accent,
+      fontWeight: '700',
+    },
     title: {
       ...typography.title,
       fontSize: 26,
       color: colors.text,
       lineHeight: 33,
+      marginTop: -4,
     },
     sectionLabel: {
       fontSize: 11.5,
@@ -157,6 +204,26 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       alignItems: 'center',
     },
     addPromptText: { fontSize: 14.5, fontWeight: '700', color: colors.accent },
+    sampleRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+    sampleThumb: {
+      width: 58,
+      height: 76,
+      borderRadius: radius.md,
+      backgroundColor: '#2B2521',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sampleThumbPlay: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: 'rgba(255,255,255,0.94)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sampleThumbPlayGlyph: { fontSize: 11, color: '#241E1A', marginLeft: 2 },
+    sampleTitle: { ...typography.body, fontSize: 15.5, fontWeight: '600', color: colors.text },
+    sampleSubtitle: { ...typography.caption, fontSize: 13, color: colors.textFaint },
     dropdownBody: { ...typography.caption, color: colors.textMuted, lineHeight: 20 },
     actions: { padding: spacing.xl, paddingTop: spacing.md, gap: spacing.sm },
   });

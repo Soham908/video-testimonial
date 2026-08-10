@@ -524,7 +524,14 @@ export function AppFlow() {
   }
 
   if (screen === 'permissions') {
-    return <PermissionsScreen onContinue={startNewSession} />;
+    return (
+      <PermissionsScreen
+        onContinue={startNewSession}
+        onBack={() => setScreen('main')}
+        questionNumber={questionIndex + 1}
+        totalQuestions={TOTAL_QUESTIONS}
+      />
+    );
   }
 
   if (screen === 'main') {
@@ -534,7 +541,9 @@ export function AppFlow() {
           <HomeScreen
             // Mock identity - no real account backend wired yet (Phase
             // 4f/7), matches the identity-confirmation mock default.
-            distributorName="Mahesh"
+            // Full name: HomeScreen splits it (first name for the greeting,
+            // initials for the avatar monogram - design 1C/15).
+            distributorName="Mahesh Agrawal"
             businessName="Agrawal Traders"
             city="Nagpur"
             totalQuestions={TOTAL_QUESTIONS}
@@ -579,8 +588,12 @@ export function AppFlow() {
           />
         )}
         {mainTab === 'help' && <HelpScreen />}
-        {mainTab === 'profile' && <ProfileScreen />}
-        <BottomTabBar activeTab={mainTab} onTabPress={setMainTab} />
+        {mainTab === 'profile' && <ProfileScreen onOpenConsent={() => setScreen('consent')} />}
+        <BottomTabBar
+          activeTab={mainTab}
+          onTabPress={setMainTab}
+          myVideosHasNotification={mainTab !== 'myVideos' && brandedRows.some((b) => b.status === 'ready')}
+        />
 
         {pendingRetake !== null && (
           <RetakeConfirmOverlay
@@ -600,7 +613,12 @@ export function AppFlow() {
   if (screen === 'uploading') {
     return (
       <UploadingScreen
-        items={videos.map((v) => ({ questionIndex: v.questionIndex, label: `Question ${v.questionIndex + 1}` }))}
+        items={videos.map((v) => ({
+          questionIndex: v.questionIndex,
+          label: `Question ${v.questionIndex + 1}`,
+          questionText: PLACEHOLDER_QUESTIONS[v.questionIndex],
+          durationSeconds: v.durationSeconds,
+        }))}
         uploading={uploadConfirmed}
         progress={uploadProgress}
         error={uploadError}
@@ -612,6 +630,10 @@ export function AppFlow() {
         }}
         onSendLater={() => {
           setMainTab('home');
+          setScreen('main');
+        }}
+        onBack={() => {
+          setMainTab('myVideos');
           setScreen('main');
         }}
       />
@@ -649,6 +671,10 @@ export function AppFlow() {
         talkingPoints={talkingPoints}
         onStartRecording={enterCameraCheck}
         onRehearse={() => setPhase('rehearse')}
+        onBack={() => {
+          setMainTab('home');
+          setScreen('main');
+        }}
       />
     );
   }
@@ -680,29 +706,37 @@ export function AppFlow() {
         />
 
         <PopupSheet visible={showPostKeepPrompt} onDismiss={() => setShowPostKeepPrompt(false)} dismissable={false}>
-          <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 16 }}>
-            Answer saved. What's next?
+          <Text style={{ fontSize: 21, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+            Saved on your phone
           </Text>
-          <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
+            Question {questionIndex + 1} is ready. Nothing is sent yet — all your videos go up together once
+            you've recorded all five.
+          </Text>
+          <View style={{ gap: 9 }}>
             <Button label="Next question" onPress={goToNextQuestion} />
-            <Button
-              label="My Videos"
-              variant="secondary"
-              onPress={() => {
-                setShowPostKeepPrompt(false);
-                setMainTab('myVideos');
-                setScreen('main');
-              }}
-            />
-            <Button
-              label="Home"
-              variant="secondary"
-              onPress={() => {
-                setShowPostKeepPrompt(false);
-                setMainTab('home');
-                setScreen('main');
-              }}
-            />
+            <View style={{ flexDirection: 'row', gap: 9 }}>
+              <Button
+                label="My Videos"
+                variant="secondary"
+                style={{ flex: 1 }}
+                onPress={() => {
+                  setShowPostKeepPrompt(false);
+                  setMainTab('myVideos');
+                  setScreen('main');
+                }}
+              />
+              <Button
+                label="Home"
+                variant="secondary"
+                style={{ flex: 1 }}
+                onPress={() => {
+                  setShowPostKeepPrompt(false);
+                  setMainTab('home');
+                  setScreen('main');
+                }}
+              />
+            </View>
           </View>
         </PopupSheet>
       </View>

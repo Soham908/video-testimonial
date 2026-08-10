@@ -77,6 +77,10 @@ export function HomeScreen({
 
   const allRecorded = questionsAnswered >= totalQuestions;
   const allRendered = renderedReadyCount >= totalQuestions;
+  // Greeting uses the first name only (design 1C/15); the avatar monogram
+  // below uses the full name's initials - both derived from one prop so
+  // callers don't have to pass the name twice.
+  const firstName = distributorName.trim().split(/\s+/)[0] ?? distributorName;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -84,7 +88,7 @@ export function HomeScreen({
         <View>
           <Text style={styles.greeting}>
             {questionsAnswered === 0 ? 'Welcome, ' : 'Welcome back, '}
-            {distributorName}
+            {firstName}
           </Text>
           <Text style={styles.subGreeting}>
             {businessName} · {city}
