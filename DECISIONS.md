@@ -85,10 +85,16 @@ Help 8D · Profile 9C · Onboarding 14B
 
 - **Home "reels ready" state (screen 18)** — deliberately deferred. Needs
   thinking, not more generated options.
-- **Feedback vs. reel question split** for larger enterprise clients — how many
-  questions produce reels vs. feed insights only.
+- **Question set restructuring: 7 questions total, 3 → branded reel, 4 →
+  survey/testimonial-only (feedback, no reel)** — new direction (2026-08-11),
+  not yet implemented. Unresolved sub-question, needs boss clarification:
+  do the 3 reel-eligible questions each become their own reel (Soham's
+  assumption — 3 separate reels), or do all 3 get combined into a single
+  reel (boss's stated preference)? Soham disagrees with the combined
+  approach but hasn't raised it yet. Not to be built until this is resolved.
 - **Reduced quality gate for feedback-only questions** — no branded output means
-  the camera check, trim, and takes could be lighter. Depends on the split above.
+  the camera check, trim, and takes could be lighter. The split above is now
+  roughly known (4 of 7 are feedback-only), but still open — not decided.
 - **Final accent colour** — swatch options generated, not chosen.
 
 ### Known issues, fix pending
@@ -110,6 +116,20 @@ Help 8D · Profile 9C · Onboarding 14B
 
 ### Deferred — real, but not yet
 
+- **Profile edit persistence** — editing name/business/years currently only
+  updates local mock state, nothing is saved to a backend. Not a priority;
+  later.
+- **Cross-device video normalization** — no normalization happens today.
+  Different capture devices (e.g. Samsung Note 10 vs. an iPhone) will
+  produce technically different output (resolution/bitrate/codec/etc.)
+  even where the visible difference is small. Needs research before
+  deciding an approach.
+- **Research: how apps like WhatsApp do lightweight video compression +
+  scrub-thumbnail trim UI without heavy system load** — relevant to both
+  pre-upload compression and to revisiting this doc's own "no frame
+  thumbnails on the trim timeline" rejection below (rejected specifically
+  because native decode was assumed too costly — worth confirming that
+  assumption still holds before treating it as settled).
 - **Add your own prompts** — entry point designed, input flow deliberately not.
 - **Background upload survival** (iOS URLSession background / Android
   WorkManager) — unverified whether the app supports it. Changes whether
