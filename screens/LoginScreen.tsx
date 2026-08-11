@@ -38,7 +38,7 @@ export function LoginScreen({ onLoggedIn }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.content}>
+      <View>
         <View style={styles.logoPlaceholder}>
           <Text style={styles.logoPlaceholderText}>LOGO</Text>
         </View>
@@ -71,19 +71,19 @@ export function LoginScreen({ onLoggedIn }: Props) {
         />
 
         {error && <Text style={styles.error}>{error}</Text>}
-      </View>
 
-      <Pressable
-        style={[styles.button, submitting && styles.buttonDisabled]}
-        onPress={handleSubmit}
-        disabled={submitting}
-      >
-        {submitting ? (
-          <ActivityIndicator color={colors.accentText} />
-        ) : (
-          <Text style={styles.buttonText}>Sign in</Text>
-        )}
-      </Pressable>
+        <Pressable
+          style={[styles.button, submitting && styles.buttonDisabled]}
+          onPress={handleSubmit}
+          disabled={submitting}
+        >
+          {submitting ? (
+            <ActivityIndicator color={colors.accentText} />
+          ) : (
+            <Text style={styles.buttonText}>Sign in</Text>
+          )}
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -96,9 +96,6 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       padding: spacing.xl,
       paddingTop: spacing.xxl,
       paddingBottom: spacing.xxl,
-    },
-    content: {
-      flex: 1,
     },
     logoPlaceholder: {
       width: 64,
@@ -152,6 +149,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     },
     button: {
       height: 60,
+      marginTop: spacing.lg,
       backgroundColor: colors.accent,
       borderRadius: radius.lg,
       alignItems: 'center',

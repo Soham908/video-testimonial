@@ -2,7 +2,7 @@
 // Per DECISIONS.md, the final accent colour is not locked - this is what
 // makes trying a few live on a physical device possible without a rebuild.
 //
-// To add another swatch later: copy `paletteTerracotta` below, give it a new
+// To add another swatch later: copy `paletteEmber` below, give it a new
 // `id`/`label`, adjust the color values, and add it to `PALETTES`. No other
 // file needs to change - the switcher and ThemeContext both read from
 // `PALETTES`.
@@ -69,6 +69,35 @@ const sharedSemantic = {
   successSoft: '#EAF1EC',
 };
 
+// Neutral scales shared across the "Four new accents" set (design canvas,
+// 2026-08-11 - "All four saturated, two cool two warm"). Only the accent
+// hex was given per swatch; these neutrals are the same cool/warm families
+// already proven out in Ember, reused rather than re-derived so a cool
+// accent always sits on cool neutrals and vice versa.
+const coolNeutrals = {
+  background: '#FAF8F7',
+  canvas: '#FCFBFA',
+  surface: '#FFFFFF',
+  border: '#F3F6F5',
+  borderStrong: '#EDF0EF',
+  text: '#1A2422',
+  textMuted: '#4C5B58',
+  textFaint: '#6B7876',
+  textDisabled: '#8A9694',
+};
+
+const warmNeutrals = {
+  background: '#FAF7F4',
+  canvas: '#FCFAF7',
+  surface: '#FFFFFF',
+  border: '#F7F3EF',
+  borderStrong: '#F5F1EC',
+  text: '#221C18',
+  textMuted: '#5C5049',
+  textFaint: '#8A7A6E',
+  textDisabled: '#C3B3A2',
+};
+
 const sharedDarkBase = {
   background: '#1E211F',
   text: '#FFFFFF',
@@ -102,32 +131,93 @@ export const paletteGreen: Palette = {
   dark: { ...sharedDarkBase, accent: '#1E7A5A' },
 };
 
-// Default - sourced from the "Testimonial App EN.dc.html" mockup export.
-export const paletteTerracotta: Palette = {
-  id: 'terracotta',
-  label: 'Terracotta (new mockup)',
+// Sourced from "Screen Variants.dc.html" - the Hindi-led variant's accent,
+// more saturated/warmer than terracotta. Brighter/bolder option.
+export const paletteEmber: Palette = {
+  id: 'ember',
+  label: 'Ember (brighter, bolder)',
   colors: {
-    background: '#EDE8E0',
-    canvas: '#F8F5F0',
-    surface: '#FFFFFF',
-    border: '#E2DBD0',
-    borderStrong: '#D8D0C4',
-    text: '#241E1A',
-    textMuted: '#5E544C',
-    textFaint: '#8C837A',
-    textDisabled: '#B5AB9F',
-    accent: '#A85E3A',
-    accentStrong: '#874929',
-    accentSoft: '#F0E4D8',
+    ...warmNeutrals,
+    accent: '#C25A34',
+    accentStrong: '#9E421F',
+    accentSoft: '#F3DECC',
     accentText: '#FFFFFF',
     ...sharedSemantic,
   },
-  dark: { ...sharedDarkBase, accent: '#A85E3A' },
+  dark: { ...sharedDarkBase, accent: '#C25A34' },
+};
+
+// Bold · cool. "A true, saturated blue against warm cream - the strongest
+// contrast in the set. Reads instantly as 'tap this' without any glare."
+export const paletteCobalt: Palette = {
+  id: 'cobalt',
+  label: 'Cobalt (bold, cool)',
+  colors: {
+    ...coolNeutrals,
+    accent: '#1F4FC4',
+    accentStrong: '#183E99',
+    accentSoft: '#E0E6F7',
+    accentText: '#FFFFFF',
+    ...sharedSemantic,
+  },
+  dark: { ...sharedDarkBase, accent: '#1F4FC4' },
+};
+
+// Bold · warm. "Clay pushed to full strength. Still an earth pigment, not a
+// neon - carries the same warmth with three times the presence."
+export const palettePaprika: Palette = {
+  id: 'paprika',
+  label: 'Paprika (bold, warm)',
+  colors: {
+    ...warmNeutrals,
+    accent: '#B04424',
+    accentStrong: '#89351C',
+    accentSoft: '#F4E5E0',
+    accentText: '#FFFFFF',
+    ...sharedSemantic,
+  },
+  dark: { ...sharedDarkBase, accent: '#B04424' },
+};
+
+// Bold · cool. "A live, saturated green - nothing sage about it. Carries
+// the 'recording/go' meaning the app already needs, at full strength."
+export const paletteEmerald: Palette = {
+  id: 'emerald',
+  label: 'Emerald (bold, cool)',
+  colors: {
+    ...coolNeutrals,
+    accent: '#0F7A5A',
+    accentStrong: '#0C5F46',
+    accentSoft: '#DDECE8',
+    accentText: '#FFFFFF',
+    ...sharedSemantic,
+  },
+  dark: { ...sharedDarkBase, accent: '#0F7A5A' },
+};
+
+// Bold · warm. "Full-strength berry. The most distinctive of the four and
+// still deep enough to be comfortable on a phone at arm's length."
+export const paletteRaspberry: Palette = {
+  id: 'raspberry',
+  label: 'Raspberry (bold, warm)',
+  colors: {
+    ...warmNeutrals,
+    accent: '#B32B5E',
+    accentStrong: '#8C2249',
+    accentSoft: '#F4E1E8',
+    accentText: '#FFFFFF',
+    ...sharedSemantic,
+  },
+  dark: { ...sharedDarkBase, accent: '#B32B5E' },
 };
 
 export const PALETTES: Record<string, Palette> = {
   [paletteGreen.id]: paletteGreen,
-  [paletteTerracotta.id]: paletteTerracotta,
+  [paletteEmber.id]: paletteEmber,
+  [paletteCobalt.id]: paletteCobalt,
+  [palettePaprika.id]: palettePaprika,
+  [paletteEmerald.id]: paletteEmerald,
+  [paletteRaspberry.id]: paletteRaspberry,
 };
 
-export const DEFAULT_PALETTE_ID = paletteTerracotta.id;
+export const DEFAULT_PALETTE_ID = paletteEmber.id;

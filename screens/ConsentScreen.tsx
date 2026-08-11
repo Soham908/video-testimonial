@@ -42,17 +42,17 @@ export function ConsentScreen({ onAgree }: Props) {
           ))}
         </View>
         <Text style={styles.link}>Read the full terms</Text>
+
+        <Pressable style={styles.checkboxRow} onPress={() => setAgreed((v) => !v)}>
+          <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+            {agreed && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <Text style={styles.checkboxLabel}>I understand, and I agree to be recorded.</Text>
+        </Pressable>
+
+        <Button label="Agree & continue" onPress={onAgree} disabled={!agreed} />
+        <Text style={styles.hint}>Tick the box above to continue</Text>
       </ScrollView>
-
-      <Pressable style={styles.checkboxRow} onPress={() => setAgreed((v) => !v)}>
-        <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
-          {agreed && <Text style={styles.checkmark}>✓</Text>}
-        </View>
-        <Text style={styles.checkboxLabel}>I understand, and I agree to be recorded.</Text>
-      </Pressable>
-
-      <Button label="Agree & continue" onPress={onAgree} disabled={!agreed} />
-      {!agreed && <Text style={styles.hint}>Tick the box above to continue</Text>}
     </View>
   );
 }
@@ -67,7 +67,11 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       paddingBottom: spacing.xxl,
     },
     scrollView: { flex: 1 },
-    scrollContent: { flexGrow: 1 },
+    // Everything (text, checkbox, button, hint) is one block now, so
+    // centering it centers the whole page as a unit - not the earlier bug
+    // where only the text half was centered while the button stayed
+    // pinned to the screen edge, splitting the layout in two.
+    scrollContent: { flexGrow: 1, justifyContent: 'center' },
     eyebrow: {
       fontSize: 12.5,
       fontWeight: '700',

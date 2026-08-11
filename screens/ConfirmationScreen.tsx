@@ -48,7 +48,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       alignItems: 'center',
       padding: spacing.xl,
       paddingTop: spacing.xxl * 1.5,
-      paddingBottom: spacing.xxl,
+      paddingBottom: spacing.footerBottom,
     },
     content: { flex: 1, alignItems: 'center' },
     checkCircle: {

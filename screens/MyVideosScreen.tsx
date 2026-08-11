@@ -30,8 +30,6 @@ interface Props {
   totalQuestions: number;
   answers: AnswerRow[];
   branded: BrandedRow[];
-  /** Whether there's anything local worth (re-)sending - drives the header upload button. */
-  hasPendingUpload: boolean;
   onPressAnswer: (row: AnswerRow) => void;
   onPressBranded: (row: BrandedRow) => void;
   // Caller shows a confirmation prompt before entering the camera flow -
@@ -61,7 +59,6 @@ export function MyVideosScreen({
   totalQuestions,
   answers,
   branded,
-  hasPendingUpload,
   onPressAnswer,
   onPressBranded,
   onRetake,
@@ -167,11 +164,11 @@ export function MyVideosScreen({
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>My videos</Text>
-          {hasPendingUpload && <Text style={styles.headerSubtitle}>You have answers not sent yet</Text>}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>My Videos</Text>
+          <Text style={styles.headerSubtitle}>Record all videos to start the upload</Text>
         </View>
-        {hasPendingUpload && <Button label="Upload" onPress={onUploadAll} variant="secondary" />}
+        <Button label="Upload videos" onPress={onUploadAll} />
       </View>
 
       {hasAnyReady ? (

@@ -46,7 +46,7 @@ export function IdentityConfirmScreen({ identity = DEFAULT_IDENTITY, onConfirm }
 
   return (
     <View style={styles.container}>
-      <View style={{ flex: 1 }}>
+      <View>
         <Text style={styles.eyebrow}>Is this you?</Text>
         <Text style={styles.title}>Confirm your details</Text>
         <Text style={styles.subtitle}>
@@ -73,9 +73,9 @@ export function IdentityConfirmScreen({ identity = DEFAULT_IDENTITY, onConfirm }
             </View>
           ))}
         </View>
-      </View>
 
-      <Button label="This is me" onPress={onConfirm} />
+        <Button label="This is me" onPress={onConfirm} style={{ marginTop: spacing.xl }} />
+      </View>
     </View>
   );
 }

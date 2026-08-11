@@ -128,7 +128,11 @@ export function PermissionsScreen({ onContinue, onBack, questionNumber = 1, tota
           </View>
           <View style={styles.permissionCard}>
             <View style={styles.permissionIcon}>
-              <View style={styles.iconMic} />
+              <View style={styles.iconMicWrap}>
+                <View style={styles.iconMicCapsule} />
+                <View style={styles.iconMicStem} />
+                <View style={styles.iconMicBase} />
+              </View>
             </View>
             <View style={styles.permissionCardText}>
               <Text style={styles.permissionCardTitle}>Microphone</Text>
@@ -172,7 +176,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       backgroundColor: colors.background,
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.xxl,
-      paddingBottom: spacing.xxl,
+      paddingBottom: spacing.footerBottom,
     },
     headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 },
     backChevron: { fontSize: 26, fontWeight: '700', color: colors.text, lineHeight: 26 },
@@ -187,7 +191,12 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       justifyContent: 'center',
     },
     iconLens: { width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: colors.accentText },
-    iconMic: { width: 22, height: 30, borderRadius: 11, backgroundColor: colors.accent },
+    // Capsule + stem + base reads as a mic silhouette, not just a blob -
+    // matches the camera icon's level of shape detail.
+    iconMicWrap: { alignItems: 'center', justifyContent: 'center' },
+    iconMicCapsule: { width: 18, height: 26, borderRadius: 9, backgroundColor: colors.accent },
+    iconMicStem: { width: 3, height: 8, backgroundColor: colors.accent, marginTop: 2 },
+    iconMicBase: { width: 16, height: 3, borderRadius: 1.5, backgroundColor: colors.accent, marginTop: 2 },
     iconLensSmall: { width: 12, height: 12, borderRadius: 6, borderWidth: 2.5, borderColor: colors.warning },
     title: {
       ...typography.title,

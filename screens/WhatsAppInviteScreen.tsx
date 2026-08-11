@@ -33,7 +33,7 @@ export function WhatsAppInviteScreen({
 
   return (
     <View style={styles.container}>
-      <View style={{ flex: 1 }}>
+      <View>
         <Text style={styles.eyebrow}>You were invited by</Text>
         <Text style={styles.title}>{inviterName}</Text>
         <Text style={styles.subtitle}>{companyName}</Text>
@@ -46,9 +46,9 @@ export function WhatsAppInviteScreen({
             </View>
           ))}
         </View>
-      </View>
 
-      <Button label="Continue" onPress={onContinue} />
+        <Button label="Continue" onPress={onContinue} style={{ marginTop: spacing.xl }} />
+      </View>
     </View>
   );
 }

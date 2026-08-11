@@ -586,7 +586,6 @@ export function AppFlow() {
             totalQuestions={TOTAL_QUESTIONS}
             answers={answerRows}
             branded={brandedRows}
-            hasPendingUpload={videos.length > 0}
             onPressAnswer={(row) => setPlayingVideo(row.play)}
             onPressBranded={(row) => row.play && setPlayingVideo({ ...row.play, celebratory: true })}
             onRetake={(qIndex) => setPendingRetake(qIndex)}

@@ -5,6 +5,11 @@ export interface Spacing {
   lg: number;
   xl: number;
   xxl: number;
+  /** Bottom padding for a screen with a persistent button footer anchored
+   * near the edge (e.g. Onboarding's nav row, Permissions' footer) - a bit
+   * more than xxl alone so the button doesn't feel glued to the edge. Use
+   * this instead of a one-off padding value on any new footer-style screen. */
+  footerBottom: number;
 }
 
 export const spacing: Spacing = {
@@ -14,4 +19,5 @@ export const spacing: Spacing = {
   lg: 24,
   xl: 32,
   xxl: 48,
+  footerBottom: 64,
 };
