@@ -49,6 +49,7 @@ hand-edited/committed), this restriction is also silently lost on
 
 ## Architecture facts worth remembering
 
+- **`questionIndex` is 0-based internally but the backend's `question_index` field is 1-based.** Convert only at the `api.ts`/`upload.ts` boundary — don't let the conversion leak into app-level state.
 - **`react-native-vision-camera` v5 is Nitro-Modules-based with a hook API** (`useCameraDevice`, `useCameraPermission`, `useMicrophonePermission`, `useVideoOutput`, `useFaceDetectorOutput`, etc.) — not v4's single `<Camera>` prop-bag style. If searching for help online, check which version the answer is actually about; they're not interchangeable.
 - **`react-native-vision-camera-face-detector` streams `Face[]` to a plain JS callback** (`onFacesDetected`), not a worklet/frame-processor — normal `setState` works directly inside it, no `runOnJS` plumbing needed.
 - **Face data shape**: `bounds: {x,y,width,height}` always available; `landmarks` (eyes, nose, mouth, cheeks, ears as `Point`s) only populated if `runLandmarks: true`; also available: `contours`, `pitch/roll/yawAngle`, `left/rightEyeOpenProbability`, `smilingProbability`, `trackingId`.
@@ -59,5 +60,7 @@ hand-edited/committed), this restriction is also silently lost on
 ## Resolved investigations
 
 **Face detection lag (resolved).** Root cause: a broken `useMemo` dependency in `react-native-vision-camera-face-detector`'s own `useFaceDetectorOutput.ts` hook — a rest-spread object used as the memo dependency always produced a fresh reference, defeating the memo entirely, so the native ML Kit face detector was being torn down and rebuilt on every JS render. Fixed via a one-line `patch-package` patch to that single TS file — no native Kotlin code needed on either platform, since the bug was in shared cross-platform JS. Confirmed: steady ~29-30fps, no lag, alignment locks correctly. Patch lives in `patches/react-native-vision-camera-face-detector+2.0.2.patch`, auto-applied via the `postinstall` script already wired in `package.json`.
+
+**Video upload OOM crash (resolved).** The initial upload implementation (`fetch(uri).blob()`) buffered the entire recorded video into memory before sending, which OOM-crashed on a real recorded video. Fixed by switching to `expo-file-system`'s native `File.upload()` in `upload.ts`, which streams from disk instead of buffering.
 
 **Ambient noise check native crashes (resolved).** `expo-audio`'s `AudioRecorder` is a native SharedObject. Two rounds of crashes ("shared object already released", "JPromise was destroyed") were traced to (a) calling native methods with `.catch()` instead of a real `try/catch` — doesn't protect against a synchronous throw, which is how this specific failure surfaces — and (b) a permission race specific to question 1, where `expo-audio`'s own `requestRecordingPermissionsAsync()` could fire concurrently with VisionCamera's separate mic-permission request before `hasMic` was confirmed true. Fixed by wrapping every native call in real `try/catch` and gating the noise check on `hasMic`. See `useAmbientNoiseCheck.ts`.
