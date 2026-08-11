@@ -32,7 +32,7 @@ import {
   type RecordedVideo,
 } from './recordings';
 import { useTheme } from './theme/ThemeContext';
-import { restoreSession } from './auth';
+import { restoreSession, logout } from './auth';
 import { uploadSegment } from './upload';
 import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
 
@@ -463,6 +463,15 @@ export function AppFlow() {
     setScreen('question');
   }
 
+  // Clears the stored auth token and returns to the login screen. Recorded
+  // videos on disk are left alone - logging out is a session/auth action,
+  // not a data wipe (unlike the testing-only clearAllRecordings() above).
+  function handleLogout() {
+    logout();
+    setMainTab('home');
+    setScreen('login');
+  }
+
   if (playingVideo) {
     return (
       <VideoPlayerScreen
@@ -588,7 +597,9 @@ export function AppFlow() {
           />
         )}
         {mainTab === 'help' && <HelpScreen />}
-        {mainTab === 'profile' && <ProfileScreen onOpenConsent={() => setScreen('consent')} />}
+        {mainTab === 'profile' && (
+          <ProfileScreen onOpenConsent={() => setScreen('consent')} onLogout={handleLogout} />
+        )}
         <BottomTabBar
           activeTab={mainTab}
           onTabPress={setMainTab}

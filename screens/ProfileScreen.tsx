@@ -12,13 +12,15 @@ import { PopupSheet } from '../components/ui/Modal';
 interface Props {
   /** "Consent and privacy" row (design 9C) - re-opens the consent gate for reference. */
   onOpenConsent?: () => void;
+  /** Clears the stored session and returns to the login screen. */
+  onLogout?: () => void;
 }
 
 // Design 9C + 9D - the two earlier layouts merged: who you are at the top,
 // the reel-name card that appears on your videos in the middle with one
 // edit action, account rows and settings below. Mock data only - no real
 // account backend wired yet (DECISIONS.md's own "mock data first" order).
-export function ProfileScreen({ onOpenConsent }: Props) {
+export function ProfileScreen({ onOpenConsent, onLogout }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
@@ -87,6 +89,12 @@ export function ProfileScreen({ onOpenConsent }: Props) {
           />
         </View>
       </View>
+
+      {onLogout && (
+        <Text style={styles.logoutLink} onPress={onLogout}>
+          Log out
+        </Text>
+      )}
 
       <Text style={styles.version}>v1.0</Text>
 
@@ -180,6 +188,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       fontWeight: '700',
     },
     version: { textAlign: 'center', fontSize: 12, color: colors.textDisabled, marginTop: spacing.md },
+    logoutLink: { textAlign: 'center', fontSize: 14.5, fontWeight: '700', color: colors.danger, marginTop: spacing.sm, padding: spacing.sm },
     rowChevron: { fontSize: 20, fontWeight: '700', color: colors.accent },
     fieldLabel: { fontSize: 12.5, fontWeight: '700', color: colors.textFaint, marginBottom: 6 },
     fieldInput: {
