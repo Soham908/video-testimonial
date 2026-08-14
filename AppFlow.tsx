@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
 import { LoginScreen } from './screens/LoginScreen';
 import { SplashScreen } from './screens/SplashScreen';
 import { WhatsAppInviteScreen } from './screens/WhatsAppInviteScreen';
@@ -163,6 +163,13 @@ export function AppFlow() {
   // Shown after "Keep this take" on any question except the last one -
   // DECISIONS.md's "post-keep prompt: next question / my videos / home".
   const [showPostKeepPrompt, setShowPostKeepPrompt] = useState(false);
+  // Shown when the hardware back button is pressed during cameraCheck/
+  // countdown/recording/reviewTrim - these phases have no on-screen back
+  // affordance by design (DECISIONS.md's "no tap-to-advance, ever" during
+  // recording), but a hardware back press is a deliberate enough signal
+  // that it deserves a real way out, just gated behind a confirmation
+  // rather than exiting silently or being blocked outright.
+  const [pendingExitConfirm, setPendingExitConfirm] = useState(false);
 
   // Set right when startRecording() is called (not when 'recording' phase
   // is entered - those happen in the same tick anyway, but this is the
@@ -196,6 +203,71 @@ export function AppFlow() {
       setScreen(valid ? 'onboarding' : 'login');
     });
   }, []);
+
+  // AppFlow is a custom state machine, not React Navigation, so the
+  // hardware/gesture Android back button has no screen stack to pop by
+  // default - without this it just closes the app from anywhere. Maps
+  // back to whatever "one step up" means for the current screen/phase;
+  // returns false (let the OS handle it, i.e. exit) only from Home and
+  // from screens with no sensible in-app back target.
+  useEffect(() => {
+    const handler = () => {
+      if (playingVideo) {
+        setPlayingVideo(null);
+        return true;
+      }
+      if (screen === 'permissions') {
+        setScreen('main');
+        return true;
+      }
+      if (screen === 'uploading') {
+        setMainTab('myVideos');
+        setScreen('main');
+        return true;
+      }
+      if (screen === 'confirmation') {
+        setMainTab('home');
+        setScreen('main');
+        return true;
+      }
+      if (screen === 'question') {
+        if (phase === 'brief') {
+          setMainTab('home');
+          setScreen('main');
+          return true;
+        }
+        if (phase === 'rehearse') {
+          setPhase('brief');
+          return true;
+        }
+        // cameraCheck / countdown / recording / reviewTrim - no silent
+        // exit and no silent block either; confirm first, since a
+        // hardware back press is a deliberate enough signal to deserve a
+        // real way out.
+        setPendingExitConfirm(true);
+        return true;
+      }
+      if (screen === 'main') {
+        if (mainTab !== 'home') {
+          setMainTab('home');
+          return true;
+        }
+        return false;
+      }
+      if (
+        screen === 'splash' ||
+        screen === 'whatsappInvite' ||
+        screen === 'identityConfirm' ||
+        screen === 'onboarding'
+      ) {
+        setScreen('login');
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', handler);
+    return () => sub.remove();
+  }, [screen, phase, mainTab, playingVideo]);
 
   // Uploads every recorded segment for this session, sequentially, when
   // the 'uploading' screen is entered - real presigned-URL upload +
@@ -421,6 +493,21 @@ export function AppFlow() {
     enterCameraCheck();
   }
 
+  // Confirmed exit from the hardware-back popup during cameraCheck/
+  // countdown/recording/reviewTrim. Discards an in-progress recording if
+  // there is one; a take already sitting in takesByQuestion (reviewTrim,
+  // not yet kept) is deliberately left alone so it's still there if the
+  // person comes back to this question.
+  function confirmExitQuestionFlow() {
+    setPendingExitConfirm(false);
+    if (phase === 'recording') {
+      cameraRef.current?.cancelRecording().catch((error) => console.error('[recording] cancel failed', error));
+    }
+    setChecksReady(false);
+    setTakeAttempt(0);
+    setPhase('brief');
+  }
+
   function goToNextQuestion() {
     setShowPostKeepPrompt(false);
     setQuestionIndex((i) => i + 1);
@@ -429,9 +516,25 @@ export function AppFlow() {
     setPhase('brief');
   }
 
-  // Testing convenience: clears prior recordings so My Videos doesn't grow
-  // indefinitely across repeated test runs - see recordings.ts for the
-  // caveat about revisiting this for the real product.
+  // Entered from Home (via Permissions) to record the next unanswered
+  // question. Sets questionIndex to the next open slot without touching
+  // any already-recorded videos - this used to be wired to
+  // startNewSession() below, which wiped every recording made so far
+  // whenever a later question was started (e.g. tapping "Start" for
+  // question 3 deleted questions 1-2). See DEV_NOTES.md.
+  function enterNextQuestion() {
+    setQuestionIndex(videos.length);
+    setRetakeQuestionIndex(null);
+    setChecksReady(false);
+    setTakeAttempt(0);
+    setPhase('brief');
+    setScreen('question');
+  }
+
+  // Testing-only utility, reachable from the dev entry menu on Login -
+  // wipes every local recording so My Videos doesn't grow indefinitely
+  // across repeated test runs. Never wire this into the normal recording
+  // flow (see enterNextQuestion() above for why).
   function startNewSession() {
     clearAllRecordings();
     setVideos([]);
@@ -499,6 +602,7 @@ export function AppFlow() {
               { label: 'Splash', onPress: () => setScreen('splash') },
               { label: 'WhatsApp invite → identity → onboarding', onPress: () => setScreen('whatsappInvite') },
               { label: 'Onboarding only', onPress: () => setScreen('onboarding') },
+              { label: 'Reset all recordings (testing)', onPress: startNewSession },
             ]}
           />
         )}
@@ -535,9 +639,9 @@ export function AppFlow() {
   if (screen === 'permissions') {
     return (
       <PermissionsScreen
-        onContinue={startNewSession}
+        onContinue={enterNextQuestion}
         onBack={() => setScreen('main')}
-        questionNumber={questionIndex + 1}
+        questionNumber={videos.length + 1}
         totalQuestions={TOTAL_QUESTIONS}
       />
     );
@@ -646,6 +750,15 @@ export function AppFlow() {
           setMainTab('myVideos');
           setScreen('main');
         }}
+        // "Tappable back to review," not a retake shortcut - DECISIONS.md
+        // explicitly rejects a change-take control at this commitment
+        // moment ("duplicates review-screen logic"). Every item here is
+        // still local-only (nothing's uploaded yet), so play it straight
+        // from disk, same shape My Videos uses for its own answer rows.
+        onReviewItem={(qIndex) => {
+          const video = videos.find((v) => v.questionIndex === qIndex);
+          if (video) setPlayingVideo({ filePath: video.filePath, label: `Question ${qIndex + 1}` });
+        }}
       />
     );
   }
@@ -749,6 +862,19 @@ export function AppFlow() {
             </View>
           </View>
         </PopupSheet>
+
+        <PopupSheet visible={pendingExitConfirm} onDismiss={() => setPendingExitConfirm(false)}>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+            Stop and go back?
+          </Text>
+          <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
+            You'll return to the question.
+          </Text>
+          <View style={{ gap: 9 }}>
+            <Button label="Stop and go back" onPress={confirmExitQuestionFlow} />
+            <Button label="Keep going" variant="secondary" onPress={() => setPendingExitConfirm(false)} />
+          </View>
+        </PopupSheet>
       </View>
     );
   }
@@ -772,6 +898,7 @@ export function AppFlow() {
         recordingActive={phase === 'recording'}
         onRecordingFinished={handleRecordingFinished}
         onRecordingError={(error) => console.error('[recording]', error)}
+        onPermissionBlocked={() => setScreen('permissions')}
       />
 
       {phase === 'rehearse' && (
@@ -810,6 +937,21 @@ export function AppFlow() {
           }}
         />
       )}
+
+      <PopupSheet visible={pendingExitConfirm} onDismiss={() => setPendingExitConfirm(false)}>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+          Stop and go back?
+        </Text>
+        <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
+          {phase === 'recording'
+            ? "This take won't be saved. You'll return to the question."
+            : "You'll return to the question."}
+        </Text>
+        <View style={{ gap: 9 }}>
+          <Button label="Stop and go back" onPress={confirmExitQuestionFlow} />
+          <Button label="Keep going" variant="secondary" onPress={() => setPendingExitConfirm(false)} />
+        </View>
+      </PopupSheet>
     </View>
   );
 }

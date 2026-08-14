@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   Camera,
   useCameraDevice,
@@ -65,6 +65,12 @@ interface Props {
   recordingActive: boolean;
   onRecordingFinished: (filePath: string) => void;
   onRecordingError: (error: Error) => void;
+  // Fires once camera or mic permission is confirmed hard-denied (the OS
+  // won't show its own dialog again) - the caller should route back to
+  // PermissionsScreen's guided denied-state (numbered Settings steps),
+  // which is far clearer for a non-technical user than a bare "Open
+  // Settings" button with no instructions.
+  onPermissionBlocked?: () => void;
 }
 
 export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
@@ -77,13 +83,20 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
       recordingActive,
       onRecordingFinished,
       onRecordingError,
+      onPermissionBlocked,
     },
     ref,
   ) {
-    const { hasPermission: hasCamera, requestPermission: requestCamera } =
-      useCameraPermission();
-    const { hasPermission: hasMic, requestPermission: requestMic } =
-      useMicrophonePermission();
+    const {
+      hasPermission: hasCamera,
+      requestPermission: requestCamera,
+      canRequestPermission: canRequestCamera,
+    } = useCameraPermission();
+    const {
+      hasPermission: hasMic,
+      requestPermission: requestMic,
+      canRequestPermission: canRequestMic,
+    } = useMicrophonePermission();
 
     // Front camera — this is a selfie testimonial recording flow.
     const device = useCameraDevice('front');
@@ -103,6 +116,14 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
         requestMic();
       }
     }, [hasCamera, hasMic, requestCamera, requestMic]);
+
+    // Reports a hard denial (OS won't show its own dialog again) up to the
+    // caller so it can route to a screen with real recovery instructions
+    // instead of this component's own bare fallback below.
+    useEffect(() => {
+      const hardDenied = (!hasCamera && !canRequestCamera) || (!hasMic && !canRequestMic);
+      if (hardDenied) onPermissionBlocked?.();
+    }, [hasCamera, hasMic, canRequestCamera, canRequestMic, onPermissionBlocked]);
 
     const { isLocked, goodFrameStreak, requiredFrames, registerFrame, reset } =
       useAlignmentLock(lockMode);
@@ -322,11 +343,38 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     );
 
     if (!hasCamera || !hasMic) {
+      // The auto-request effect above only re-fires when hasCamera/hasMic
+      // actually change value - if the OS dialog gets denied, both stay
+      // false forever and that effect never runs again, so without this
+      // the app was stuck showing a perpetual "requesting..." message that
+      // wasn't actually requesting anything any more. canRequestPermission
+      // tells us whether a manual retry can still show the OS dialog
+      // (soft denial) or whether Settings is the only way out (hard
+      // denial/"don't ask again") - offering both covers either case
+      // without needing to know which one we're in.
+      const canRetry = (!hasCamera && canRequestCamera) || (!hasMic && canRequestMic);
       return (
         <View style={styles.center}>
           <Text style={styles.text}>
-            Requesting camera &amp; microphone permission…
+            {canRetry
+              ? 'Camera & microphone access is needed to continue.'
+              : "Camera & microphone access was turned off, and your phone won't ask again here."}
           </Text>
+          {canRetry ? (
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => {
+                if (!hasCamera) requestCamera();
+                if (!hasMic) requestMic();
+              }}
+            >
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={styles.retryButton} onPress={() => Linking.openSettings()}>
+              <Text style={styles.retryButtonText}>Open phone settings</Text>
+            </Pressable>
+          )}
         </View>
       );
     }
@@ -382,5 +430,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+  },
+  retryButtonText: {
+    color: '#000',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

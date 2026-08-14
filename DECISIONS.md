@@ -1,5 +1,16 @@
 # DECISIONS
 
+not handled states, permissions screen opened up, i clicked on 'Dont allow'
+need to handle that state, for both of the permissions
+
+also a side question, is it because im running on the development build the 'back' button does not work
+it just closes the app right now, it should handle this properly right
+
+
+
+
+
+
 Single source of truth for product and design decisions on the testimonial app.
 
 **How to use this file:** when something is decided, move it from OPEN to
