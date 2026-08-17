@@ -35,6 +35,15 @@ import { useTheme } from './theme/ThemeContext';
 import { restoreSession, logout } from './auth';
 import { uploadSegment } from './upload';
 import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
+import {
+  saveSession,
+  loadSession,
+  clearSession,
+  hasMeaningfulProgress,
+  restorableQuestionPhase,
+  purgeOrphanedRecordingTempFiles,
+  type PersistedScreen,
+} from './session';
 
 // Lightweight state-based flow - no navigation library added yet, so this
 // doesn't require any new native dependencies/rebuild. Swap for
@@ -186,6 +195,17 @@ export function AppFlow() {
   // actually goes out until that's confirmed. Reset to false every time
   // 'uploading' is entered fresh, from either Home or My Videos.
   const [uploadConfirmed, setUploadConfirmed] = useState(false);
+  // question_index (0-based) of every video already confirmed uploaded in
+  // the current batch - see session.ts. Lets the upload effect resume
+  // after a force-quit mid-upload instead of re-sending everything, and is
+  // reset to [] whenever 'uploading' is entered as a genuinely new batch
+  // (not on retry - a retry should only redo what didn't finish).
+  const [uploadedQuestionIndices, setUploadedQuestionIndices] = useState<number[]>([]);
+  // True once the launch-time restore (session.ts) has run to completion -
+  // gates the persistence effect below so it can never fire with the
+  // component's initial default state and clobber a just-loaded session
+  // file before the restore's own setState calls have applied.
+  const [sessionRestored, setSessionRestored] = useState(false);
   // True once a batch has been sent successfully at least once - drives
   // Home's "submitted, being prepared" state. Deliberately does NOT hide
   // the upload entry point in My Videos afterward - a retake after
@@ -198,11 +218,129 @@ export function AppFlow() {
   // it's still valid, so restoreSession() confirms it against GET /me
   // before skipping the login screen. No dependency on `screen` - this
   // must only ever run once per app launch, not on every re-render.
+  //
+  // Once auth is confirmed, also restores the persisted recording session
+  // (session.ts) if one exists and has real progress - this is what lets a
+  // force-quit anywhere in the question/upload flow come back to a
+  // coherent state instead of resetting to onboarding. `sessionRestored`
+  // is set true in every branch so the save effect below always knows the
+  // restore attempt has finished, whether or not there was anything to
+  // restore.
   useEffect(() => {
     restoreSession().then((valid) => {
-      setScreen(valid ? 'onboarding' : 'login');
+      if (!valid) {
+        setScreen('login');
+        setSessionRestored(true);
+        return;
+      }
+
+      const stored = loadSession();
+      if (!stored || !hasMeaningfulProgress(stored)) {
+        setScreen('onboarding');
+        setSessionRestored(true);
+        return;
+      }
+
+      setMainTab(stored.mainTab);
+      setQuestionIndex(stored.questionIndex);
+      setRetakeQuestionIndex(stored.retakeQuestionIndex);
+      setVideos(stored.videos);
+      setTakesByQuestion(stored.takesByQuestion);
+      setSelectedTakeId(stored.selectedTakeId);
+      setTrimStartSeconds(stored.trimStartSeconds);
+      setTrimEndSeconds(stored.trimEndSeconds);
+      setRemoveLastTwoSeconds(stored.removeLastTwoSeconds);
+      setAutoStart(stored.autoStart);
+      setHasSubmittedBatch(stored.hasSubmittedBatch);
+      setUploadConfirmed(stored.uploadConfirmed);
+      setUploadedQuestionIndices(stored.uploadedQuestionIndices);
+
+      if (stored.phase === 'recording' || stored.phase === 'countdown') {
+        // Force-quit landed mid-capture (or during the countdown right
+        // before it) - that take was never added to takesByQuestion (only
+        // handleRecordingFinished does that, and it never got to run), so
+        // there's nothing of it to restore. Only its temp file might be
+        // left behind; clean that up and land on 'brief' for the same
+        // question, same as a deliberate "stop and go back" would.
+        purgeOrphanedRecordingTempFiles();
+      }
+
+      if (stored.screen === 'question') {
+        const restoredPhase = restorableQuestionPhase(stored.phase);
+        // 'reviewTrim' with no pending takes for this question means the
+        // take was already kept (handleKeepTake clears takesByQuestion for
+        // the question right after finalizing it into `videos`) and the
+        // force-quit landed in the narrow window where only the "Saved on
+        // your phone" post-keep popup was still up - there is nothing left
+        // for Review & Trim to show. `videos` already has the kept take
+        // (restored above), so landing on Home is the coherent equivalent
+        // of that popup's own "Home" button, rather than reopening a take
+        // picker with nothing in it.
+        const reviewTrimWithNothingToReview =
+          restoredPhase === 'reviewTrim' &&
+          (stored.takesByQuestion[stored.questionIndex] ?? []).length === 0;
+
+        if (reviewTrimWithNothingToReview) {
+          setMainTab('home');
+          setScreen('main');
+        } else {
+          setPhase(restoredPhase);
+          setChecksReady(false);
+          setTakeAttempt(0);
+          setScreen('question');
+        }
+      } else if (stored.screen === 'uploading') {
+        setScreen('uploading');
+      } else {
+        setScreen('main');
+      }
+      setSessionRestored(true);
     });
   }, []);
+
+  // Persists the whole session as it changes - not only on screen
+  // transitions - so any of the force-quit points above can be resumed.
+  // File writes here are synchronous local JSON (session.ts), same
+  // pattern already used for the My Videos sync cache (myVideos.ts).
+  useEffect(() => {
+    if (!sessionRestored) return;
+    const persistedScreen: PersistedScreen =
+      screen === 'question' || screen === 'uploading' ? screen : 'main';
+    saveSession({
+      screen: persistedScreen,
+      mainTab,
+      questionIndex,
+      phase,
+      retakeQuestionIndex,
+      videos,
+      takesByQuestion,
+      selectedTakeId,
+      trimStartSeconds,
+      trimEndSeconds,
+      removeLastTwoSeconds,
+      autoStart,
+      hasSubmittedBatch,
+      uploadConfirmed,
+      uploadedQuestionIndices,
+    });
+  }, [
+    sessionRestored,
+    screen,
+    mainTab,
+    questionIndex,
+    phase,
+    retakeQuestionIndex,
+    videos,
+    takesByQuestion,
+    selectedTakeId,
+    trimStartSeconds,
+    trimEndSeconds,
+    removeLastTwoSeconds,
+    autoStart,
+    hasSubmittedBatch,
+    uploadConfirmed,
+    uploadedQuestionIndices,
+  ]);
 
   // AppFlow is a custom state machine, not React Navigation, so the
   // hardware/gesture Android back button has no screen stack to pop by
@@ -277,20 +415,29 @@ export function AppFlow() {
     if (screen !== 'uploading' || !uploadConfirmed) return;
     let cancelled = false;
     setUploadError(null);
-    setUploadProgress(0);
 
     (async () => {
       for (let i = 0; i < videos.length; i++) {
         if (cancelled) return;
+        const video = videos[i];
+        // Already confirmed in a previous run of this effect, or in a
+        // previous app session before a force-quit mid-upload - see
+        // session.ts's uploadedQuestionIndices. Skipping it is what makes
+        // resuming mid-upload not re-send everything from scratch.
+        if (uploadedQuestionIndices.includes(video.questionIndex)) continue;
         try {
-          await uploadSegment(videos[i]);
+          await uploadSegment(video);
         } catch (error) {
           if (!cancelled) {
             setUploadError(error instanceof Error ? error.message : 'Upload failed.');
           }
           return;
         }
-        if (!cancelled) setUploadProgress((i + 1) / videos.length);
+        if (!cancelled) {
+          setUploadedQuestionIndices((prev) =>
+            prev.includes(video.questionIndex) ? prev : [...prev, video.questionIndex],
+          );
+        }
       }
       if (!cancelled) {
         setHasSubmittedBatch(true);
@@ -303,6 +450,15 @@ export function AppFlow() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, uploadConfirmed, uploadAttempt]);
+
+  // Mirrors uploadedQuestionIndices into the Uploading screen's 0-1
+  // progress bar - a separate derived effect (rather than computed inline
+  // in the loop above) so a session resumed mid-upload shows the correct
+  // progress immediately, before the loop has uploaded anything new this
+  // launch.
+  useEffect(() => {
+    setUploadProgress(videos.length ? uploadedQuestionIndices.length / videos.length : 0);
+  }, [uploadedQuestionIndices, videos.length]);
 
   // Fetches My Videos' data whenever that tab is opened while on 'main' -
   // not continuously polled (no push/notification system exists yet per
@@ -537,6 +693,7 @@ export function AppFlow() {
   // flow (see enterNextQuestion() above for why).
   function startNewSession() {
     clearAllRecordings();
+    clearSession();
     setVideos([]);
     setTakesByQuestion({});
     setQuestionIndex(0);
@@ -544,6 +701,8 @@ export function AppFlow() {
     setChecksReady(false);
     setTakeAttempt(0);
     setAutoStart(true);
+    setUploadedQuestionIndices([]);
+    setHasSubmittedBatch(false);
     setPhase('brief');
     setScreen('question');
   }
@@ -676,6 +835,7 @@ export function AppFlow() {
             onStartNextQuestion={() => setScreen('permissions')}
             onSendAll={() => {
               setUploadConfirmed(false);
+              setUploadedQuestionIndices([]);
               setScreen('uploading');
             }}
             onOpenMyVideos={() => setMainTab('myVideos')}
@@ -695,6 +855,7 @@ export function AppFlow() {
             onRetake={(qIndex) => setPendingRetake(qIndex)}
             onUploadAll={() => {
               setUploadConfirmed(false);
+              setUploadedQuestionIndices([]);
               setScreen('uploading');
             }}
           />
