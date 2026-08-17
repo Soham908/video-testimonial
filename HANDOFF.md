@@ -10,14 +10,105 @@ context back up (same pattern as the old `HANDOFF.md` that got folded into
 ## Repo state right now
 
 - Branch: `feature/ui-revamp-v2` (not merged to `main`)
-- Latest commit: `141d80e` "Log deferred items: question restructuring, normalization, profile edits"
+- Latest commit: `1d2d5f2` "temporary commit" — this absorbed the previous handoff's `AppFlow.tsx`/`CameraAlignment.tsx` bug fixes and this `HANDOFF.md` file itself. Those four bug fixes (see the Aug 14 section below) are therefore **committed now**, still pending the on-device verification this file already flagged for them.
 - **Uncommitted right now** (`git status --short`):
-  - `AppFlow.tsx`, `CameraAlignment.tsx` — the four frontend bug fixes from the end of this session (see below). Not yet committed because they need on-device verification first, especially the `CameraAlignment.tsx` change.
-  - `DECISIONS.md` — has raw scratch notes pasted at the very top (lines 3-7, the permission/back-button bug report) that were never filed into the LOCKED/OPEN structure. Clean this up: either delete those lines (the bugs they describe are now fixed, pending your on-device confirmation) or move them to a "recently fixed" note if you want a record.
-  - `.gitignore` — your own edit (adds `screenshots/`), predates this session, still untouched/uncommitted. Not related to any of this work.
+  - `session.ts` (new file) + `AppFlow.tsx` — force-quit session-persistence work from the latest session, see the section below. Not committed because it's entirely unverified on-device (no testing has happened at all, not even manual).
+  - `DECISIONS.md` — has raw scratch notes pasted at the very top (lines 3-7, the permission/back-button bug report) that were never filed into the LOCKED/OPEN structure. Still unresolved.
+  - `.gitignore` — your own edit (adds `screenshots/`), predates all of this, still untouched/uncommitted. Not related to any of this work.
   - `.claude/` — local tool state (worktrees, settings), not meant to be committed, already gitignored territory conceptually.
 
 **First thing to do on the new machine**: `git pull` (or however you're syncing the working tree across laptops — if it's not pushed anywhere, you'll need to bring the working tree over some other way, e.g. `git diff > session.patch` from this machine first). Then re-run `npx tsc --noEmit` to confirm the same clean state before doing anything else.
+
+## Session update — 2026-08-17: force-quit session persistence (uncommitted, unverified)
+
+Goal: the app's in-progress recording session should survive a force-quit at
+any point and restore to a coherent state on relaunch, rather than resetting.
+`CameraAlignment.tsx` and the CV/audio logic were explicitly off-limits for
+this and were **not touched**.
+
+**What was built:**
+
+- **`session.ts` (new file)** — a small persistence module, same pattern as
+  `myVideos.ts`'s sync cache: synchronous JSON read/write to a file in
+  `Paths.document` via `expo-file-system`, no new dependency. Exports
+  `saveSession` / `loadSession` / `clearSession`, plus:
+  - `hasMeaningfulProgress()` — so a session file with no real progress
+    (fresh install, never past onboarding) doesn't skip onboarding on
+    restore.
+  - `restorableQuestionPhase()` — collapses a persisted `'recording'` or
+    `'countdown'` phase down to `'brief'` on restore, since a take only
+    ever enters app state once `onRecordingFinished` has actually fired;
+    an interrupted one was never restorable in the first place.
+  - `purgeOrphanedRecordingTempFiles()` — deletes any leftover
+    `VisionCamera_*.mp4` in the app's cache dir on restore, if the
+    persisted phase shows a recording was interrupted mid-capture.
+    **Android-only**: traced VisionCamera's Android recorder to
+    `File.createTempFile("VisionCamera_", ".mp4")`, which resolves to the
+    same cache dir `expo-file-system` exposes as `Paths.cache` — safe to
+    scan and delete. iOS's recorder writes to `NSTemporaryDirectory` with a
+    random UUID filename instead, a directory `expo-file-system` doesn't
+    expose a handle to at all, so an orphaned iOS temp file can't be
+    positively located from JS. It never leaks into app state either way;
+    iOS documents `NSTemporaryDirectory` contents as system-purged
+    (including "on next launch of the app that created them"), so it's
+    still cleaned up, just not deterministically by us. **This is the one
+    known, accepted gap** — flagging again here so it doesn't get
+    rediscovered as a surprise.
+
+- **`AppFlow.tsx`**:
+  - A single consolidated `useEffect` persists question index, phase,
+    retake state, `videos`, `takesByQuestion`, selected take, trim
+    settings, `autoStart`, `hasSubmittedBatch`, upload-confirmed state, and
+    per-video upload status — on every change to any of them, not just on
+    screen transitions. Gated behind a new `sessionRestored` flag so it
+    can't fire with default state and clobber a just-loaded session file
+    before the launch-time restore has applied.
+  - Launch-time restore runs after `restoreSession()` confirms the auth
+    token, reapplying all of the above and routing to the right screen.
+    One non-obvious edge case handled: the post-keep "Saved on your phone"
+    popup doesn't reset `phase` away from `'reviewTrim'`, so a naive
+    restore landing in that exact window could reopen an empty Review &
+    Trim screen with nothing to show (the take was already moved into
+    `videos` and cleared from `takesByQuestion`). Detected via
+    `takesByQuestion[questionIndex]` being empty and routed to Home instead
+    — the same place that popup's own "Home" button goes.
+  - Upload tracking changed from a bare 0-1 progress fraction to
+    `uploadedQuestionIndices: number[]` (also persisted) — a force-quit
+    mid-upload now resumes only the videos not yet confirmed, instead of
+    re-sending the whole batch. Reset to `[]` only when a *new* upload
+    batch is started (Home's "Send all" / My Videos' "Upload all"), not on
+    retry (retry should only redo what didn't finish).
+  - `startNewSession()` (the dev-menu "reset everything" utility) now also
+    calls `clearSession()` and resets the new upload-tracking state, so it
+    stays a genuine full reset.
+
+**Status: entirely unverified on-device.** Two blockers surfaced trying to
+test this in the sandbox this was built in, worth knowing about for next
+time this comes up:
+1. The companion `testimonial-backend` repo has no `.env` here — needs a
+   live Postgres + real S3/R2 (and ElevenLabs/Gemini/nexrender) secrets that
+   don't exist in that environment.
+2. More fundamentally: every one of the five checkpoints below requires at
+   least one successfully recorded take first, which requires
+   `CameraAlignment.tsx`'s face-alignment lock to actually fire (15-20
+   consecutive good frames of a real, centered, well-lit face). That's a
+   live-human-in-front-of-a-camera requirement, not a config gap — no
+   amount of emulator/backend setup substitutes for it.
+
+**On-device checklist for this specifically** (do this before trusting or
+committing `session.ts` / the `AppFlow.tsx` diff):
+1. Force-quit mid-recording → relaunch → lands on Question Brief for the
+   same question; confirm via `adb shell run-as <package> ls cache/` (or
+   equivalent) that no `VisionCamera_*.mp4` is left behind.
+2. Force-quit on Review & Trim before tapping "Keep" → relaunch → same take
+   selected, same trim/remove-last-2s settings.
+3. Force-quit right after tapping "Keep this take" (including while the
+   "Saved on your phone" popup is still up) → relaunch → the take is in My
+   Videos, lands on Home not a broken review screen.
+4. Force-quit on My Videos with recordings not yet uploaded → relaunch →
+   same tab, same videos listed.
+5. Force-quit mid-upload → relaunch → resumes rather than re-uploading
+   already-confirmed segments.
 
 ## What this session covered, roughly in order
 
