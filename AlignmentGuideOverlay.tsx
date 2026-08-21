@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
-import type { AlignmentSignals } from './alignment';
+import { GUIDE_TOP_OFFSET, GUIDE_WIDTH, GUIDE_HEIGHT, type AlignmentSignals } from './alignment';
 import { useTheme } from './theme/ThemeContext';
 import type { PaletteDarkColors } from './theme/palettes';
 
@@ -57,15 +57,17 @@ function makeStyles(dark: PaletteDarkColors) {
       right: 0,
       bottom: 0,
       alignItems: 'center',
-      paddingTop: 110,
+      paddingTop: GUIDE_TOP_OFFSET,
     },
     guideOutline: {
-      width: 218,
-      height: 290,
-      borderTopLeftRadius: 128,
-      borderTopRightRadius: 128,
-      borderBottomLeftRadius: 96,
-      borderBottomRightRadius: 96,
+      width: GUIDE_WIDTH,
+      height: GUIDE_HEIGHT,
+      // Radii scaled from the original 218-wide oval's 128/96 proportions
+      // so the shape stays the same as GUIDE_WIDTH changes.
+      borderTopLeftRadius: 144,
+      borderTopRightRadius: 144,
+      borderBottomLeftRadius: 108,
+      borderBottomRightRadius: 108,
       borderWidth: 1.5,
       borderColor: 'rgba(255,255,255,0.18)',
     },

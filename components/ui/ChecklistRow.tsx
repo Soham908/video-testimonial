@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     borderRadius: 14,
-    paddingVertical: 12,
+    paddingVertical: 9,
     paddingHorizontal: 15,
   },
   dot: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },

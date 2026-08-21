@@ -85,9 +85,9 @@ function makeStyles(spacing: Spacing) {
       position: 'absolute',
       left: spacing.md + 4,
       right: spacing.md + 4,
-      bottom: 150,
+      bottom: 130,
     },
-    rows: { gap: spacing.xs + 1 },
+    rows: { gap: spacing.xs },
     skipRow: { alignItems: 'center', marginTop: spacing.md },
     skipText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
   });
