@@ -13,6 +13,11 @@ import { Toggle } from '../components/ui/Toggle';
 interface Props {
   questionNumber: number;
   totalQuestions: number;
+  // Backend question id (CLAUDE.md) - used to key the bundled VO audio
+  // below, not questionNumber/index. `undefined` while questions are still
+  // loading; falls back to "no audio" the same as an id with no bundled
+  // clip (see QUESTION_AUDIO_EN).
+  questionId?: string;
   questionText: string;
   talkingPoints: string[];
   onStartRecording: () => void;
@@ -20,14 +25,23 @@ interface Props {
   onBack?: () => void;
 }
 
-// Static ElevenLabs VO, one file per question - same assets QuestionIntroOverlay
-// used to autoplay; here it's opt-in via the "Read to me" toggle instead.
-const QUESTION_AUDIO: Record<number, number> = {
-  1: require('../assets/audio/question1.mp3'),
-  2: require('../assets/audio/question2.mp3'),
-  3: require('../assets/audio/question3.mp3'),
-  4: require('../assets/audio/question4.mp3'),
-  5: require('../assets/audio/question5.mp3'),
+// Static ElevenLabs VO, one bundled file per question, keyed by the
+// backend's question `id` rather than its position/index in the fetched
+// list (CLAUDE.md) - reordering, adding, or removing questions on the
+// backend can never cause this lookup to silently play the wrong clip; a
+// question whose id isn't in this map (not yet recorded, or a question
+// added after this build shipped) just falls back to no audio below.
+// Nested by language for when a real language selector lands - only "en"
+// exists today. These 5 ids are the current internal test client's
+// seeded questions (see prisma/seed.ts in the backend repo); a different
+// client's questions won't have bundled audio until their own clips are
+// added here the same way.
+const QUESTION_AUDIO_EN: Record<string, number> = {
+  'fdcab4b7-4fdb-4c85-ab29-1adc9635e0bb': require('../assets/audio/q_fdcab4b7-4fdb-4c85-ab29-1adc9635e0bb_en.mp3'),
+  '49c64b94-f559-49e4-9bd4-be6c6c66f969': require('../assets/audio/q_49c64b94-f559-49e4-9bd4-be6c6c66f969_en.mp3'),
+  '2a6cecb3-281a-44eb-987b-51253563e6b9': require('../assets/audio/q_2a6cecb3-281a-44eb-987b-51253563e6b9_en.mp3'),
+  '61dcfdb7-a9f9-4167-afe2-0d0850b7b056': require('../assets/audio/q_61dcfdb7-a9f9-4167-afe2-0d0850b7b056_en.mp3'),
+  '665cd44a-5828-4c1a-b5f0-86a42c22f754': require('../assets/audio/q_665cd44a-5828-4c1a-b5f0-86a42c22f754_en.mp3'),
 };
 
 // Placeholder sample-answer clips (design 2D) - same convention as Home's
@@ -48,6 +62,7 @@ const SAMPLE_ANSWERS: { name: string; business: string; duration: string }[] = [
 export function QuestionBriefScreen({
   questionNumber,
   totalQuestions,
+  questionId,
   questionText,
   talkingPoints,
   onStartRecording,
@@ -58,10 +73,16 @@ export function QuestionBriefScreen({
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
   const [readToMe, setReadToMe] = useState(false);
-  const player = useVideoPlayer(QUESTION_AUDIO[questionNumber] ?? QUESTION_AUDIO[1]);
+  // null (not a missing key in the map) when there's no bundled clip for
+  // this question - useVideoPlayer accepts a null source and stays inert,
+  // so a missing clip falls back to plain text rather than crashing or
+  // blocking anything (CLAUDE.md).
+  const audioSource = questionId != null ? (QUESTION_AUDIO_EN[questionId] ?? null) : null;
+  const player = useVideoPlayer(audioSource);
   const sampleAnswer = SAMPLE_ANSWERS[(questionNumber - 1) % SAMPLE_ANSWERS.length];
 
   function toggleReadToMe(next: boolean) {
+    if (audioSource == null) return;
     setReadToMe(next);
     if (next) {
       player.currentTime = 0;
@@ -82,29 +103,35 @@ export function QuestionBriefScreen({
           )}
           <Text style={styles.eyebrow}>Getting ready</Text>
         </View>
-        <View style={[styles.readToMe, readToMe && { backgroundColor: colors.accentSoft }]}>
-          <Text
-            style={[styles.readToMeText, { color: readToMe ? colors.accent : colors.textMuted }]}
-            onPress={() => toggleReadToMe(!readToMe)}
-          >
-            {readToMe ? 'Reading…' : 'Read to me'}
-          </Text>
-        </View>
+        {audioSource != null && (
+          <View style={[styles.readToMe, readToMe && { backgroundColor: colors.accentSoft }]}>
+            <Text
+              style={[styles.readToMeText, { color: readToMe ? colors.accent : colors.textMuted }]}
+              onPress={() => toggleReadToMe(!readToMe)}
+            >
+              {readToMe ? 'Reading…' : 'Read to me'}
+            </Text>
+          </View>
+        )}
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
         <Text style={styles.questionNumberLabel}>Question {questionNumber}</Text>
         <Text style={styles.title}>{questionText}</Text>
 
-        <Text style={styles.sectionLabel}>A good answer usually covers</Text>
-        <View style={styles.pointsList}>
-          {talkingPoints.map((point, i) => (
-            <View key={point} style={styles.pointRow}>
-              <Text style={styles.pointNumber}>{i + 1}</Text>
-              <Text style={styles.pointText}>{point}</Text>
+        {talkingPoints.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>A good answer usually covers</Text>
+            <View style={styles.pointsList}>
+              {talkingPoints.map((point, i) => (
+                <View key={point} style={styles.pointRow}>
+                  <Text style={styles.pointNumber}>{i + 1}</Text>
+                  <Text style={styles.pointText}>{point}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </>
+        )}
 
         <View style={styles.addPromptRow}>
           <Text style={styles.addPromptText}>+ Add your own prompts</Text>

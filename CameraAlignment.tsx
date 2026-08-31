@@ -10,11 +10,14 @@ import {
 import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   Camera,
+  CommonResolutions,
   useCameraDevice,
   useCameraPermission,
   useMicrophonePermission,
   useVideoOutput,
   type CameraOutput,
+  type CameraSessionConfig,
+  type Constraint,
   type Recorder,
 } from 'react-native-vision-camera';
 import { useFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector';
@@ -40,6 +43,37 @@ const MIN_FACE_SIZE = 0.25;
 const RECHECK_INTERVAL_MS = 10_000;
 const RECHECK_DURATION_MS = 1_000;
 
+// Pinned capture output (see CLAUDE.md's bitrate-cap task): every device
+// should produce the same shape of file - 1080x1920 portrait, 30fps,
+// 3Mbps H.264 - rather than whatever a given phone's default encoder
+// picks (measured ~14Mbps/98MB-per-minute on a real device, thrown away
+// entirely by the server's own re-encode). These are targets/constraints,
+// not hard requirements: VisionCamera negotiates the closest-available
+// match per-device rather than throwing when a device can't hit them
+// exactly (see targetResolution/targetBitRate/Constraint's own docs) -
+// the actually-selected format is logged in onSessionConfigSelected/
+// onStarted below so odd devices can be diagnosed from field logs.
+const TARGET_RESOLUTION = CommonResolutions.FHD_16_9; // 1080x1920
+const TARGET_BIT_RATE = 3_000_000; // 3 Mbps - audio is untouched, video-only
+const TARGET_FPS = 30;
+const CAPTURE_CONSTRAINTS: Constraint[] = [{ fps: TARGET_FPS }];
+
+// Info about the format actually negotiated for a finished recording -
+// passed alongside the file path so the caller can record what the
+// device really captured (not just what we asked for). `width`/`height`/
+// `fps` are `undefined` if the session never reported a value (shouldn't
+// happen once recording has started, but the underlying fields are
+// optional). `codec` reflects what we requested via setOutputSettings,
+// not a measured value - CameraX (Android) has no public API to read back
+// the codec actually used, so this is a best-effort label, accurate as
+// long as the platform honored the request (see startRecording below).
+export interface CaptureFormatInfo {
+  width: number | undefined;
+  height: number | undefined;
+  fps: number | undefined;
+  codec: 'h264';
+}
+
 export interface CameraAlignmentHandle {
   startRecording: () => Promise<void>;
   // Finalizes the current recording to a file; triggers onRecordingFinished.
@@ -63,7 +97,7 @@ interface Props {
   // while the redo-prompt is up, since the recording is still active until
   // the user chooses keep/redo) - suppresses the periodic detection recheck.
   recordingActive: boolean;
-  onRecordingFinished: (filePath: string) => void;
+  onRecordingFinished: (filePath: string, format: CaptureFormatInfo) => void;
   onRecordingError: (error: Error) => void;
   // Fires once camera or mic permission is confirmed hard-denied (the OS
   // won't show its own dialog again) - the caller should route back to
@@ -308,17 +342,71 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     // private storage (not a public gallery, no MediaLibrary permission
     // needed) - matches CLAUDE.md's storage model. The returned path is
     // tracked in JS state by the caller (AppFlow) for later upload/display.
-    const videoOutput = useVideoOutput({ enableAudio: true });
+    // targetResolution/targetBitRate pin the capture output (see
+    // TARGET_RESOLUTION/TARGET_BIT_RATE above); audio is left at its
+    // default (unchanged) since transcription accuracy depends on it.
+    const videoOutput = useVideoOutput({
+      enableAudio: true,
+      targetResolution: TARGET_RESOLUTION,
+      targetBitRate: TARGET_BIT_RATE,
+    });
     const recorderRef = useRef<Recorder | null>(null);
+    // Set by onSessionConfigSelected below once the CameraSession resolves
+    // the `{ fps: TARGET_FPS }` constraint - read at recording-start time
+    // to report what was actually negotiated, which may differ from
+    // TARGET_FPS on a device that can't hit it exactly.
+    const selectedFpsRef = useRef<number | undefined>(undefined);
+
+    const handleSessionConfigSelected = useCallback((config: CameraSessionConfig) => {
+      selectedFpsRef.current = config.selectedFPS;
+      console.log('[capture] session config selected', {
+        selectedFPS: config.selectedFPS,
+        targetFPS: TARGET_FPS,
+      });
+    }, []);
+
+    const handleCameraStarted = useCallback(() => {
+      // currentResolution is sensor-native (un-rotated) pixels - logged
+      // as-is rather than swapped for portrait display, since this is a
+      // diagnostic log for field devices, not a UI value.
+      console.log('[capture] session started - actual format selected', {
+        resolution: videoOutput.currentResolution,
+        fps: selectedFpsRef.current,
+        targetResolution: TARGET_RESOLUTION,
+        targetBitRate: TARGET_BIT_RATE,
+        targetFPS: TARGET_FPS,
+      });
+    }, [videoOutput]);
 
     useImperativeHandle(
       ref,
       () => ({
         async startRecording() {
+          // H.264, not H.265: HEVC encoders fail silently on budget
+          // MediaTek/Unisoc chips (this app's actual hardware target).
+          // iOS defaults to H.265 unless told otherwise - this is the only
+          // way to override it. On Android (CameraX), this call is
+          // currently a no-op (no custom-codec API exists there yet), but
+          // CameraX's Recorder already defaults to H.264 for standard
+          // (non-HDR) recording, which is what this app always requests -
+          // so the requirement is already met there without this call.
+          // Guarded so a platform quirk here never blocks recording start.
+          try {
+            await videoOutput.setOutputSettings({ codec: 'h264' });
+          } catch (error) {
+            console.warn('[recording] setOutputSettings(h264) failed - continuing with device default codec', error);
+          }
+
           const recorder = await videoOutput.createRecorder({});
           recorderRef.current = recorder;
           await recorder.startRecording(
-            (filePath) => onRecordingFinished(filePath),
+            (filePath) =>
+              onRecordingFinished(filePath, {
+                width: videoOutput.currentResolution?.width,
+                height: videoOutput.currentResolution?.height,
+                fps: selectedFpsRef.current,
+                codec: 'h264',
+              }),
             (error) => onRecordingError(error),
           );
         },
@@ -394,6 +482,9 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           device={device}
           isActive={true}
           outputs={outputs}
+          constraints={CAPTURE_CONSTRAINTS}
+          onSessionConfigSelected={handleSessionConfigSelected}
+          onStarted={handleCameraStarted}
         />
         <AlignmentGuideOverlay
           visible={!hasAdvanced}

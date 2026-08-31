@@ -30,6 +30,11 @@ interface Props {
   totalQuestions: number;
   answers: AnswerRow[];
   branded: BrandedRow[];
+  // When false (this build's default - see config.ts), no render job is
+  // ever created server-side, so `branded` is always empty. Hides the
+  // branded section entirely rather than showing its normal empty state,
+  // which promises reels "will appear here" - not true for this build.
+  reelRenderingEnabled: boolean;
   onPressAnswer: (row: AnswerRow) => void;
   onPressBranded: (row: BrandedRow) => void;
   // Caller shows a confirmation prompt before entering the camera flow -
@@ -59,6 +64,7 @@ export function MyVideosScreen({
   totalQuestions,
   answers,
   branded,
+  reelRenderingEnabled,
   onPressAnswer,
   onPressBranded,
   onRetake,
@@ -85,7 +91,7 @@ export function MyVideosScreen({
     );
   }
 
-  const hasAnyReady = branded.some((b) => b.status === 'ready');
+  const hasAnyReady = reelRenderingEnabled && branded.some((b) => b.status === 'ready');
 
   const answersSection = (
     <View style={styles.section}>
@@ -179,7 +185,7 @@ export function MyVideosScreen({
       ) : (
         <>
           {answersSection}
-          {brandedSection}
+          {reelRenderingEnabled && brandedSection}
         </>
       )}
     </ScrollView>

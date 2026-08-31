@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
+import { File } from 'expo-file-system';
 import { LoginScreen } from './screens/LoginScreen';
 import { SplashScreen } from './screens/SplashScreen';
 import { WhatsAppInviteScreen } from './screens/WhatsAppInviteScreen';
@@ -18,7 +19,7 @@ import { RehearseScreen } from './screens/RehearseScreen';
 import { CameraCheckScreen } from './screens/CameraCheckScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
 import { ReviewTrimScreen } from './screens/ReviewTrimScreen';
-import { CameraAlignment, type CameraAlignmentHandle } from './CameraAlignment';
+import { CameraAlignment, type CameraAlignmentHandle, type CaptureFormatInfo } from './CameraAlignment';
 import { RetakeConfirmOverlay } from './screens/RetakeConfirmOverlay';
 import { UploadingScreen } from './screens/UploadingScreen';
 import { ConfirmationScreen } from './screens/ConfirmationScreen';
@@ -35,6 +36,14 @@ import { useTheme } from './theme/ThemeContext';
 import { restoreSession, logout } from './auth';
 import { uploadSegment } from './upload';
 import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
+import { getDeviceInfo } from './deviceInfo';
+import { ENABLE_REEL_RENDERING } from './config';
+import {
+  fetchQuestions,
+  getCachedQuestions,
+  cacheQuestions,
+  type QuestionDto,
+} from './questions';
 import {
   saveSession,
   loadSession,
@@ -64,8 +73,12 @@ type Screen =
   | 'main'
   | 'permissions'
   | 'question'
-  | 'uploading'
-  | 'confirmation';
+  // Covers the whole send sequence: the pre-confirm review list, the
+  // live-progress "release" state, and the post-completion "released"
+  // state - all rendered from this one screen value (see the
+  // screen === 'uploading' render block) so the upload-resume/persistence
+  // logic never needs to know which of those three is currently visible.
+  | 'uploading';
 
 // Question Brief is shown before every question (not just question 1) and
 // always requires an explicit tap - Start recording or Rehearse - never
@@ -86,41 +99,24 @@ type QuestionPhase =
 const MAX_TAKES = 3;
 const COUNTDOWN_SECONDS = 3;
 
-// CLAUDE.md/DECISIONS.md's locked flow is 5 questions - was trimmed to 3
-// during earlier manual testing (see git history); restored here per
-// DECISIONS.md's "Question config narrowed to 1-5" build-order item. UI
-// side is on mock data - the backend currently only accepts question
-// indices 1-3 per API_CONTRACT.md, a known gap for Phase 7's real wiring,
-// not this pass.
-const TOTAL_QUESTIONS = 5;
-const PLACEHOLDER_QUESTIONS = [
-  'What made you choose to work with us?',
-  'What results have you seen so far?',
-  'How has our support been for you?',
-  'What would you say to someone considering us?',
-  'Anything else you would like to share?',
-];
-const PLACEHOLDER_TALKING_POINTS = [
-  ['What you were looking for', 'Why we stood out', 'How the decision felt'],
-  ['A specific result or number', 'How it changed day to day', 'What surprised you'],
-  ['A time support helped', 'How quickly you got a reply', 'Why your trust has held'],
-  ['What made you confident', 'What stood out most', 'Who it would suit'],
-  ['Anything left unsaid', 'A moment worth mentioning', 'Advice for someone starting out'],
-];
-const PLACEHOLDER_PROMPTS = [
-  ['What you needed', 'Why us', 'How it felt'],
-  ['A result', 'Day to day', 'What surprised you'],
-  ["Support's help", 'Reply speed', 'Your trust'],
-  ['Your confidence', 'What stood out', 'Who it suits'],
-  ['One more thing', 'A moment', 'Your advice'],
-];
+// Questions (text, count, order, VO) are backend-configured per client now,
+// fetched via GET /distributors/me/questions (API_CONTRACT.md) - not
+// hardcoded here any more. Nothing in this file may assume a fixed number
+// of questions; the internal test client currently has 5, a real client
+// engagement (e.g. IFB) will have 7. See `questions` state below.
+//
+// Per-question talking points and on-screen recording prompts (previously
+// PLACEHOLDER_TALKING_POINTS/PLACEHOLDER_PROMPTS) have no backend
+// equivalent yet - QuestionBriefScreen/RecordingScreen degrade gracefully
+// with empty arrays (see their own components) rather than inventing
+// placeholder content for backend-provided questions.
 
 // Real upload is real (see upload.ts); mid-answer alignment-break detection
 // during a live take still doesn't exist. Question VO, alignment guidance
 // (incl. ambient noise check), and video recording/storage/playback are
 // all real.
 export function AppFlow() {
-  const { colors } = useTheme();
+  const { colors, spacing, typography } = useTheme();
   const [screen, setScreen] = useState<Screen>('sessionLoading');
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -143,6 +139,15 @@ export function AppFlow() {
   const [brandedRows, setBrandedRows] = useState<BrandedRow[]>([]);
   const [myVideosRefreshToken, setMyVideosRefreshToken] = useState(0);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
+
+  // Backend-configured question set (CLAUDE.md) - cache-first: shown
+  // immediately from questions-cache.json on launch/login, refreshed in
+  // the background right after. `questionsError` is only ever set when
+  // there's truly nothing to show (no cache and the fetch also failed) -
+  // a distributor on patchy rural data must never hit a blank screen just
+  // because one request timed out.
+  const [questions, setQuestions] = useState<QuestionDto[]>([]);
+  const [questionsError, setQuestionsError] = useState<string | null>(null);
 
   // Whether the Camera Check screen's toggle auto-starts the countdown once
   // checks pass, or waits for an explicit "Start recording" tap - no
@@ -214,6 +219,31 @@ export function AppFlow() {
   // always re-sends whatever is currently in `videos`, retaken or not).
   const [hasSubmittedBatch, setHasSubmittedBatch] = useState(false);
 
+  // Fetches the current question set and updates both the cache and
+  // in-memory state. Called once auth is confirmed - both on a fresh login
+  // and on a restored launch (see below) - and again whenever the user
+  // retries after a no-cache-no-network error. On failure, deliberately
+  // keeps whatever's already showing (the cache, already loaded into state
+  // before this is called) rather than clearing it - only sets
+  // `questionsError` when there's truly nothing to fall back to.
+  async function loadQuestions() {
+    try {
+      const fresh = await fetchQuestions();
+      cacheQuestions(fresh);
+      setQuestions(fresh);
+      setQuestionsError(null);
+    } catch (error) {
+      setQuestions((current) => {
+        if (current.length === 0) {
+          setQuestionsError(
+            error instanceof Error ? error.message : 'Could not load your questions.',
+          );
+        }
+        return current;
+      });
+    }
+  }
+
   // Runs once on launch - a stored token merely being present doesn't mean
   // it's still valid, so restoreSession() confirms it against GET /me
   // before skipping the login screen. No dependency on `screen` - this
@@ -233,6 +263,18 @@ export function AppFlow() {
         setSessionRestored(true);
         return;
       }
+
+      // Cache-first: show whatever's on disk immediately (if anything),
+      // then kick a real fetch in the background - loadQuestions() keeps
+      // this exact value on failure rather than clearing it. cachedQuestions
+      // is also used below to bounds-check a restored questionIndex against
+      // the question set actually known right now, synchronously - not the
+      // (still in-flight) network response.
+      const cachedQuestions = getCachedQuestions();
+      if (cachedQuestions && cachedQuestions.length > 0) {
+        setQuestions(cachedQuestions);
+      }
+      loadQuestions();
 
       const stored = loadSession();
       if (!stored || !hasMeaningfulProgress(stored)) {
@@ -280,7 +322,17 @@ export function AppFlow() {
           restoredPhase === 'reviewTrim' &&
           (stored.takesByQuestion[stored.questionIndex] ?? []).length === 0;
 
-        if (reviewTrimWithNothingToReview) {
+        // Session state must remain correct across a question set that has
+        // changed length since this session was persisted (CLAUDE.md) - a
+        // resumed session must never point at a question index that no
+        // longer exists. Only cachedQuestions (known synchronously) can be
+        // checked here; a background refresh landing on a shorter/reordered
+        // set later is handled the same way `videos.length < questions.length`
+        // already guards entry into the question flow everywhere else.
+        const questionIndexStillValid =
+          cachedQuestions != null && stored.questionIndex < cachedQuestions.length;
+
+        if (reviewTrimWithNothingToReview || !questionIndexStillValid) {
           setMainTab('home');
           setScreen('main');
         } else {
@@ -359,12 +411,15 @@ export function AppFlow() {
         return true;
       }
       if (screen === 'uploading') {
-        setMainTab('myVideos');
-        setScreen('main');
-        return true;
-      }
-      if (screen === 'confirmation') {
-        setMainTab('home');
+        // Pre-confirm: back means "stop reviewing the batch," same target
+        // as before. Once confirmed (sending or already sent - the
+        // "release" state), back means "go home," matching the old
+        // separate 'confirmation' screen's behavior.
+        if (uploadConfirmed) {
+          setMainTab('home');
+        } else {
+          setMainTab('myVideos');
+        }
         setScreen('main');
         return true;
       }
@@ -405,14 +460,25 @@ export function AppFlow() {
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', handler);
     return () => sub.remove();
-  }, [screen, phase, mainTab, playingVideo]);
+  }, [screen, phase, mainTab, playingVideo, uploadConfirmed]);
 
-  // Uploads every recorded segment for this session, sequentially, when
-  // the 'uploading' screen is entered - real presigned-URL upload +
-  // confirm per segment (see upload.ts). `uploadAttempt` exists only to
-  // let the retry button re-run this same effect without changing `screen`.
+  // Uploads every recorded segment for this session, sequentially, once
+  // confirmed - real presigned-URL upload + confirm per segment (see
+  // upload.ts). Deliberately doesn't change `screen` on completion any
+  // more (it's already 'uploading' throughout - see the Screen type and
+  // its render block) - only `hasSubmittedBatch` flips, which is what the
+  // render block reads to swap from "sending" to "sent" copy on the same
+  // screen. `uploadAttempt` exists only to let the retry button re-run
+  // this same effect without changing `screen`.
+  //
+  // Deliberately NOT gated on `screen` (and `screen` is deliberately not a
+  // dependency below) - ConfirmationScreen's "Back to Home" button is
+  // reachable while a batch is still genuinely sending, and tapping it
+  // must not silently abandon whatever hasn't uploaded yet. Gating on
+  // `screen` here would tear this effect down the moment `screen` left
+  // 'uploading', stopping the loop before the next segment even starts.
   useEffect(() => {
-    if (screen !== 'uploading' || !uploadConfirmed) return;
+    if (!uploadConfirmed) return;
     let cancelled = false;
     setUploadError(null);
 
@@ -426,7 +492,7 @@ export function AppFlow() {
         // resuming mid-upload not re-send everything from scratch.
         if (uploadedQuestionIndices.includes(video.questionIndex)) continue;
         try {
-          await uploadSegment(video);
+          await uploadSegment(video, questions);
         } catch (error) {
           if (!cancelled) {
             setUploadError(error instanceof Error ? error.message : 'Upload failed.');
@@ -441,7 +507,6 @@ export function AppFlow() {
       }
       if (!cancelled) {
         setHasSubmittedBatch(true);
-        setScreen('confirmation');
       }
     })();
 
@@ -449,7 +514,7 @@ export function AppFlow() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, uploadConfirmed, uploadAttempt]);
+  }, [uploadConfirmed, uploadAttempt]);
 
   // Mirrors uploadedQuestionIndices into the Uploading screen's 0-1
   // progress bar - a separate derived effect (rather than computed inline
@@ -471,35 +536,75 @@ export function AppFlow() {
 
     (async () => {
       try {
+        // No render job is ever created server-side while reel rendering
+        // is disabled for this build (see config.ts), so there's nothing
+        // to poll for - skip the request entirely rather than fetch an
+        // endpoint that will only ever return an empty list.
         const [segments, renderedVideos] = await Promise.all([
           fetchSegments(),
-          fetchRenderedVideos(),
+          ENABLE_REEL_RENDERING ? fetchRenderedVideos() : Promise.resolve([]),
         ]);
         if (cancelled) return;
 
-        const answers: AnswerRow[] = segments.map((segment) => {
-          const qIndex = segment.question_index - 1;
+        // Merge of local `videos` (recorded, possibly not yet uploaded) and
+        // server `segments` (confirmed-uploaded) - a take kept via Review &
+        // Trim must show as recorded here immediately, not only once
+        // upload.ts's confirm call has gone through (DECISIONS.md's
+        // "not recorded / recorded / uploaded" three pre-upload states).
+        // Built as a Map keyed by the app's own 0-based position so both
+        // sources can independently contribute a row for the same question.
+        const rowsByQuestionIndex = new Map<number, AnswerRow>();
+
+        // Local recordings first - the only source of truth before upload,
+        // and the only copy that exists at all for a question not yet sent.
+        for (const video of videos) {
+          const label = `Question ${video.questionIndex + 1}`;
+          rowsByQuestionIndex.set(video.questionIndex, {
+            questionIndex: video.questionIndex,
+            label,
+            play: { filePath: video.filePath, label },
+          });
+        }
+
+        // Server segments refine that once uploaded: prefer the local file
+        // only while it's still in sync with the server's updated_at
+        // (local-first cache pattern, API_CONTRACT.md) - e.g. a re-login
+        // on a different device with no local copy at all falls through to
+        // playback_url. `segment.question_index` is the backend's real
+        // index (see upload.ts), not this app's local position - resolved
+        // back via `questions`, not a `- 1` assumption that only happened
+        // to hold for 1-based-contiguous seed data.
+        for (const segment of segments) {
+          const qIndex = questions.findIndex((q) => q.index === segment.question_index);
+          if (qIndex === -1) continue; // question no longer in the current set
           const label = `Question ${segment.question_index}`;
           const local = videos.find((v) => v.questionIndex === qIndex);
           const useLocal = !!local && checkAndSyncCache(qIndex, segment.updated_at);
-          return {
+          rowsByQuestionIndex.set(qIndex, {
             questionIndex: qIndex,
             label,
             play: useLocal
               ? { filePath: local!.filePath, label }
               : { filePath: segment.playback_url, label },
-          };
-        });
+          });
+        }
 
-        const branded: BrandedRow[] = renderedVideos.map((rv) => {
-          const label = `Question ${rv.question_index}`;
-          return {
-            questionIndex: rv.question_index - 1,
-            label,
-            status: renderedUserStatus(rv.status),
-            play: rv.playback_url ? { filePath: rv.playback_url, label } : null,
-          };
-        });
+        const answers: AnswerRow[] = Array.from(rowsByQuestionIndex.values());
+
+        // Same real-index resolution as the segments merge above - not a
+        // `- 1` assumption.
+        const branded: BrandedRow[] = renderedVideos
+          .map((rv) => {
+            const qIndex = questions.findIndex((q) => q.index === rv.question_index);
+            const label = `Question ${rv.question_index}`;
+            return {
+              questionIndex: qIndex,
+              label,
+              status: renderedUserStatus(rv.status),
+              play: rv.playback_url ? { filePath: rv.playback_url, label } : null,
+            };
+          })
+          .filter((row) => row.questionIndex !== -1);
 
         setAnswerRows(answers);
         setBrandedRows(branded);
@@ -564,18 +669,32 @@ export function AppFlow() {
   // this question's takes list (capped at MAX_TAKES, oldest dropped) and
   // always routes into Review & Trim, which is now mandatory after every
   // take rather than a conditional "alignment broke" overlay.
-  function handleRecordingFinished(tempFilePath: string) {
+  function handleRecordingFinished(tempFilePath: string, format: CaptureFormatInfo) {
     const fileName = `question-${questionIndex + 1}-${Date.now()}.mp4`;
     const durablePath = moveRecordingToDurableStorage(tempFilePath, fileName);
     const durationSeconds = recordingStartedAtRef.current
       ? (Date.now() - recordingStartedAtRef.current) / 1000
       : 0;
+    // Gathered once, here, for later analysis of what real distributor
+    // phones produce (CLAUDE.md) - only exists at capture time, can't be
+    // reconstructed afterwards. File size is read from the moved, durable
+    // copy (actual bytes on disk), not estimated.
+    const device = getDeviceInfo();
     const newTake: RecordedVideo = {
       id: `q${questionIndex}-${Date.now()}`,
       label: `Question ${questionIndex + 1}`,
       filePath: durablePath,
       questionIndex,
       durationSeconds,
+      captureMetadata: {
+        fileSizeBytes: new File(durablePath).size,
+        width: format.width ?? null,
+        height: format.height ?? null,
+        fps: format.fps ?? null,
+        codec: format.codec,
+        deviceModel: device.model,
+        osVersion: device.osVersion,
+      },
     };
 
     setTakesByQuestion((prev) => {
@@ -637,7 +756,7 @@ export function AppFlow() {
     // Phase 4b) already carries the "Send all five" CTA - no separate
     // completion screen needed any more. Every other question: the
     // post-keep prompt.
-    if (questionIndex + 1 >= TOTAL_QUESTIONS) {
+    if (questionIndex + 1 >= questions.length) {
       setMainTab('home');
       setScreen('main');
     } else {
@@ -754,7 +873,20 @@ export function AppFlow() {
   if (screen === 'login') {
     return (
       <View style={{ flex: 1 }}>
-        <LoginScreen onLoggedIn={() => setScreen('onboarding')} />
+        <LoginScreen
+          onLoggedIn={() => {
+            // Fresh login (as opposed to a restored session, handled in the
+            // launch-time effect above) - same cache-first pattern: show
+            // cached questions immediately if any exist for this device,
+            // then refresh in the background.
+            const cachedQuestions = getCachedQuestions();
+            if (cachedQuestions && cachedQuestions.length > 0) {
+              setQuestions(cachedQuestions);
+            }
+            loadQuestions();
+            setScreen('onboarding');
+          }}
+        />
         {__DEV__ && (
           <DevEntryMenu
             items={[
@@ -801,7 +933,7 @@ export function AppFlow() {
         onContinue={enterNextQuestion}
         onBack={() => setScreen('main')}
         questionNumber={videos.length + 1}
-        totalQuestions={TOTAL_QUESTIONS}
+        totalQuestions={questions.length}
       />
     );
   }
@@ -809,7 +941,26 @@ export function AppFlow() {
   if (screen === 'main') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        {mainTab === 'home' && (
+        {mainTab === 'home' && questions.length === 0 && questionsError ? (
+          // Only reachable with no cache and a failed fetch (loadQuestions
+          // keeps the cache showing on failure otherwise) - a distributor
+          // on patchy data must never see a blank Home, but there's
+          // genuinely nothing to show without at least one of the two.
+          <View style={styles.questionsErrorContainer}>
+            <Text style={[styles.questionsErrorTitle, { color: colors.text }]}>
+              Couldn't load your questions
+            </Text>
+            <Text style={[styles.questionsErrorSubtitle, { color: colors.textMuted }]}>
+              {questionsError}
+            </Text>
+            <Button
+              label="Try again"
+              onPress={loadQuestions}
+              variant="secondary"
+              style={{ marginTop: spacing.lg }}
+            />
+          </View>
+        ) : mainTab === 'home' && (
           <HomeScreen
             // Mock identity - no real account backend wired yet (Phase
             // 4f/7), matches the identity-confirmation mock default.
@@ -818,15 +969,15 @@ export function AppFlow() {
             distributorName="Mahesh Agrawal"
             businessName="Agrawal Traders"
             city="Nagpur"
-            totalQuestions={TOTAL_QUESTIONS}
+            totalQuestions={questions.length}
             questionsAnswered={videos.length}
             hasSubmittedBatch={hasSubmittedBatch}
             renderedReadyCount={brandedRows.filter((b) => b.status === 'ready').length}
             nextQuestion={
-              videos.length < TOTAL_QUESTIONS
+              videos.length < questions.length
                 ? {
                     index: videos.length + 1,
-                    text: PLACEHOLDER_QUESTIONS[videos.length] ?? '',
+                    text: questions[videos.length]?.text ?? '',
                     estimate: '45–60 second answer · about 3 minutes',
                   }
                 : null
@@ -847,9 +998,10 @@ export function AppFlow() {
             loading={myVideosLoading}
             error={myVideosError}
             onRetryLoad={() => setMyVideosRefreshToken((n) => n + 1)}
-            totalQuestions={TOTAL_QUESTIONS}
+            totalQuestions={questions.length}
             answers={answerRows}
             branded={brandedRows}
+            reelRenderingEnabled={ENABLE_REEL_RENDERING}
             onPressAnswer={(row) => setPlayingVideo(row.play)}
             onPressBranded={(row) => row.play && setPlayingVideo({ ...row.play, celebratory: true })}
             onRetake={(qIndex) => setPendingRetake(qIndex)}
@@ -886,23 +1038,42 @@ export function AppFlow() {
   }
 
   if (screen === 'uploading') {
+    // Once confirmed and no error is blocking it, this becomes the
+    // "release" screen immediately - not only once the batch finishes -
+    // so the live progress bar (and, later, the completion message) has
+    // something real to show instead of a static screen reached only
+    // after there's nothing left to report. An error always falls back
+    // to UploadingScreen's own retry/send-later UI, confirmed or not.
+    if (uploadConfirmed && !uploadError) {
+      return (
+        <ConfirmationScreen
+          // Not `!hasSubmittedBatch` - that flag means "submitted at
+          // least once, ever" and never resets, so it stays true across a
+          // retake's re-upload and would wrongly skip straight to "done"
+          // on a batch that's actually still sending. This is the actual
+          // per-run signal the upload effect below drives.
+          uploading={uploadedQuestionIndices.length < videos.length}
+          progress={uploadProgress}
+          reelsEnabled={ENABLE_REEL_RENDERING}
+          onDone={() => {
+            setMainTab('home');
+            setScreen('main');
+          }}
+        />
+      );
+    }
+
     return (
       <UploadingScreen
         items={videos.map((v) => ({
           questionIndex: v.questionIndex,
           label: `Question ${v.questionIndex + 1}`,
-          questionText: PLACEHOLDER_QUESTIONS[v.questionIndex],
+          questionText: questions[v.questionIndex]?.text ?? '',
           durationSeconds: v.durationSeconds,
         }))}
-        uploading={uploadConfirmed}
-        progress={uploadProgress}
         error={uploadError}
         onConfirm={() => setUploadConfirmed(true)}
         onRetry={() => setUploadAttempt((n) => n + 1)}
-        onGoHome={() => {
-          setMainTab('home');
-          setScreen('main');
-        }}
         onSendLater={() => {
           setMainTab('home');
           setScreen('main');
@@ -924,21 +1095,14 @@ export function AppFlow() {
     );
   }
 
-  if (screen === 'confirmation') {
-    return (
-      <ConfirmationScreen
-        onDone={() => {
-          setMainTab('home');
-          setScreen('main');
-        }}
-      />
-    );
-  }
-
   // screen === 'question'
-  const questionText = PLACEHOLDER_QUESTIONS[questionIndex] ?? '';
-  const talkingPoints = PLACEHOLDER_TALKING_POINTS[questionIndex] ?? [];
-  const prompts = PLACEHOLDER_PROMPTS[questionIndex] ?? [];
+  const currentQuestion = questions[questionIndex];
+  const questionText = currentQuestion?.text ?? '';
+  // No backend equivalent yet for either of these (see the comment near
+  // `questions` state above) - both screens already degrade cleanly with
+  // an empty array.
+  const talkingPoints: string[] = [];
+  const prompts: string[] = [];
   // Retake is always a cold entry (no continuous camera session behind
   // it) - full lock regardless of which question index it targets, same
   // as question 1's first-time entry.
@@ -950,7 +1114,8 @@ export function AppFlow() {
     return (
       <QuestionBriefScreen
         questionNumber={questionIndex + 1}
-        totalQuestions={TOTAL_QUESTIONS}
+        totalQuestions={questions.length}
+        questionId={currentQuestion?.id}
         questionText={questionText}
         talkingPoints={talkingPoints}
         onStartRecording={enterCameraCheck}
@@ -1073,7 +1238,7 @@ export function AppFlow() {
       {(phase === 'cameraCheck' || phase === 'countdown') && (
         <CameraCheckScreen
           questionNumber={questionIndex + 1}
-          totalQuestions={TOTAL_QUESTIONS}
+          totalQuestions={questions.length}
           autoStart={autoStart}
           onToggleAutoStart={setAutoStart}
           checksReady={checksReady}
@@ -1086,7 +1251,7 @@ export function AppFlow() {
       {phase === 'recording' && (
         <RecordingScreen
           questionNumber={questionIndex + 1}
-          totalQuestions={TOTAL_QUESTIONS}
+          totalQuestions={questions.length}
           questionText={questionText}
           prompts={prompts}
           isRecording={phase === 'recording'}
@@ -1122,5 +1287,22 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  questionsErrorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  questionsErrorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  questionsErrorSubtitle: {
+    fontSize: 14.5,
+    textAlign: 'center',
+    lineHeight: 21,
   },
 });

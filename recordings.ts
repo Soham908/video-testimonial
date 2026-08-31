@@ -1,5 +1,21 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+// What the device actually captured, gathered once at record-finish time
+// (see CameraAlignment.tsx's CaptureFormatInfo + AppFlow.tsx's
+// handleRecordingFinished). This only exists at capture time and can't be
+// reconstructed afterwards, so it's carried on the take/segment from here
+// through to the confirm call in upload.ts. `width`/`height`/`fps` are
+// null when the underlying session didn't report a value.
+export interface CaptureMetadata {
+  fileSizeBytes: number;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  codec: string;
+  deviceModel: string;
+  osVersion: string;
+}
+
 export interface RecordedVideo {
   id: string;
   label: string;
@@ -22,6 +38,10 @@ export interface RecordedVideo {
   trimStartSeconds?: number;
   trimEndSeconds?: number;
   removeLastTwoSeconds?: boolean;
+  // Optional because a session persisted before this field existed
+  // (see session.ts) can be restored without it - never absent on a take
+  // recorded going forward.
+  captureMetadata?: CaptureMetadata;
 }
 
 const RECORDINGS_DIR_NAME = 'recordings';

@@ -2,7 +2,10 @@
 
 Scope: only the endpoints the mobile app actually needs to call. The backend
 has other routes (a temporary admin/test-only sentiment endpoint, a health
-check) that are deliberately left out — not part of this contract.
+check) that are deliberately left out — not part of this contract. The
+sentiment endpoint (`src/routes/dev.ts`) is gated behind `ENABLE_DEV_ENDPOINTS`
+(default off) and isn't registered at all unless that's explicitly set —
+the mobile app never calls it and never should.
 
 Every shape below is copied directly from the real route handlers in the
 backend repo (`src/routes/login.ts`, `src/routes/me.ts`,
@@ -37,6 +40,8 @@ response shapes below will change when that happens, only the base URL.
 - Success `200`: `{ "token": string }` — a JWT, 30-day expiry.
 - Failure `401`: `{ "error": "Invalid username or password" }`
 - Failure `400` (missing/wrong-typed fields): `{ "error": "username and password are required" }`
+- Failure `429` (rate-limited — more than 10 attempts from the same IP in 15
+  minutes): `{ "error": "Too many login attempts, please try again later" }`
 
 Every request after login must include:
 ```
@@ -49,6 +54,35 @@ before any handler logic runs.
 - Success `200`: `{ "auth": { "distributor_id": string, "client_id": string } }`
   — note it's nested under `auth`, not flat.
 
+## Questions
+
+`GET /distributors/me/questions`
+- Requires auth. Scoped to the logged-in distributor's client automatically.
+- Optional query param `?language=en|hi|mr` — overrides the distributor's
+  stored `language_pref` for this call only (nothing is written back to the
+  distributor record). Omit it to get `language_pref`'s language, same as
+  before this param existed. An unsupported/missing value falls back to
+  English, same fallback `language_pref` itself already gets.
+- Success `200`: `{ "questions": [ { "id", "index", "is_branded", "text", "vo_playback_url" }, ... ] }`
+- Ordered by `index`. **Count and content vary per client** — no fixed
+  number, no fixed text. Don't hardcode a question list or count in the app;
+  always drive the recording flow off this response.
+- **`id` is stable across reorders/edits** — use it to key anything that
+  needs to survive the question set changing shape (e.g. bundled
+  per-question audio keyed by id, not by `index` or array position).
+  `index` is ordering/display only, not a safe identity key: it isn't
+  guaranteed to stay 1-based/contiguous forever, even though it happens to
+  be for every client seeded today.
+- `text` and `vo_playback_url` are already localized server-side to the
+  requested/stored language — the app doesn't need to handle language
+  selection itself, just display/play what comes back.
+- `vo_playback_url` is a fresh presigned S3 URL (1-hour expiry), same
+  caching rules as `playback_url` elsewhere in this doc (don't cache the URL
+  itself).
+- Call this before starting the recording flow — `question_index` values
+  used in the upload endpoints below must be one of the `index` values this
+  returns for the current client, not an assumed 1–N range.
+
 ## Recording upload flow
 
 Two-step: get a presigned URL, PUT the video to it directly, then tell the
@@ -56,12 +90,15 @@ backend it's done.
 
 `POST /segments/upload-url`
 - Requires auth.
-- Body: `{ "question_index": number }` — integer 1–5.
+- Body: `{ "question_index": number }` — must be an `index` value returned by
+  `GET /distributors/me/questions` for this client (not an assumed range).
 - Success `200`: `{ "upload_url": string, "video_key": string }`
 - **Save `video_key` from this response** — it must be sent back unchanged
   in the `confirm` call below. It's an opaque string; don't try to construct
   or parse it.
-- Failure `400`: `{ "error": "question_index must be an integer between 1 and 5" }`
+- Failure `400`: `{ "error": "question_index must be a positive integer" }`
+  (malformed) or `{ "error": "No question configured at index N for this client" }`
+  (well-formed but not one of this client's questions).
 
 Then: `PUT` the raw video file bytes directly to `upload_url` (this goes
 straight to S3, not to this backend). No specific headers are required by
@@ -69,16 +106,29 @@ the signed URL itself.
 
 `POST /segments/confirm`
 - Requires auth.
-- Body: `{ "question_index": number, "video_key": string, "duration": number }`
-  — `video_key` is exactly what `upload-url` returned; `duration` is the
-  clip length in seconds (a plain number, not a string).
+- Body: `{ "question_index": number, "duration": number, "capture"?: object }`
+  — `duration` is the clip length in seconds (a plain number, not a
+  string), must be > 0. `capture` is optional and stored as-is, not
+  validated field-by-field: `{ "file_size_bytes": number, "width":
+  number|null, "height": number|null, "fps": number|null, "codec": string,
+  "device_model": string, "os_version": string }` — what the device
+  actually captured, kept for later analysis of real distributor phones. A
+  missing or malformed `capture` never fails the confirm call.
+- **`video_key` is no longer read from the request body** — the backend
+  derives it itself from the token's `distributor_id`/`client_id` plus
+  `question_index` (same value `upload-url` already returned you, just no
+  longer trusted from the client). Still fine to send it, it's just ignored
+  now — this was a security fix (a client could otherwise confirm a key
+  belonging to a different distributor), not a shape change you need to act
+  on.
 - Success `200`: `{ "segment": { "id", "distributor_id", "question_index", "video_key", "status", "duration_seconds", "created_at", "updated_at" } }`
   — the app doesn't need to do anything with this beyond knowing it
   succeeded; the same data comes back (fresher) from the read endpoints
   below.
-- Failure `400`: `{ "error": "question_index must be an integer between 1 and 5" }`,
-  `{ "error": "video_key is required" }`, or `{ "error": "duration is required" }`
-  depending on which field is missing/wrong-typed.
+- Failure `400`: `{ "error": "question_index must be a positive integer" }`,
+  `{ "error": "No question configured at index N for this client" }`, or
+  `{ "error": "duration must be a positive number" }` depending on which
+  field is missing/invalid.
 - Failure `404` (upload didn't actually reach S3 — safe to retry, nothing
   was written): `{ "error": "video_not_found", "message": "The uploaded video could not be found in storage. Please retry the upload." }`
 - Calling `confirm` again for the same `question_index` (a retake) updates
@@ -89,7 +139,7 @@ the signed URL itself.
 
 Both scoped to the logged-in distributor automatically (from the token) —
 no ID needs to be passed in.
-
+`
 `GET /distributors/me/segments`
 - Success `200`: `{ "segments": [ { "question_index", "status", "playback_url", "duration_seconds", "created_at", "updated_at" }, ... ] }`
 - **This is an object with a `segments` key, not a bare array.**
@@ -121,14 +171,22 @@ no ID needs to be passed in.
 
 ## Known, deliberate constraints — not bugs, don't build around them differently
 
-- **Only question indices 1–3 are active right now.** `upload-url` and
-  `confirm` will accept any integer 1–5, but questions 4 and 5 have no
-  render configuration yet and will fail at the render step if used — this
-  matches the app's own `PLACEHOLDER_QUESTIONS`, where 4 and 5 are already
-  commented out. Keep both sides in sync if either changes.
+- **Questions are backend-configured per client now, not hardcoded in the
+  app.** All questions returned by `GET /distributors/me/questions` are
+  fully active — record and render for any of them. Don't port the app's
+  old `PLACEHOLDER_QUESTIONS` list forward; drive the question set (text,
+  count, order, VO audio) entirely from that endpoint's response.
 - **Rendered reels currently come out at a fixed duration** regardless of
   the source clip's actual length — a known limitation being fixed on the
   backend, not something the frontend needs to account for.
+- **Reel rendering is disabled for this build** (`ENABLE_REEL_RENDERING` env
+  var — the branded template isn't ready yet). While it's off,
+  `transcribe_segment` never queues `render_segment`, so
+  `GET /distributors/me/rendered-videos` always returns
+  `{ "rendered_videos": [] }` — expected, not a bug. `Segment.status` still
+  reaches `transcribed` normally; there's no separate "render skipped"
+  status. The frontend has its own independent
+  `EXPO_PUBLIC_ENABLE_REEL_RENDERING` flag — keep both in sync.
 - **Error responses are always `{ "error": string }`**, sometimes with an
   additional `message` field for user-facing detail (only currently true
   for the `video_not_found` case above).

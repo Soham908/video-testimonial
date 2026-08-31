@@ -6,7 +6,6 @@ import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
-import { ProgressBar } from '../components/ui/ProgressBar';
 import { PopupSheet } from '../components/ui/Modal';
 
 export interface UploadItem {
@@ -19,15 +18,9 @@ export interface UploadItem {
 
 interface Props {
   items: UploadItem[];
-  /** True once the user has confirmed and the real upload sequence is running. */
-  uploading: boolean;
-  // 0-1, driven by segment count (n of N uploaded), not upload bytes -
-  // plain fetch doesn't expose byte-level progress, see upload.ts.
-  progress: number;
   error: string | null;
   onConfirm: () => void;
   onRetry: () => void;
-  onGoHome: () => void;
   onSendLater: () => void;
   /** Row tap - back to that question's review/trim (design 7a). */
   onReviewItem?: (questionIndex: number) => void;
@@ -40,19 +33,19 @@ function formatTime(totalSeconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// Design 7a/7b/7c as one continuous screen: a plain list of everything
-// going out (nothing individually selectable), a confirmation pop-up, then
-// - once confirmed - the button itself becomes the progress bar and the
-// list stops being interactive. No per-question upload any more; this is
-// always the whole batch (DECISIONS.md).
+// Design 7a/7b: a plain list of everything going out (nothing individually
+// selectable) plus a confirmation pop-up. No per-question upload any more;
+// this is always the whole batch (DECISIONS.md). Once confirmed, AppFlow
+// stops rendering this component altogether in favor of ConfirmationScreen
+// (design 7c) - which is where the live progress bar and "sending vs.
+// done" messaging now live, so that screen has something to show instead
+// of being reached only once there's nothing left to report. This
+// component only reappears if an error happens (Try again / Send later).
 export function UploadingScreen({
   items,
-  uploading,
-  progress,
   error,
   onConfirm,
   onRetry,
-  onGoHome,
   onSendLater,
   onReviewItem,
   onBack,
@@ -85,13 +78,11 @@ export function UploadingScreen({
           ‹ Back to My Videos
         </Text>
       )}
-      <Text style={styles.title}>
-        {uploading ? 'Uploading' : 'Sending'} your answers
-      </Text>
+      <Text style={styles.title}>Sending your answers</Text>
       <Text style={styles.subtitle}>
         {items.length} question{items.length === 1 ? '' : 's'}, going together.
       </Text>
-      {!uploading && <Text style={styles.hint}>Tap a video to review it again.</Text>}
+      <Text style={styles.hint}>Tap a video to review it again.</Text>
 
       <ScrollView style={styles.list} contentContainerStyle={{ gap: spacing.xs + 1 }}>
         {items.map((item) => {
@@ -109,10 +100,10 @@ export function UploadingScreen({
                   {item.durationSeconds != null ? ` · ${formatTime(item.durationSeconds)}` : ''}
                 </Text>
               </View>
-              {onReviewItem && !uploading && <Text style={styles.rowChevron}>›</Text>}
+              {onReviewItem && <Text style={styles.rowChevron}>›</Text>}
             </>
           );
-          return onReviewItem && !uploading ? (
+          return onReviewItem ? (
             <Pressable
               key={item.questionIndex}
               style={styles.row}
@@ -121,36 +112,24 @@ export function UploadingScreen({
               {rowContent}
             </Pressable>
           ) : (
-            <View key={item.questionIndex} style={[styles.row, uploading && styles.rowMuted]}>
+            <View key={item.questionIndex} style={styles.row}>
               {rowContent}
             </View>
           );
         })}
-        {!uploading && totalSeconds > 0 && (
+        {totalSeconds > 0 && (
           <Text style={styles.sizeNote}>
             ✓ About {formatTime(totalSeconds)} of video in total. Your videos stay on your phone as well.
           </Text>
         )}
       </ScrollView>
 
-      {uploading ? (
-        <View style={styles.progressArea}>
-          <View style={styles.progressButton}>
-            <ProgressBar progress={progress} onSolid />
-          </View>
-          <Text style={styles.guidance}>
-            Keep the internet on and don't close the app - it finishes on its own.
-          </Text>
-          <Button label="Back to Home" onPress={onGoHome} variant="quiet" />
-        </View>
-      ) : (
-        <View style={{ gap: spacing.sm }}>
-          <Button label="Send all" onPress={() => setConfirming(true)} />
-          <Text style={styles.notNow} onPress={onSendLater}>
-            Not now
-          </Text>
-        </View>
-      )}
+      <View style={{ gap: spacing.sm }}>
+        <Button label="Send all" onPress={() => setConfirming(true)} />
+        <Text style={styles.notNow} onPress={onSendLater}>
+          Not now
+        </Text>
+      </View>
 
       <PopupSheet visible={confirming} onDismiss={() => setConfirming(false)}>
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
@@ -198,7 +177,6 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       paddingVertical: spacing.sm + 2,
       paddingHorizontal: spacing.md,
     },
-    rowMuted: { opacity: 0.6 },
     rowThumb: {
       width: 44,
       height: 52,
@@ -220,13 +198,5 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       padding: spacing.md,
     },
     confirmReassuranceRow: { ...typography.caption, fontSize: 14, color: colors.text },
-    progressArea: { gap: spacing.sm },
-    progressButton: {
-      backgroundColor: colors.accent,
-      borderRadius: radius.lg,
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-    },
-    guidance: { ...typography.caption, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
   });
 }
