@@ -1,101 +1,130 @@
-# Session handoff — 2026-08-31
+# Session handoff — 2026-09-01
 
 Continuity doc for picking this up in a different chat session. Snapshot of
 today's work, not a permanent project doc — fold the useful parts into
 `DECISIONS.md`/`DEV_NOTES.md` once absorbed, same pattern as the previous
-version of this file.
+version of this file (2026-08-31, superseded by this one).
 
-Repo state at time of writing: everything below is committed on
-`feature/ui-revamp-v2` (not merged to `main`, not pushed to `origin` — ask
-before pushing). The sibling backend repo (`C:\dev\testimonial-backend`) had
-its own matching commit made in the same session; see its
-`SESSION_HANDOFF.md` for that side.
+Repo state at time of writing: **everything below is uncommitted** on
+`feature/ui-revamp-v2` (working tree only — nothing staged or committed this
+session). The one backend change (`testimonial-backend/src/routes/
+segments.ts`) is also uncommitted in that sibling repo. A separate peer
+session was concurrently working elsewhere in the backend repo today
+(worker/jobs/dashboard-contract work, unrelated to this) — don't assume
+everything showing as changed there came from this session.
 
 ## What got built today, roughly in order
 
-1. **Capture pipeline pinned** (`CameraAlignment.tsx`) — 1080×1920, 30fps,
-   3Mbps H.264 (was defaulting to whatever the device picked, ~14Mbps/98MB
-   per minute). Logs the actually-negotiated format so odd devices can be
-   diagnosed from field logs later.
-2. **Capture metadata** (`deviceInfo.ts` new, `recordings.ts`, `upload.ts`) —
-   file size/resolution/fps/codec/device model/OS version gathered at
-   record-finish time, sent to `/segments/confirm` as an optional `capture`
-   object. Backend stores it as-is (`Segment.capture_metadata`, JSONB).
-3. **Reel-rendering feature flag** (`config.ts` new) —
-   `EXPO_PUBLIC_ENABLE_REEL_RENDERING`, default off (backend's independent
-   `ENABLE_REEL_RENDERING` mirrors this — **keep both in sync**, they don't
-   read each other). When off: My Videos never calls
-   `/rendered-videos`, hides the branded section entirely instead of
-   showing its "will appear here" empty state, and the post-upload
-   confirmation screen doesn't promise a reel notification that'll never
-   come.
-4. **Dynamic per-client questions** (`questions.ts` new) — removed
-   `PLACEHOLDER_QUESTIONS`/`TOTAL_QUESTIONS`/talking-points/prompts
-   entirely. Questions fetch after login from
-   `GET /distributors/me/questions`, cache locally
-   (`questions-cache.json`), show cached data immediately and refresh in
-   the background; error only surfaces with no cache *and* a failed fetch.
-   VO audio re-keyed from index (`question1.mp3`) to the backend's real
-   question `id` (`q_<id>_en.mp3`) in `QuestionBriefScreen.tsx` — the 5
-   bundled files are keyed to the *actual* seeded internal-test-client
-   question ids (confirmed live against the running backend, not guessed).
-   Session restore bounds-checks a resumed `questionIndex` against the
-   current question count. `upload.ts` sends the real backend
-   `question_index` per question (`questions[position].index`) instead of
-   assuming `position + 1` — that assumption held for today's seed data but
-   isn't guaranteed by the contract.
-5. **My Videos bug fix** — a locally recorded (not-yet-uploaded) take never
-   showed as recorded because the screen only read from confirmed server
-   segments. Now merges local `videos` state with server segments so a kept
-   take shows up immediately.
-6. **Upload → Confirmation flow rework** (`UploadingScreen.tsx`,
-   `ConfirmationScreen.tsx`, `AppFlow.tsx`) — the "your answers are on their
-   way / keep your internet on" screen used to only appear *after* the
-   upload had already finished, making that copy false. It now appears the
-   moment you confirm, shows a live progress bar while actually sending,
-   and switches to "Upload done" once it is. Also decoupled the upload
-   effect from `screen` state entirely — "Back to Home" during upload no
-   longer silently abandons whatever hasn't sent yet; it keeps running in
-   the background (and survives a force-quit/relaunch) regardless of which
-   screen is showing.
+1. **Recording screen rework** (`RecordingScreen.tsx`, `CameraCheckScreen.tsx`,
+   new `questionAudio.ts`, new `preferences.ts`):
+   - The 3-2-1 countdown (on Camera Check) now reads the question aloud
+     using the same bundled per-question VO audio Question Brief's "Read to
+     me" already used — that audio map was lifted out of
+     `QuestionBriefScreen.tsx` into a shared `questionAudio.ts` so both
+     screens key off one place.
+   - New "Read question aloud" toggle next to "Auto start" on Camera Check,
+     default on, persisted across launches via `expo-secure-store`
+     (`preferences.ts`, same mechanism `theme/ThemeContext.tsx` already
+     uses for palette/font — this is a standing device preference, not
+     session state, so it deliberately isn't in `session.ts`).
+   - Audio is explicitly stopped the instant the countdown ends and
+     recording actually starts (not left to fade/bleed) — CLAUDE.md's "no
+     simultaneous playback + record" still holds.
+   - Question text moved to the top of `RecordingScreen`, larger/bolder,
+     with a dark scrim behind it (it's no longer backed by the bottom bar).
+   - On-screen prompts now pull from the question's real `talking_points`
+     (see #2) instead of an always-empty placeholder array; given more
+     contrast/weight via a new `emphasis` prop on `Chip`, kept at the
+     bottom.
+2. **`talking_points` wired end-to-end** (`questions.ts`, `AppFlow.tsx`,
+   `API_CONTRACT.md`) — added to `QuestionDto` (`string[] | null`) and
+   threaded into both `QuestionBriefScreen`'s "a good answer usually
+   covers" and `RecordingScreen`'s prompts, replacing the hardcoded empty
+   arrays from yesterday. The backend already had this field live
+   (confirmed against `src/services/questions.ts` in the sibling repo) —
+   nothing here was guessed.
+3. **Guide-circle recalibration** (`alignment.ts`) — `GUIDE_TOP_OFFSET`
+   150→230. The guide oval sat noticeably above true screen-center, forcing
+   an unnatural downward phone tilt to line up a face in it. Confirmed with
+   Soham before changing (he was about to test on-device anyway) — treat
+   230 as a starting estimate, **not yet verified against real footage**.
+4. **Trim wiring, review screen → upload → backend** (`AppFlow.tsx`,
+   `upload.ts`, `session.ts`, and `testimonial-backend/src/routes/
+   segments.ts`):
+   - New `trimAdjusted` flag in `AppFlow.tsx` tracks whether a trim handle
+     was actually dragged (trim start/end state is pre-seeded to the full
+     0..duration window regardless, so this is the only way to tell
+     "never touched" apart from "chose the full clip on purpose"). Only
+     carries trim data onto the finalized take when true; reset alongside
+     the existing trim-state resets (new take finished, different take
+     selected) so a retake never inherits the prior take's window.
+     Persisted in `session.ts` (optional field, same backward-compat
+     convention as `captureMetadata`).
+   - `upload.ts` sends `trim_start_ms`/`trim_end_ms` in the `/segments/
+     confirm` payload — explicit `null` (not `0`/full-duration) when
+     untouched, real millisecond values otherwise.
+   - **Backend confirm route now actually reads these fields** — was a
+     known gap as of this morning (DB columns + downstream ffmpeg consumer
+     existed, but the route silently dropped them). Now validates
+     (non-negative number or null; `trim_end_ms > trim_start_ms` when both
+     are numbers) and writes them into the `segment.upsert`, following the
+     same omit-vs-null convention `capture` already used (field omitted
+     entirely from the request → leaves existing DB value alone; explicit
+     `null` → clears to "full clip"). This closes the loop — trim now
+     reaches storage.
+5. **UI string extraction** (new `i18n/strings.en.json`) — every
+   user-facing string in the app (buttons, labels, titles, errors,
+   instructions) pulled into one key-value JSON file, organized by
+   screen/purpose, ~288 strings across 25 sections. Explicitly excludes the
+   5 question texts + talking points (DB-sourced, already trilingual) and
+   two `__DEV__`-only screens (theme switcher, dev nav menu). Uses
+   `{{placeholder}}` tokens for dynamic content and separate singular/
+   plural keys where English's grammar forced it. **No i18n library wired
+   yet** — this is extraction only, the app still reads strings from source
+   files, not from this JSON. A `_meta` block inside the file itself
+   explains the conventions for non-technical reviewers.
 
 ## Known gaps / things to verify next
 
-- **Not tested on a real device this session** — everything above was
-  verified via `tsc --noEmit` (clean) and against the live backend
-  (`192.168.1.7:3000`) for the network-facing pieces, but no on-device
-  recording/upload pass happened today. Do one before trusting the capture
-  pipeline or the upload/confirmation flow changes in the field.
-- **Talking points / on-screen recording prompts have no backend field.**
-  `QuestionBriefScreen`'s "a good answer usually covers" section and
-  `RecordingScreen`'s on-screen prompts both now degrade to empty — nobody
-  designed a replacement, this is a real content gap, not a bug.
-- **iOS device model is a real, permanent gap** (`deviceInfo.ts`) — core
-  React Native exposes no device-model identifier on iOS at all (only
-  `interfaceIdiom`), so `capture.device_model` degrades there. Android is
-  fully populated (manufacturer + model + OS version/API level).
-- **7-question restructuring** (3 → branded reel, 4 → survey-only) is still
-  blocked on a decision from Soham's boss — unchanged from before. Worth
-  noting: today's dynamic-questions work means the *count* is no longer a
-  code blocker either way (nothing assumes 5 anywhere any more) — only the
-  merged-vs-separate-reels product decision is still open.
-- **Two independent `ENABLE_REEL_RENDERING` flags** (frontend
-  `EXPO_PUBLIC_ENABLE_REEL_RENDERING`, backend `ENABLE_REEL_RENDERING`)
-  don't validate against each other. If someone flips one without the
-  other, the symptom is subtle (e.g. frontend polls for reels that the
-  backend will never render, or vice versa) — worth a periodic manual check
-  until/unless this becomes one real config source.
+- **Nothing from today has been committed** in either repo — do that
+  deliberately (probably as a few separate commits given the mix of
+  unrelated work: recording-screen UX, trim wiring, string extraction)
+  rather than one giant commit, and only when asked.
+- **Not tested on a real device this session** — same caveat as yesterday,
+  now compounded: the guide-circle offset (230), the countdown VO timing/
+  cutoff, and the new question-text/prompts layout all need an on-device
+  pass before trusting them. Soham was doing a parallel record-and-check-
+  file-size pass during this session but no findings came back into this
+  conversation.
+- **`GUIDE_TOP_OFFSET = 230` is an estimate**, not a measurement — derived
+  from typical chrome heights on an assumed ~850dp-tall reference screen,
+  explicitly flagged as needing tuning against real footage across device
+  sizes (see the comment in `alignment.ts`).
+- **`i18n/strings.en.json` is a snapshot** — if any UI copy changes in
+  future sessions, this file will drift out of sync unless someone
+  remembers to update it by hand (no build-time check ties them together
+  yet, since there's no i18n library wired).
+- **Talking points only exist in English today** — `null` for hi/mr per the
+  backend's own `localizeQuestion` (translation is separate, tracked work).
+  Both `QuestionBriefScreen` and `RecordingScreen` already degrade to "no
+  prompts shown" for that case, not an error.
+- **Two independent `ENABLE_REEL_RENDERING` flags** (unchanged from
+  yesterday) — still worth a periodic manual check until/unless this
+  becomes one real config source.
+- **7-question restructuring** (unchanged from yesterday) — still blocked
+  on a decision from Soham's boss.
 
 ## What to do first in a new chat session
 
-- `git log -1` to confirm you're looking at today's commit, then read this
-  file plus the backend's `SESSION_HANDOFF.md` for the fuller narrative
-  (design reasoning, what was checked, what was explicitly deferred).
-- If continuing the security audit work (dev-endpoint gating, ownership
-  checks) — that all landed backend-side today; see that repo's handoff for
-  what's left there (nothing frontend-side was needed for it, per the
-  original ask).
-- If picking up an on-device verification pass: record 60 seconds on an
-  Android device and check file size (should be ~20-24MB, not ~98MB), that
-  My Videos shows the take before upload, and that the upload/confirmation
-  screen shows live progress rather than jumping straight to "done."
+- `git status` in both repos to confirm you're looking at this session's
+  uncommitted work (nothing was committed), then read this file.
+- If continuing the on-device verification pass: check the guide-circle
+  position feels natural at a normal holding angle, that the countdown VO
+  actually plays and cuts off cleanly when recording starts, and that a
+  trimmed take's `trim_start_ms`/`trim_end_ms` actually shows up on the
+  segment after upload (the backend route is wired now, but end-to-end
+  hasn't been exercised against a live upload).
+- If picking up the i18n work: the extraction is done
+  (`i18n/strings.en.json`) but nothing is wired — actually swapping the app
+  over to read from it (and picking/adding a real i18n library) is
+  deliberately deferred, separate work.

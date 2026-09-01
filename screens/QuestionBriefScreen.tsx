@@ -9,6 +9,7 @@ import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
 import { Dropdown } from '../components/ui/Dropdown';
 import { Toggle } from '../components/ui/Toggle';
+import { getQuestionAudioSource } from '../questionAudio';
 
 interface Props {
   questionNumber: number;
@@ -24,25 +25,6 @@ interface Props {
   onRehearse: () => void;
   onBack?: () => void;
 }
-
-// Static ElevenLabs VO, one bundled file per question, keyed by the
-// backend's question `id` rather than its position/index in the fetched
-// list (CLAUDE.md) - reordering, adding, or removing questions on the
-// backend can never cause this lookup to silently play the wrong clip; a
-// question whose id isn't in this map (not yet recorded, or a question
-// added after this build shipped) just falls back to no audio below.
-// Nested by language for when a real language selector lands - only "en"
-// exists today. These 5 ids are the current internal test client's
-// seeded questions (see prisma/seed.ts in the backend repo); a different
-// client's questions won't have bundled audio until their own clips are
-// added here the same way.
-const QUESTION_AUDIO_EN: Record<string, number> = {
-  'fdcab4b7-4fdb-4c85-ab29-1adc9635e0bb': require('../assets/audio/q_fdcab4b7-4fdb-4c85-ab29-1adc9635e0bb_en.mp3'),
-  '49c64b94-f559-49e4-9bd4-be6c6c66f969': require('../assets/audio/q_49c64b94-f559-49e4-9bd4-be6c6c66f969_en.mp3'),
-  '2a6cecb3-281a-44eb-987b-51253563e6b9': require('../assets/audio/q_2a6cecb3-281a-44eb-987b-51253563e6b9_en.mp3'),
-  '61dcfdb7-a9f9-4167-afe2-0d0850b7b056': require('../assets/audio/q_61dcfdb7-a9f9-4167-afe2-0d0850b7b056_en.mp3'),
-  '665cd44a-5828-4c1a-b5f0-86a42c22f754': require('../assets/audio/q_665cd44a-5828-4c1a-b5f0-86a42c22f754_en.mp3'),
-};
 
 // Placeholder sample-answer clips (design 2D) - same convention as Home's
 // hardcoded HOW_TO_VIDEOS/SAMPLE_VIDEOS, no playback wired yet, no backend
@@ -77,7 +59,7 @@ export function QuestionBriefScreen({
   // this question - useVideoPlayer accepts a null source and stays inert,
   // so a missing clip falls back to plain text rather than crashing or
   // blocking anything (CLAUDE.md).
-  const audioSource = questionId != null ? (QUESTION_AUDIO_EN[questionId] ?? null) : null;
+  const audioSource = getQuestionAudioSource(questionId);
   const player = useVideoPlayer(audioSource);
   const sampleAnswer = SAMPLE_ANSWERS[(questionNumber - 1) % SAMPLE_ANSWERS.length];
 

@@ -1,0 +1,374 @@
+{
+  "_meta": {
+    "purpose": "Every user-facing UI string in the app (buttons, labels, titles, instructions, error/status messages), pulled out of the source code into one editable file. This is a translation-READY export, not a wired-up translation - the app still reads these strings from the source files, not from this file. Wiring a real i18n library is separate follow-up work.",
+    "howToEdit": "Edit the text on the right-hand side of each \": \" pair freely. Do NOT change the keys (the short names on the left, like \"title\" or \"confirmButton\") - engineering matches strings back to the app by key.",
+    "placeholders": "Anything written as {{likeThis}} is filled in by the app at runtime (a name, a number, a count) - keep the {{...}} token exactly as written, in whatever position makes sense in the translated sentence.",
+    "pluralization": "A few strings have separate Singular/Plural variants (e.g. subtitleSingular / subtitlePlural) because English changes the sentence depending on a count. Translate each variant to whatever your language's equivalent grammatical form is.",
+    "arrays": "Some entries are numbered lists (point1/point2/point3, or step1/step2/step3, or a list of Q&A pairs) - these render in that exact order on screen. Translate the text; don't reorder, add, or remove entries without checking with engineering first.",
+    "excluded": "Two things were deliberately left out of this file: (1) the interview question text and talking points shown during recording - those already live in the database in English/Hindi/Marathi and are managed separately, not in app code; (2) developer-only debug UI (a theme switcher and a dev navigation menu) that real distributors never see, plus a handful of placeholder/mock values standing in for data that will come from the backend later (e.g. a sample phone number, a sample distributor ID) - those aren't translatable copy, they're temporary test data.",
+    "notesOnProperNouns": "A few entries are names/brand names used in mocked-up screens (e.g. \"Vardaan Paints\", \"Rajesh\") rather than general copy - usually fine to leave as-is or transliterate, not translate."
+  },
+
+  "splash": {
+    "appName": "Distributor Voices",
+    "companyName": "Vardaan Paints"
+  },
+
+  "whatsAppInvite": {
+    "invitedByEyebrow": "You were invited by",
+    "inviterNameDefault": "Rajesh",
+    "companyNameDefault": "Vardaan Paints",
+    "factHowManyLabel": "How many",
+    "factHowManyValue": "5 short questions",
+    "factHowLongLabel": "How long",
+    "factHowLongValue": "About 10 minutes",
+    "factWhatYouGetLabel": "What you get",
+    "factWhatYouGetValue": "Your own branded videos to keep and share",
+    "continueButton": "Continue"
+  },
+
+  "identityConfirm": {
+    "eyebrow": "Is this you?",
+    "title": "Confirm your details",
+    "subtitle": "These appear on your finished videos. Tap any line to fix it.",
+    "fieldLabelName": "Your name",
+    "fieldLabelBusiness": "Business name",
+    "fieldLabelCity": "City",
+    "fieldLabelPhone": "Phone number",
+    "editHint": "Edit",
+    "confirmButton": "This is me"
+  },
+
+  "onboarding": {
+    "skipButton": "Skip",
+    "step1Eyebrow": "What you'll do",
+    "step1Title": "Answer 5 quick questions on camera",
+    "step1Body": "The app guides you one step at a time — good light, good framing, a quiet moment. About 10 minutes, start to finish.",
+    "step2Eyebrow": "What you get",
+    "step2Title": "You get five finished videos",
+    "step2Body": "We add the frame, your name and your shop. They come back to you to keep and to send to whoever you like.",
+    "step3Eyebrow": "Sharing them",
+    "step3Title": "Share your reel however you like",
+    "step3Body": "WhatsApp is the fastest way, and it's always your call — nothing goes out until you press send.",
+    "rewardBadge": "YOUR VIDEO",
+    "backButton": "Back",
+    "nextButton": "Next",
+    "getStartedButton": "Get started"
+  },
+
+  "consent": {
+    "eyebrow": "Before you begin",
+    "title": "Please read this — it's important",
+    "point1": "You will record a video of yourself answering 5 questions about your work.",
+    "point2": "Your company may show this video on its website and to other distributors.",
+    "point3": "Nothing is shared until you finish and press send. You can stop at any time.",
+    "readFullTermsLink": "Read the full terms",
+    "checkboxLabel": "I understand, and I agree to be recorded.",
+    "agreeButton": "Agree & continue",
+    "hint": "Tick the box above to continue"
+  },
+
+  "permissions": {
+    "headerTitle": "Question {{questionNumber}} of {{totalQuestions}}",
+    "deniedBadge": "Camera is switched off",
+    "deniedTitle": "Your phone needs to let us use the camera",
+    "deniedSubtitle": "It was turned down earlier, so your phone will not ask again. You can switch it back on in a few taps.",
+    "deniedStep1": "Open Settings for this app",
+    "deniedStep2": "Turn on Camera and Microphone",
+    "deniedStep3": "Come back here and carry on",
+    "deniedReassurance": "Anything you have already recorded is safe. Nothing is lost by waiting.",
+    "deniedOpenSettingsButton": "Open phone settings",
+    "deniedBackButton": "Back to the question",
+    "deniedHelpHint": "Stuck? Help has a short video showing exactly where to look.",
+    "grantedTitle": "Two things to allow",
+    "grantedSubtitle": "Your phone will ask you next. Here is what each one is for.",
+    "cameraCardTitle": "Camera",
+    "cameraCardBody": "So you can see yourself while you speak, and so the video can be saved on your phone.",
+    "microphoneCardTitle": "Microphone",
+    "microphoneCardBody": "So your voice is recorded along with the picture. Without it the video is silent.",
+    "promise1": "Nothing is recorded until you press the record button.",
+    "promise2": "Nothing leaves your phone until you choose to send it.",
+    "allowButton": "Allow camera and microphone",
+    "notNowButton": "Not now"
+  },
+
+  "login": {
+    "logoPlaceholder": "LOGO",
+    "title": "Sign in",
+    "subtitle": "Use the account your company gave you to get started.",
+    "usernameLabel": "Username",
+    "passwordLabel": "Password",
+    "genericError": "Something went wrong.",
+    "signInButton": "Sign in"
+  },
+
+  "home": {
+    "greetingFirstTime": "Welcome, {{name}}",
+    "greetingReturning": "Welcome back, {{name}}",
+    "subGreeting": "{{businessName}} · {{city}}",
+    "readyBannerText": "{{label}} is ready to share",
+    "readyBannerShareButton": "Share",
+    "allRenderedEyebrow": "All five are ready",
+    "allRenderedTitle": "Your branded videos are waiting for you",
+    "allRenderedBody": "Head to My Videos to watch and share them.",
+    "allRenderedButton": "Go to My Videos",
+    "submittedEyebrow": "Sent, being made",
+    "submittedTitle": "We're turning your answers into branded videos",
+    "submittedBody": "Keep the app installed - we'll let you know the moment they're ready.",
+    "allRecordedEyebrow": "All five answered",
+    "allRecordedTitle": "Send them to us and we'll make your videos",
+    "allRecordedBody": "They're still only on your phone.",
+    "allRecordedButton": "Send all five",
+    "nextQuestionEyebrow": "Question {{index}} of {{total}}",
+    "nextQuestionButtonFirst": "Start your first question",
+    "nextQuestionButtonLater": "Start this question",
+    "emptyVideosHint": "Your finished videos appear here after you answer all five and send them.",
+    "howToSectionTitle": "How to record well",
+    "howToVideo1Title": "Where to stand for good light",
+    "howToVideo2Title": "Speaking without a script",
+    "statLine": "{{count}} distributors have already finished all five questions",
+    "sampleVideosSectionTitle": "Sample videos",
+    "sampleVideosSectionSubtitle": "Made by the company to show what a good answer looks like",
+    "sampleVideo1Title": "A good answer",
+    "sampleVideo2Title": "Keeping it short",
+    "sampleVideo3Title": "Speaking plainly",
+    "exampleTag": "EXAMPLE",
+    "seeAll": "See all"
+  },
+
+  "questionBrief": {
+    "eyebrow": "Getting ready",
+    "readToMeIdle": "Read to me",
+    "readToMeActive": "Reading…",
+    "questionNumberLabel": "Question {{number}}",
+    "talkingPointsSectionTitle": "A good answer usually covers",
+    "addPromptRow": "+ Add your own prompts",
+    "sampleAnswerTitle": "Hear how {{name}} answered",
+    "beforeYouStartTitle": "Before you start",
+    "beforeYouStartSubtitle": "Light · quiet · 45–60 seconds",
+    "beforeYouStartBody": "Face a window or lamp, find a quiet moment, and keep your answer to about 45-60 seconds - enough to say something real, short enough to hold attention.",
+    "nervousTitle": "Nervous on camera?",
+    "nervousSubtitle": "Three things that help",
+    "nervousBody": "Talk to the camera like a friend, not an audience. Take a breath before you start. If you stumble, just keep going - the natural version is the good one.",
+    "startRecordingButton": "Start recording",
+    "rehearseButton": "Rehearse once — nothing is saved"
+  },
+
+  "rehearse": {
+    "topBanner": "Practice — nothing is being saved",
+    "finishButton": "Finish practicing",
+    "popupTitle": "Ready for the real one?",
+    "popupBody": "That was just practice - nothing from it was saved.",
+    "popupRecordForRealButton": "Record for real",
+    "popupBackToBriefButton": "Back to the brief"
+  },
+
+  "cameraCheck": {
+    "title": "Let's check your camera",
+    "subtitle": "Question {{questionNumber}} of {{totalQuestions}}",
+    "autoStartLabel": "Auto start",
+    "readQuestionAloudLabel": "Read question aloud",
+    "countdownLabel": "Recording starts in {{seconds}}…",
+    "startRecordingButton": "Start recording",
+    "waitingForChecksButton": "Waiting for checks…"
+  },
+
+  "alignmentGuide": {
+    "guidancePositionFace": "Position your face in the frame",
+    "guidanceAdjustDistance": "Adjust your distance from the camera",
+    "guidanceCenterFace": "Center your face in the guide",
+    "guidanceAdjustFraming": "Adjust your framing",
+    "guidanceHoldStill": "Hold still…",
+    "checklistFraming": "Framing",
+    "checklistDistance": "Distance",
+    "checklistSound": "Sound",
+    "checklistChecking": "Checking",
+    "skipNoiseCheckButton": "Skip anyway"
+  },
+
+  "cameraAlignment": {
+    "permissionNeeded": "Camera & microphone access is needed to continue.",
+    "permissionDeniedPermanently": "Camera & microphone access was turned off, and your phone won't ask again here.",
+    "tryAgainButton": "Try again",
+    "openSettingsButton": "Open phone settings",
+    "noCameraDevice": "No camera device found"
+  },
+
+  "recording": {
+    "lengthNudge": "That's a good length — start wrapping up",
+    "finishAnswerButton": "I'm done answering"
+  },
+
+  "reviewTrim": {
+    "title": "Have a look",
+    "takeSubtitle": "Take {{number}} · {{duration}}",
+    "usingBadge": "Using",
+    "takeLabel": "Take {{number}}",
+    "removeLastTwoSecondsLabel": "Remove the last 2 seconds",
+    "removeLastTwoSecondsReason": "Useful if you fumbled the sign-off",
+    "keepButton": "Keep this take",
+    "recordAnotherButton": "Record another"
+  },
+
+  "retakeConfirm": {
+    "title": "Record again for Question {{questionNumber}}?",
+    "body": "Your current answer will be replaced.",
+    "confirmButton": "Yes, record again",
+    "cancelButton": "Cancel"
+  },
+
+  "uploading": {
+    "backLink": "‹ Back to My Videos",
+    "title": "Sending your answers",
+    "subtitleSingular": "{{count}} question, going together.",
+    "subtitlePlural": "{{count}} questions, going together.",
+    "hint": "Tap a video to review it again.",
+    "takeLabelDefault": "Take 1",
+    "sizeNote": "✓ About {{duration}} of video in total. Your videos stay on your phone as well.",
+    "sendAllButton": "Send all",
+    "notNowButton": "Not now",
+    "confirmPopupTitle": "Send all {{count}} to us?",
+    "confirmPopupBody": "All {{count}} answers go up together, using the takes you chose. After sending, they can't be changed.",
+    "confirmPopupReassurance1": "✓ Your videos stay on your phone too",
+    "confirmPopupReassurance2": "✓ Your branded videos come back after this",
+    "confirmPopupConfirmButton": "Yes, upload them",
+    "confirmPopupBackButton": "Go back",
+    "errorTitle": "Sending stopped partway",
+    "errorTryAgainButton": "Try again",
+    "errorSendLaterButton": "Send later",
+    "genericUploadError": "Upload failed."
+  },
+
+  "confirmation": {
+    "titleSending": "Sending your answers",
+    "titleDone": "Your answers are on their way",
+    "subtitleSending": "{{percent}}% sent - this can take a few minutes on slower connections.",
+    "subtitleDoneReelsEnabled": "We'll let you know the moment your branded videos are ready.",
+    "subtitleDoneReelsDisabled": "Thanks for recording - your answers have been received.",
+    "reassuranceSending": "Keep your internet on and don't close the app - it finishes on its own.",
+    "reassuranceDone1": "✓ Upload done - all your answers were received",
+    "reassuranceDone2": "✓ We'll message you when your videos are ready",
+    "backToHomeButton": "Back to Home"
+  },
+
+  "myVideos": {
+    "errorTitle": "Couldn't load your videos",
+    "tryAgainButton": "Try again",
+    "answersSectionTitle": "Your answers",
+    "questionRowRecorded": "Question {{number}}",
+    "questionRowNotRecorded": "Question {{number}} · not recorded yet",
+    "changeLink": "Change",
+    "recordButton": "Record",
+    "brandedSectionTitle": "Your branded videos",
+    "emptyBrandedText": "Your branded videos will appear here once every answer has been sent and made.",
+    "statusProcessing": "Processing",
+    "statusReady": "Ready",
+    "statusFailed": "Failed",
+    "title": "My Videos",
+    "headerSubtitle": "Record all videos to start the upload",
+    "uploadButton": "Upload videos"
+  },
+
+  "videoPlayer": {
+    "closeButton": "Close",
+    "congratulations": "Congratulations!",
+    "congratsSubtitle": "{{label}} is ready",
+    "shareButton": "Share on WhatsApp",
+    "saveButtonIdle": "Save to phone",
+    "saveButtonSaving": "Saving…",
+    "saveButtonSaved": "Saved"
+  },
+
+  "profile": {
+    "title": "Profile",
+    "reelCardLabel": "What appears on your videos",
+    "distributorForYears": "Distributor for {{years}} years",
+    "editDetailsLink": "Edit these details",
+    "accountSectionLabel": "Account",
+    "phoneRowLabel": "Phone",
+    "distributorIdRowLabel": "Distributor ID",
+    "distributorForRowLabel": "Distributor for",
+    "settingsSectionLabel": "Settings",
+    "notifyRowLabel": "Notify me when videos are ready",
+    "wifiOnlyRowLabel": "Upload on Wi-Fi only",
+    "languageRowLabel": "Language",
+    "languageValueEnglish": "English",
+    "consentRowLabel": "Consent and privacy",
+    "logoutLink": "Log out",
+    "versionLabel": "v{{version}}",
+    "editPopupTitle": "Edit these details",
+    "editPopupSubtitle": "Everything here shows on your finished video - nothing else does.",
+    "editPopupNameLabel": "Name",
+    "editPopupBusinessLabel": "Business",
+    "editPopupShowYearsLabel": "Show \"Distributor for X years\"",
+    "editPopupYearsLabel": "Years",
+    "editPopupSaveButton": "Save"
+  },
+
+  "help": {
+    "title": "Help",
+    "subtitle": "Short answers and short videos",
+    "quickTipLightLabel": "Face a window",
+    "quickTipLightReason": "Light on your face (not behind you) is the single biggest quality difference.",
+    "quickTipQuietLabel": "Find quiet",
+    "quickTipQuietReason": "A closed door or a quieter room makes your voice easy to hear clearly.",
+    "quickTipPhoneLabel": "Prop your phone",
+    "quickTipPhoneReason": "Resting your phone against something steady beats holding it.",
+    "howToSectionTitle": "How-to videos",
+    "howToSeeAll": "See all",
+    "howToVideo1Title": "Where to stand for good light",
+    "howToVideo2Title": "Speaking without a script",
+    "howToVideo3Title": "Choosing a quiet spot",
+    "howToVideo4Title": "Framing yourself well",
+    "howToVideo5Title": "What a 45-second answer sounds like",
+    "howToVideo6Title": "Fixing a shaky start",
+    "contactCardTitle": "Talk to someone",
+    "contactCardSubtitle": "WhatsApp, or ask for a call back",
+    "sampleVideosSectionTitle": "Sample videos",
+    "sampleVideosSectionSubtitle": "Made by the company to show what a good answer looks like",
+    "sampleVideo1Title": "A good answer",
+    "sampleVideo2Title": "Keeping it short",
+    "sampleVideo3Title": "Speaking plainly",
+    "exampleTag": "EXAMPLE",
+    "faqsSectionTitle": "FAQs",
+    "faq1Question": "Can I redo an answer?",
+    "faq1Answer": "Yes - you can review and re-record any answer before you send everything, and change one afterward from My Videos.",
+    "faq2Question": "Who sees my video?",
+    "faq2Answer": "Only your company. Nothing is shared with other distributors.",
+    "faq3Question": "What if I make a mistake mid-answer?",
+    "faq3Answer": "Keep going - you'll get to watch it back and decide whether to keep it before anything is sent.",
+    "contactPopupTitle": "Talk to someone",
+    "contactPopupSubtitle": "Weekdays, 9am - 7pm",
+    "contactPopupWhatsAppButton": "Message on WhatsApp",
+    "contactPopupCallBackButton": "Ask for a call back"
+  },
+
+  "bottomTabBar": {
+    "home": "Home",
+    "myVideos": "My videos",
+    "help": "Help",
+    "profile": "Profile"
+  },
+
+  "appFlow": {
+    "questionsLoadErrorTitle": "Couldn't load your questions",
+    "questionsLoadErrorTryAgainButton": "Try again",
+    "questionsLoadErrorFallback": "Could not load your questions.",
+    "myVideosLoadErrorFallback": "Could not load your videos.",
+    "postKeepPopupTitle": "Saved on your phone",
+    "postKeepPopupBody": "Question {{questionNumber}} is ready. Nothing is sent yet — all your videos go up together once you've recorded all five.",
+    "postKeepPopupNextQuestionButton": "Next question",
+    "postKeepPopupMyVideosButton": "My Videos",
+    "postKeepPopupHomeButton": "Home",
+    "exitConfirmPopupTitle": "Stop and go back?",
+    "exitConfirmPopupBodyDefault": "You'll return to the question.",
+    "exitConfirmPopupBodyRecording": "This take won't be saved. You'll return to the question.",
+    "exitConfirmPopupStopButton": "Stop and go back",
+    "exitConfirmPopupKeepGoingButton": "Keep going"
+  },
+
+  "upload": {
+    "storageUploadFailed": "Upload to storage failed (status {{status}}).",
+    "questionSetChanged": "No question found for local position {{position}} - question set may have changed since this was recorded."
+  }
+}

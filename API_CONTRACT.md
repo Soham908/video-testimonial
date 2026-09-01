@@ -63,7 +63,7 @@ before any handler logic runs.
   distributor record). Omit it to get `language_pref`'s language, same as
   before this param existed. An unsupported/missing value falls back to
   English, same fallback `language_pref` itself already gets.
-- Success `200`: `{ "questions": [ { "id", "index", "is_branded", "text", "vo_playback_url" }, ... ] }`
+- Success `200`: `{ "questions": [ { "id", "index", "is_branded", "text", "talking_points", "vo_playback_url" }, ... ] }`
 - Ordered by `index`. **Count and content vary per client** — no fixed
   number, no fixed text. Don't hardcode a question list or count in the app;
   always drive the recording flow off this response.
@@ -76,6 +76,12 @@ before any handler logic runs.
 - `text` and `vo_playback_url` are already localized server-side to the
   requested/stored language — the app doesn't need to handle language
   selection itself, just display/play what comes back.
+- `talking_points` is `string[] | null` — a handful of short (2-4 word)
+  on-screen nudges to show during recording, already localized the same way
+  as `text`. It's `null` when the resolved language has no nudges yet (Hindi
+  and Marathi today — English-only for now, translation is separate work)
+  or when the question has none set at all. There's no fallback to English
+  text when it's `null` — treat it as "nothing to show," not an error.
 - `vo_playback_url` is a fresh presigned S3 URL (1-hour expiry), same
   caching rules as `playback_url` elsewhere in this doc (don't cache the URL
   itself).
@@ -106,7 +112,7 @@ the signed URL itself.
 
 `POST /segments/confirm`
 - Requires auth.
-- Body: `{ "question_index": number, "duration": number, "capture"?: object }`
+- Body: `{ "question_index": number, "duration": number, "trim_start_ms"?: number|null, "trim_end_ms"?: number|null, "capture"?: object }`
   — `duration` is the clip length in seconds (a plain number, not a
   string), must be > 0. `capture` is optional and stored as-is, not
   validated field-by-field: `{ "file_size_bytes": number, "width":
@@ -114,6 +120,15 @@ the signed URL itself.
   "device_model": string, "os_version": string }` — what the device
   actually captured, kept for later analysis of real distributor phones. A
   missing or malformed `capture` never fails the confirm call.
+- `trim_start_ms`/`trim_end_ms` are absolute offsets (ms) into the source
+  clip, chosen in Review & Trim. The app sends both as `null` (not `0`/full
+  duration) when the person never adjusted the trim, so `null` means
+  "use the full clip," not "trim to nothing." Either may be omitted
+  entirely instead of sent as `null` — omitted leaves whatever's already
+  stored on the segment untouched (same convention as `capture`), `null`
+  explicitly clears it to "full clip." Must be a non-negative number (or
+  `null`/omitted); `trim_end_ms` must be greater than `trim_start_ms` when
+  both are numbers.
 - **`video_key` is no longer read from the request body** — the backend
   derives it itself from the token's `distributor_id`/`client_id` plus
   `question_index` (same value `upload-url` already returned you, just no
@@ -126,9 +141,11 @@ the signed URL itself.
   succeeded; the same data comes back (fresher) from the read endpoints
   below.
 - Failure `400`: `{ "error": "question_index must be a positive integer" }`,
-  `{ "error": "No question configured at index N for this client" }`, or
-  `{ "error": "duration must be a positive number" }` depending on which
-  field is missing/invalid.
+  `{ "error": "No question configured at index N for this client" }`,
+  `{ "error": "duration must be a positive number" }`,
+  `{ "error": "trim_start_ms/trim_end_ms must be a non-negative number or null" }`,
+  or `{ "error": "trim_end_ms must be greater than trim_start_ms" }` depending
+  on which field is missing/invalid.
 - Failure `404` (upload didn't actually reach S3 — safe to retry, nothing
   was written): `{ "error": "video_not_found", "message": "The uploaded video could not be found in storage. Please retry the upload." }`
 - Calling `confirm` again for the same `question_index` (a retake) updates

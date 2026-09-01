@@ -21,7 +21,17 @@ const MAX_HEADROOM_RATIO = 0.35;
 // into computeAlignmentSignals below are useWindowDimensions() (dp, same
 // coordinate space these are styled in) - not camera sensor pixels - so a
 // fixed dp offset/size is valid across device sizes.
-export const GUIDE_TOP_OFFSET = 150;
+//
+// GUIDE_TOP_OFFSET was 150 (guide vertical center ~315dp from the top),
+// which sat noticeably above true screen-center - holding the phone at a
+// natural angle put the face well below the oval, forcing an unnatural
+// downward tilt to line up. Raised to 230 (~centered in the space actually
+// left over between CameraCheckScreen's top toggles and its bottom
+// start-recording bar/countdown, on a ~850dp-tall reference screen) so a
+// natural holding angle lines up correctly. Starting point only, like the
+// thresholds below - expect to tune against real on-device footage across
+// a range of screen sizes.
+export const GUIDE_TOP_OFFSET = 230;
 export const GUIDE_WIDTH = 246;
 export const GUIDE_HEIGHT = 330;
 

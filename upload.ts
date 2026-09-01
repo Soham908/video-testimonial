@@ -67,6 +67,16 @@ export async function uploadSegment(
       question_index: questionIndex,
       video_key,
       duration: video.durationSeconds,
+      // Absolute offsets (ms) into the source clip, from Review & Trim -
+      // explicitly null (not 0/full-duration) when the person never
+      // dragged a handle, since AppFlow.tsx only carries
+      // trimStartSeconds/trimEndSeconds onto a take at all once it's
+      // actually been adjusted (see handleKeepTake). The backend's
+      // /segments/confirm route doesn't read these fields yet as of this
+      // writing (schema + downstream ffmpeg consumer exist, route doesn't) -
+      // sending them now is forward-compatible, not a no-op regression.
+      trim_start_ms: video.trimStartSeconds != null ? Math.round(video.trimStartSeconds * 1000) : null,
+      trim_end_ms: video.trimEndSeconds != null ? Math.round(video.trimEndSeconds * 1000) : null,
       // Best-effort - only exists at capture time, gathered in
       // AppFlow.tsx's handleRecordingFinished. Omitted entirely (rather
       // than sent as null/undefined fields) if a take somehow lacks it,

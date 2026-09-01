@@ -38,6 +38,7 @@ import { uploadSegment } from './upload';
 import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
 import { getDeviceInfo } from './deviceInfo';
 import { ENABLE_REEL_RENDERING } from './config';
+import { getReadQuestionAloudPref, setReadQuestionAloudPref } from './preferences';
 import {
   fetchQuestions,
   getCachedQuestions,
@@ -116,7 +117,7 @@ const COUNTDOWN_SECONDS = 3;
 // (incl. ambient noise check), and video recording/storage/playback are
 // all real.
 export function AppFlow() {
-  const { colors, spacing, typography } = useTheme();
+  const { colors, spacing } = useTheme();
   const [screen, setScreen] = useState<Screen>('sessionLoading');
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -155,6 +156,13 @@ export function AppFlow() {
   // unconditional); this is genuinely new, not a reskin. Not reset
   // per-question - it's a standing preference the person sets once.
   const [autoStart, setAutoStart] = useState(true);
+  // Whether the 3-2-1 countdown reads the question aloud (existing
+  // per-question VO, same clip QuestionBriefScreen's "Read to me" plays) -
+  // a standing device preference, not per-question/per-session state, so it
+  // lives in SecureStore (preferences.ts) rather than session.ts. Defaults
+  // true; loaded async below, same pattern ThemeContext uses for
+  // palette/font.
+  const [readQuestionAloud, setReadQuestionAloudState] = useState(true);
   // True once CameraAlignment's onLocked has fired for the current attempt
   // (framing/distance locked and sound clear or overridden) - drives
   // whether Camera Check's Start button is tappable.
@@ -174,6 +182,17 @@ export function AppFlow() {
   const [trimStartSeconds, setTrimStartSeconds] = useState(0);
   const [trimEndSeconds, setTrimEndSeconds] = useState(0);
   const [removeLastTwoSeconds, setRemoveLastTwoSeconds] = useState(false);
+  // True only once the person has actually dragged a trim handle for the
+  // take currently in Review & Trim - trimStartSeconds/trimEndSeconds above
+  // are pre-seeded to the take's full 0..duration window regardless, so
+  // this is the only way to tell "never touched" apart from "chose the
+  // full clip on purpose." Gates whether handleKeepTake carries trim data
+  // onto the finalized take at all (untouched -> upload.ts sends
+  // trim_start_ms/trim_end_ms as null, not 0/full-duration). Reset to false
+  // everywhere trimStartSeconds/trimEndSeconds are reset to their defaults,
+  // so a retake or a different selected take never inherits a stale take's
+  // adjustment.
+  const [trimAdjusted, setTrimAdjusted] = useState(false);
   // Shown after "Keep this take" on any question except the last one -
   // DECISIONS.md's "post-keep prompt: next question / my videos / home".
   const [showPostKeepPrompt, setShowPostKeepPrompt] = useState(false);
@@ -291,6 +310,7 @@ export function AppFlow() {
       setSelectedTakeId(stored.selectedTakeId);
       setTrimStartSeconds(stored.trimStartSeconds);
       setTrimEndSeconds(stored.trimEndSeconds);
+      setTrimAdjusted(stored.trimAdjusted ?? false);
       setRemoveLastTwoSeconds(stored.removeLastTwoSeconds);
       setAutoStart(stored.autoStart);
       setHasSubmittedBatch(stored.hasSubmittedBatch);
@@ -350,6 +370,18 @@ export function AppFlow() {
     });
   }, []);
 
+  // Standing device preference (preferences.ts), not session state - loaded
+  // independently of the force-quit restore above so it's available even
+  // on a first-ever launch that never reaches loadSession() at all.
+  useEffect(() => {
+    getReadQuestionAloudPref().then(setReadQuestionAloudState);
+  }, []);
+
+  function setReadQuestionAloud(next: boolean) {
+    setReadQuestionAloudState(next);
+    setReadQuestionAloudPref(next);
+  }
+
   // Persists the whole session as it changes - not only on screen
   // transitions - so any of the force-quit points above can be resumed.
   // File writes here are synchronous local JSON (session.ts), same
@@ -369,6 +401,7 @@ export function AppFlow() {
       selectedTakeId,
       trimStartSeconds,
       trimEndSeconds,
+      trimAdjusted,
       removeLastTwoSeconds,
       autoStart,
       hasSubmittedBatch,
@@ -387,6 +420,7 @@ export function AppFlow() {
     selectedTakeId,
     trimStartSeconds,
     trimEndSeconds,
+    trimAdjusted,
     removeLastTwoSeconds,
     autoStart,
     hasSubmittedBatch,
@@ -710,6 +744,7 @@ export function AppFlow() {
     setSelectedTakeId(newTake.id);
     setTrimStartSeconds(0);
     setTrimEndSeconds(durationSeconds);
+    setTrimAdjusted(false);
     setRemoveLastTwoSeconds(false);
     setPhase('reviewTrim');
   }
@@ -727,8 +762,13 @@ export function AppFlow() {
     currentTakes.filter((t) => t.id !== kept.id).forEach((t) => deleteRecording(t.filePath));
     const finalized: RecordedVideo = {
       ...kept,
-      trimStartSeconds,
-      trimEndSeconds,
+      // Only carry trim points onto the finalized take if the person
+      // actually dragged a handle - trimStartSeconds/trimEndSeconds are
+      // pre-seeded to the full 0..duration window otherwise, and sending
+      // that would misrepresent "never touched" as "chose the full clip."
+      // upload.ts sends trim_start_ms/trim_end_ms as null when these stay
+      // undefined.
+      ...(trimAdjusted && { trimStartSeconds, trimEndSeconds }),
       removeLastTwoSeconds,
     };
 
@@ -1098,11 +1138,13 @@ export function AppFlow() {
   // screen === 'question'
   const currentQuestion = questions[questionIndex];
   const questionText = currentQuestion?.text ?? '';
-  // No backend equivalent yet for either of these (see the comment near
-  // `questions` state above) - both screens already degrade cleanly with
-  // an empty array.
-  const talkingPoints: string[] = [];
-  const prompts: string[] = [];
+  // Question Brief's "a good answer usually covers" and Recording's
+  // on-screen prompts both read from the same backend-provided list
+  // (questions.ts) - null (no talking points configured, or not translated
+  // into the resolved language yet) degrades to an empty array, same as
+  // before this field existed.
+  const talkingPoints: string[] = currentQuestion?.talking_points ?? [];
+  const prompts: string[] = talkingPoints;
   // Retake is always a cold entry (no continuous camera session behind
   // it) - full lock regardless of which question index it targets, same
   // as question 1's first-time entry.
@@ -1141,6 +1183,7 @@ export function AppFlow() {
             const take = currentTakes.find((t) => t.id === id);
             setTrimStartSeconds(0);
             setTrimEndSeconds(take?.durationSeconds ?? 0);
+            setTrimAdjusted(false);
           }}
           removeLastTwoSeconds={removeLastTwoSeconds}
           onToggleRemoveLastTwoSeconds={setRemoveLastTwoSeconds}
@@ -1149,6 +1192,7 @@ export function AppFlow() {
           onChangeTrim={(s, e) => {
             setTrimStartSeconds(s);
             setTrimEndSeconds(e);
+            setTrimAdjusted(true);
           }}
           onRecordAnother={handleRecordAnother}
           onKeep={handleKeepTake}
@@ -1245,6 +1289,9 @@ export function AppFlow() {
           countingDown={phase === 'countdown'}
           countdownSeconds={countdownRemaining}
           onStartRecording={() => setPhase('countdown')}
+          questionId={currentQuestion?.id}
+          readQuestionAloud={readQuestionAloud}
+          onToggleReadQuestionAloud={setReadQuestionAloud}
         />
       )}
 

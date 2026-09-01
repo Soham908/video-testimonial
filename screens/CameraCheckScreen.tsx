@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useVideoPlayer } from 'expo-video';
 import { useTheme } from '../theme/ThemeContext';
 import type { Spacing } from '../theme/spacing';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
+import { getQuestionAudioSource } from '../questionAudio';
 
 interface Props {
   questionNumber: number;
@@ -15,6 +17,13 @@ interface Props {
   countingDown: boolean;
   countdownSeconds: number;
   onStartRecording: () => void;
+  // Backend question id (CLAUDE.md) - keys the bundled VO audio the same
+  // way QuestionBriefScreen's "Read to me" does. undefined while questions
+  // are still loading; falls back to no audio the same as an id with no
+  // bundled clip.
+  questionId?: string;
+  readQuestionAloud: boolean;
+  onToggleReadQuestionAloud: (next: boolean) => void;
 }
 
 // Chrome-only overlay, rendered as a SIBLING of <CameraAlignment/> (not a
@@ -35,9 +44,38 @@ export function CameraCheckScreen({
   countingDown,
   countdownSeconds,
   onStartRecording,
+  questionId,
+  readQuestionAloud,
+  onToggleReadQuestionAloud,
 }: Props) {
   const { spacing } = useTheme();
   const styles = useMemo(() => makeStyles(spacing), [spacing]);
+
+  // null (not a missing key) when there's no bundled clip for this question
+  // - useVideoPlayer accepts a null source and stays inert, same fallback
+  // QuestionBriefScreen's "Read to me" uses.
+  const audioSource = getQuestionAudioSource(questionId);
+  const player = useVideoPlayer(audioSource);
+
+  // Plays once per countdown, from the top, only while the preference is
+  // on - not tied to whether it happened to still be playing from Question
+  // Brief's "Read to me", since that's a different moment in the flow and
+  // may not have been used at all. Stopped (not just paused) the instant
+  // the countdown ends and 'recording' actually starts (CLAUDE.md: no
+  // simultaneous playback + record, mic pickup would otherwise catch the
+  // tail of this over the person's own answer) - countingDown flipping to
+  // false covers both that transition and a cancelled countdown alike.
+  useEffect(() => {
+    if (audioSource == null) return;
+    if (!countingDown || !readQuestionAloud) {
+      player.pause();
+      return;
+    }
+    player.currentTime = 0;
+    player.play();
+    return () => player.pause();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countingDown, readQuestionAloud, audioSource]);
 
   return (
     <View style={styles.container} pointerEvents="box-none">
@@ -48,9 +86,15 @@ export function CameraCheckScreen({
             Question {questionNumber} of {totalQuestions}
           </Text>
         </View>
-        <View style={styles.autoStartRow}>
-          <Text style={styles.autoStartLabel}>Auto start</Text>
-          <Toggle value={autoStart} onValueChange={onToggleAutoStart} onDark />
+        <View style={styles.toggleColumn}>
+          <View style={styles.autoStartRow}>
+            <Text style={styles.autoStartLabel}>Auto start</Text>
+            <Toggle value={autoStart} onValueChange={onToggleAutoStart} onDark />
+          </View>
+          <View style={styles.autoStartRow}>
+            <Text style={styles.autoStartLabel}>Read question aloud</Text>
+            <Toggle value={readQuestionAloud} onValueChange={onToggleReadQuestionAloud} onDark />
+          </View>
         </View>
       </View>
 
@@ -89,7 +133,8 @@ function makeStyles(spacing: Spacing) {
     },
     title: { color: '#FFFFFF', fontSize: 21, fontWeight: '700', letterSpacing: -0.3 },
     subtitle: { color: 'rgba(255,255,255,0.55)', fontSize: 13.5, marginTop: 4 },
-    autoStartRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingTop: 4 },
+    toggleColumn: { gap: 10, alignItems: 'flex-end' },
+    autoStartRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
     autoStartLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
     bottomBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: 30 },
     countdownRow: { alignItems: 'center', gap: spacing.sm },

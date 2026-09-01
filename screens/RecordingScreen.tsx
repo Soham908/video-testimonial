@@ -10,8 +10,10 @@ interface Props {
   questionNumber: number;
   totalQuestions: number;
   questionText: string;
-  // 2-3 words each, shown with equal weight, never tap-to-advance
-  // (DECISIONS.md) - a short paraphrase of Question Brief's talking points.
+  // The current question's talking_points (questions.ts), shown with equal
+  // weight, never tap-to-advance (DECISIONS.md) - same source Question
+  // Brief's "a good answer usually covers" section reads from, not a
+  // separate paraphrased list.
   prompts: string[];
   isRecording: boolean;
   elapsedSeconds: number;
@@ -45,10 +47,11 @@ function RecordingDot({ style }: { style: object }) {
 
 // Chrome-only overlay, rendered as a SIBLING of <CameraAlignment/> (see
 // CameraCheckScreen's comment for why - CameraAlignment must not remount
-// when swapping between check/recording chrome). Everything stacked at the
-// bottom (design 3D) - one wide button pressable without looking; question,
-// prompts and button read as a single block, the timer/nudge stay out of
-// the way at the top. No "light" quality chip here (unlike the mockup) -
+// when swapping between check/recording chrome). Question text lives at the
+// top (large/bold, needs to read at a glance and shouldn't get covered by
+// the on-screen keyboard-height "I'm done answering" button); prompts +
+// finish button stay stacked at the bottom as one wide, pressable-without-
+// looking block. No "light" quality chip here (unlike the mockup) -
 // brightness detection was never built, and a fake indicator would be
 // worse than none (see DECISIONS.md).
 export function RecordingScreen({
@@ -85,17 +88,21 @@ export function RecordingScreen({
             <Text style={styles.nudgeText}>That's a good length — start wrapping up</Text>
           </View>
         )}
+        <View style={styles.questionBubble}>
+          <Text style={styles.questionText} numberOfLines={3}>
+            {questionText}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.bottomBlock} pointerEvents="box-none">
-        <View style={styles.promptsRow}>
-          {prompts.map((p) => (
-            <Chip key={p} label={p} onDark />
-          ))}
-        </View>
-        <Text style={styles.questionText} numberOfLines={2}>
-          {questionText}
-        </Text>
+        {prompts.length > 0 && (
+          <View style={styles.promptsRow}>
+            {prompts.map((p) => (
+              <Chip key={p} label={p} onDark emphasis />
+            ))}
+          </View>
+        )}
         {isRecording && onFinishAnswer && (
           <Pressable style={styles.finishButton} onPress={onFinishAnswer}>
             <Text style={styles.finishButtonText}>I'm done answering</Text>
@@ -109,7 +116,7 @@ export function RecordingScreen({
 function makeStyles(spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-    topBar: { position: 'absolute', top: 18, left: spacing.md, right: spacing.md, gap: spacing.sm },
+    topBar: { position: 'absolute', top: 18, left: spacing.md, right: spacing.md, gap: spacing.md },
     topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     recIndicator: {
       flexDirection: 'row',
@@ -148,14 +155,23 @@ function makeStyles(spacing: Spacing, radius: Radius, typography: Typography) {
       paddingBottom: spacing.xl,
       gap: spacing.md,
     },
+    // More background + heavier weight than the recIndicator/progressBadge
+    // pills above it - this is the thing being answered, not incidental
+    // chrome, so it needs to read instantly against a live camera feed with
+    // no dark bar behind it (unlike the old bottom-bar placement).
+    questionBubble: {
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 2,
+    },
     promptsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     questionText: {
-      ...typography.body,
-      fontSize: 19,
-      fontWeight: '600',
+      ...typography.title,
+      fontSize: 22,
+      fontWeight: '800',
       color: '#FFFFFF',
-      lineHeight: 26,
-      textAlign: 'center',
+      lineHeight: 28,
     },
     finishButton: {
       height: 58,

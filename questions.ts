@@ -14,6 +14,13 @@ export interface QuestionDto {
   is_branded: boolean;
   text: string;
   vo_playback_url: string;
+  // Null when the client hasn't configured talking points for this
+  // question, or when the resolved language's array hasn't been
+  // translated yet (backend today only has these for "en" - see
+  // localizeQuestion in the backend repo). No fallback to English there,
+  // so a null here is expected, not a bug - QuestionBriefScreen/
+  // RecordingScreen already degrade to no prompts for it.
+  talking_points: string[] | null;
 }
 
 // Only 'en' is ever requested today - a real language selector is a later

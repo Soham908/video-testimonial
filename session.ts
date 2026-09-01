@@ -32,6 +32,11 @@ export interface PersistedSession {
   selectedTakeId: string | null;
   trimStartSeconds: number;
   trimEndSeconds: number;
+  // Optional because a session persisted before this field existed (see
+  // recordings.ts's captureMetadata for the same convention) can be
+  // restored without it - treated as false (never manually trimmed) rather
+  // than failing to load.
+  trimAdjusted?: boolean;
   removeLastTwoSeconds: boolean;
   autoStart: boolean;
   hasSubmittedBatch: boolean;
