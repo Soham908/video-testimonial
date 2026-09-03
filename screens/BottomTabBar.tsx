@@ -22,10 +22,12 @@ export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }:
   // Real per-device inset (Android 3-button/gesture nav, iOS home indicator)
   // - was previously unaccounted for entirely, so the tab bar's own content
   // sat right under/behind the system nav instead of clearing it. Added as
-  // extra height, not swapped in for the fixed 74 - the icon/label row
-  // keeps its usual size, insets.bottom is blank space (colors.surface)
+  // extra height, not swapped in for the base height - the icon/label row
+  // keeps its usual size, insets.bottom is blank space (background-colored)
   // below it, same visual result as apps where the bar sits above the
-  // system buttons.
+  // system buttons. The system nav bar itself (the OS's own gray, outside
+  // this component entirely) is handled separately - see
+  // theme/NavigationBarSync.tsx.
   const insets = useSafeAreaInsets();
   const styles = useMemo(
     () => makeStyles(colors, spacing, typography, insets.bottom),
@@ -36,7 +38,7 @@ export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }:
   return (
     <View style={styles.container}>
       <TabItem label="Home" active={activeTab === 'home'} onPress={() => onTabPress('home')} styles={styles}>
-        <View style={styles.homeIconRoof} />
+        <View style={[styles.homeIconRoof, activeTab === 'home' && styles.iconActiveBg]} />
         <View style={[styles.homeIconBase, activeTab === 'home' && styles.iconActiveBg]} />
       </TabItem>
       <TabItem label="My videos" active={activeTab === 'myVideos'} onPress={() => onTabPress('myVideos')} styles={styles}>
@@ -85,12 +87,15 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typogra
   const inactive = colors.textDisabled;
   return StyleSheet.create({
     container: {
-      height: 74 + bottomInset,
+      height: 60 + bottomInset,
       paddingBottom: bottomInset,
       flexDirection: 'row',
       borderTopWidth: 1,
       borderTopColor: colors.borderStrong,
-      backgroundColor: colors.surface,
+      // Matches the page background, not `colors.surface` (that's for
+      // elevated cards/rows, which is why it read as a visibly different
+      // white bar against the rest of the screen's warmer background).
+      backgroundColor: colors.background,
     },
     item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs + 1 },
     iconSlot: { alignItems: 'center', justifyContent: 'center', height: 18, position: 'relative' },
