@@ -226,7 +226,12 @@ function Field({
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.lg },
+    content: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.xl + spacing.topExtra,
+      paddingBottom: spacing.xxl,
+      gap: spacing.lg,
+    },
     title: { ...typography.title, fontSize: 24, color: colors.text },
     header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },

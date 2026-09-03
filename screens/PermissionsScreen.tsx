@@ -175,7 +175,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       flex: 1,
       backgroundColor: colors.background,
       paddingHorizontal: spacing.xl,
-      paddingTop: spacing.xxl,
+      paddingTop: spacing.xxl + spacing.topExtra,
       paddingBottom: spacing.footerBottom,
     },
     headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 },

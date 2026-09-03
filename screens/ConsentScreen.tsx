@@ -63,7 +63,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       flex: 1,
       backgroundColor: colors.background,
       padding: spacing.xl,
-      paddingTop: spacing.xxl,
+      paddingTop: spacing.xxl + spacing.topExtra,
       paddingBottom: spacing.xxl,
     },
     scrollView: { flex: 1 },

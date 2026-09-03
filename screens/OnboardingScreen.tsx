@@ -190,7 +190,7 @@ function StepIllustration({
 
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.xl },
+    container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.xl + spacing.topExtra },
     topRow: { flexDirection: 'row', paddingHorizontal: spacing.xl },
     skip: { ...typography.body, fontSize: 14, fontWeight: '600', color: colors.textMuted },
     pager: { flex: 1 },

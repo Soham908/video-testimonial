@@ -188,7 +188,12 @@ function SectionHeader({
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.md },
+    content: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.xl + spacing.topExtra,
+      paddingBottom: spacing.xxl,
+      gap: spacing.md,
+    },
     title: { ...typography.title, fontSize: 24, color: colors.text },
     subtitle: { ...typography.caption, fontSize: 13.5, color: colors.textMuted, marginTop: -4 },
     chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },

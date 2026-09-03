@@ -308,7 +308,12 @@ function SectionHeader({
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.md },
+    content: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.xl + spacing.topExtra,
+      paddingBottom: spacing.xxl,
+      gap: spacing.md,
+    },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
     greeting: { ...typography.title, fontSize: 22, color: colors.text },
     subGreeting: { ...typography.caption, color: colors.textMuted, marginTop: 2 },

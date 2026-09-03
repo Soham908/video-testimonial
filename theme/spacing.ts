@@ -10,6 +10,14 @@ export interface Spacing {
    * more than xxl alone so the button doesn't feel glued to the edge. Use
    * this instead of a one-off padding value on any new footer-style screen. */
   footerBottom: number;
+  /** Extra top clearance layered onto a screen's existing top padding
+   * (`paddingTop: spacing.xl + spacing.topExtra`, not standalone) - content
+   * sat too close to the status bar by default. A flat add-on, not a real
+   * device safe-area inset (unlike BottomTabBar's, which reads
+   * useSafeAreaInsets() - this is a deliberately simpler fix, since unlike
+   * the bottom nav bar this was never an overlap/functional bug, just
+   * tight spacing). */
+  topExtra: number;
 }
 
 export const spacing: Spacing = {
@@ -20,4 +28,5 @@ export const spacing: Spacing = {
   xl: 32,
   xxl: 48,
   footerBottom: 64,
+  topExtra: 16,
 };

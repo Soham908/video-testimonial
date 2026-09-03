@@ -195,7 +195,12 @@ export function MyVideosScreen({
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.lg },
+    content: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.xl + spacing.topExtra,
+      paddingBottom: spacing.xxl,
+      gap: spacing.lg,
+    },
     centeredContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
     errorTitle: { ...typography.title, fontSize: 22, color: colors.text, textAlign: 'center', marginBottom: spacing.sm },
     errorSubtitle: { ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 22 },

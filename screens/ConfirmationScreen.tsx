@@ -89,7 +89,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       backgroundColor: colors.background,
       alignItems: 'center',
       padding: spacing.xl,
-      paddingTop: spacing.xxl * 1.5,
+      paddingTop: spacing.xxl * 1.5 + spacing.topExtra,
       paddingBottom: spacing.footerBottom,
     },
     content: { flex: 1, alignItems: 'center' },
