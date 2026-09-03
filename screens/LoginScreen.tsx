@@ -9,13 +9,18 @@ import { login } from '../auth';
 
 interface Props {
   onLoggedIn: () => void;
+  // Only passed when ENABLE_SELF_REGISTRATION is on (see AppFlow.tsx/
+  // config.ts) - this screen doesn't need to know about the flag itself,
+  // it just shows the entry point when a handler exists and stays exactly
+  // as it is today when it doesn't.
+  onRegisterPress?: () => void;
 }
 
 // Prefilled with a seeded test account - there's no self-serve account
 // creation, distributors are provisioned backend-side. Prefill is a
 // testing convenience while Soham is the only person signing in; revisit
 // before this goes to real distributors.
-export function LoginScreen({ onLoggedIn }: Props) {
+export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
@@ -83,6 +88,12 @@ export function LoginScreen({ onLoggedIn }: Props) {
             <Text style={styles.buttonText}>Sign in</Text>
           )}
         </Pressable>
+
+        {onRegisterPress && (
+          <Text style={styles.registerLink} onPress={onRegisterPress}>
+            New distributor? Register
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -161,6 +172,14 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     buttonText: {
       ...typography.button,
       color: colors.accentText,
+    },
+    registerLink: {
+      ...typography.body,
+      fontSize: 14.5,
+      fontWeight: '600',
+      color: colors.accent,
+      textAlign: 'center',
+      marginTop: spacing.lg,
     },
   });
 }

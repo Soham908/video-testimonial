@@ -20,9 +20,13 @@ interface ReadyReel {
 }
 
 interface Props {
-  distributorName: string;
-  businessName: string;
-  city: string;
+  // No real source for any of these three exists yet - GET /me only
+  // returns auth-scoped ids, not a display name (see auth.ts). Optional so
+  // the greeting can fall back to something honest instead of inventing a
+  // name/business/city (see the greeting/avatar logic below).
+  distributorName?: string;
+  businessName?: string;
+  city?: string;
   totalQuestions: number;
   /** Recorded locally so far this cycle - not necessarily submitted yet. */
   questionsAnswered: number;
@@ -79,30 +83,30 @@ export function HomeScreen({
   const allRendered = renderedReadyCount >= totalQuestions;
   // Greeting uses the first name only (design 1C/15); the avatar monogram
   // below uses the full name's initials - both derived from one prop so
-  // callers don't have to pass the name twice.
-  const firstName = distributorName.trim().split(/\s+/)[0] ?? distributorName;
+  // callers don't have to pass the name twice. No real name source exists
+  // yet (see Props) - falls back to a plain, non-personalized greeting and
+  // a generic avatar mark rather than showing a blank/invented name.
+  const firstName = distributorName?.trim().split(/\s+/)[0];
+  const subGreeting = [businessName, city].filter(Boolean).join(' · ');
+  const initials = distributorName
+    ?.split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>
-            {questionsAnswered === 0 ? 'Welcome, ' : 'Welcome back, '}
-            {firstName}
+            {questionsAnswered === 0 ? 'Welcome' : 'Welcome back'}
+            {firstName ? `, ${firstName}` : ''}
           </Text>
-          <Text style={styles.subGreeting}>
-            {businessName} · {city}
-          </Text>
+          {subGreeting.length > 0 && <Text style={styles.subGreeting}>{subGreeting}</Text>}
         </View>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {distributorName
-              .split(' ')
-              .map((p) => p[0])
-              .join('')
-              .slice(0, 2)
-              .toUpperCase()}
-          </Text>
+          {initials ? <Text style={styles.avatarText}>{initials}</Text> : <GenericAvatarGlyph />}
         </View>
       </View>
 
@@ -228,6 +232,20 @@ function ProgressDots({ done, total, accent }: { done: number; total: number; ac
           }}
         />
       ))}
+    </View>
+  );
+}
+
+// Shown in the avatar circle in place of initials when no real distributor
+// name exists yet (Props) - a generic head-and-shoulders mark, the same
+// "nothing set yet" convention most apps use for a missing profile photo,
+// rather than leaving the circle empty or guessing at initials.
+function GenericAvatarGlyph() {
+  const { colors } = useTheme();
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: colors.accent, marginBottom: 2 }} />
+      <View style={{ width: 24, height: 13, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.accent }} />
     </View>
   );
 }

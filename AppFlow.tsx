@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
 import { LoginScreen } from './screens/LoginScreen';
+import { SelfRegisterScreen } from './screens/SelfRegisterScreen';
 import { SplashScreen } from './screens/SplashScreen';
 import { WhatsAppInviteScreen } from './screens/WhatsAppInviteScreen';
 import { IdentityConfirmScreen } from './screens/IdentityConfirmScreen';
@@ -33,11 +34,12 @@ import {
   type RecordedVideo,
 } from './recordings';
 import { useTheme } from './theme/ThemeContext';
-import { restoreSession, logout } from './auth';
+import { restoreSession, getCurrentAuth, logout } from './auth';
+import { fetchDistributorProfile, type DistributorProfile } from './distributorProfile';
 import { uploadSegment } from './upload';
 import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
 import { getDeviceInfo } from './deviceInfo';
-import { ENABLE_REEL_RENDERING } from './config';
+import { ENABLE_REEL_RENDERING, ENABLE_SELF_REGISTRATION } from './config';
 import { getReadQuestionAloudPref, setReadQuestionAloudPref } from './preferences';
 import {
   fetchQuestions,
@@ -62,6 +64,11 @@ import {
 type Screen =
   | 'sessionLoading'
   | 'login'
+  // Real entry point when ENABLE_SELF_REGISTRATION is on (config.ts) -
+  // reachable from Login's "New distributor? Register" link, unlike the
+  // dev-only entry-cluster screens below. A successful registration
+  // proceeds exactly like a successful login (handleAuthenticated).
+  | 'selfRegister'
   // Entry-cluster screens (splash / WhatsApp-invite open / identity
   // confirmation / onboarding) - reachable for now only via the
   // __DEV__-gated DevEntryMenu below since real deep-link routing isn't
@@ -149,6 +156,20 @@ export function AppFlow() {
   // because one request timed out.
   const [questions, setQuestions] = useState<QuestionDto[]>([]);
   const [questionsError, setQuestionsError] = useState<string | null>(null);
+
+  // The one real piece of distributor identity available today - GET /me
+  // only returns auth-scoped ids, not a display name/phone (see auth.ts).
+  // Set on both a restored session and a fresh login; cleared on logout so
+  // a different account signing in on the same device never shows a stale
+  // id. Used by ProfileScreen's "Distributor ID" row.
+  const [distributorId, setDistributorId] = useState<string | null>(null);
+  // Real name/phone (distributorProfile.ts) - fetched alongside distributorId
+  // on both a restored session and a fresh login, best-effort (a failed
+  // fetch just leaves whatever's already there, same as loadQuestions()'s
+  // tolerance below). Only `name`/`phone` are consumed anywhere in the app
+  // today - `business`/`city`/`years_as_distributor` also come back on this
+  // same response but are internal-test-phase-only fields nothing reads yet.
+  const [distributorProfile, setDistributorProfile] = useState<DistributorProfile | null>(null);
 
   // Whether the Camera Check screen's toggle auto-starts the countdown once
   // checks pass, or waits for an explicit "Start recording" tap - no
@@ -276,12 +297,14 @@ export function AppFlow() {
   // restore attempt has finished, whether or not there was anything to
   // restore.
   useEffect(() => {
-    restoreSession().then((valid) => {
-      if (!valid) {
+    restoreSession().then((auth) => {
+      if (!auth) {
         setScreen('login');
         setSessionRestored(true);
         return;
       }
+      setDistributorId(auth.distributorId);
+      fetchDistributorProfile().then(setDistributorProfile).catch(() => {});
 
       // Cache-first: show whatever's on disk immediately (if anything),
       // then kick a real fetch in the background - loadQuestions() keeps
@@ -889,8 +912,28 @@ export function AppFlow() {
   // not a data wipe (unlike the testing-only clearAllRecordings() above).
   function handleLogout() {
     logout();
+    setDistributorId(null);
+    setDistributorProfile(null);
     setMainTab('home');
     setScreen('login');
+  }
+
+  // Shared by a fresh login and a fresh self-registration (auth.ts's
+  // register() leaves the app in an identical state to login() - same
+  // token shape, immediately usable) - so a successful registration
+  // proceeds exactly like a normal login from here on, not a separate path
+  // that could drift out of sync with it.
+  function handleAuthenticated() {
+    getCurrentAuth().then((auth) => auth && setDistributorId(auth.distributorId));
+    fetchDistributorProfile().then(setDistributorProfile).catch(() => {});
+    // Cache-first: show cached questions immediately if any exist for this
+    // device, then refresh in the background.
+    const cachedQuestions = getCachedQuestions();
+    if (cachedQuestions && cachedQuestions.length > 0) {
+      setQuestions(cachedQuestions);
+    }
+    loadQuestions();
+    setScreen('onboarding');
   }
 
   if (playingVideo) {
@@ -914,18 +957,8 @@ export function AppFlow() {
     return (
       <View style={{ flex: 1 }}>
         <LoginScreen
-          onLoggedIn={() => {
-            // Fresh login (as opposed to a restored session, handled in the
-            // launch-time effect above) - same cache-first pattern: show
-            // cached questions immediately if any exist for this device,
-            // then refresh in the background.
-            const cachedQuestions = getCachedQuestions();
-            if (cachedQuestions && cachedQuestions.length > 0) {
-              setQuestions(cachedQuestions);
-            }
-            loadQuestions();
-            setScreen('onboarding');
-          }}
+          onLoggedIn={handleAuthenticated}
+          onRegisterPress={ENABLE_SELF_REGISTRATION ? () => setScreen('selfRegister') : undefined}
         />
         {__DEV__ && (
           <DevEntryMenu
@@ -938,6 +971,12 @@ export function AppFlow() {
           />
         )}
       </View>
+    );
+  }
+
+  if (screen === 'selfRegister') {
+    return (
+      <SelfRegisterScreen onRegistered={handleAuthenticated} onBack={() => setScreen('login')} />
     );
   }
 
@@ -1002,13 +1041,12 @@ export function AppFlow() {
           </View>
         ) : mainTab === 'home' && (
           <HomeScreen
-            // Mock identity - no real account backend wired yet (Phase
-            // 4f/7), matches the identity-confirmation mock default.
-            // Full name: HomeScreen splits it (first name for the greeting,
-            // initials for the avatar monogram - design 1C/15).
-            distributorName="Mahesh Agrawal"
-            businessName="Agrawal Traders"
-            city="Nagpur"
+            // Real name now available (distributorProfile.ts); business/city
+            // are also on that response but stay unwired for now - see the
+            // module's own comment. HomeScreen still falls back to a plain,
+            // non-personalized greeting whenever the profile hasn't loaded
+            // (or, in principle, a distributor genuinely has no name).
+            distributorName={distributorProfile?.name}
             totalQuestions={questions.length}
             questionsAnswered={videos.length}
             hasSubmittedBatch={hasSubmittedBatch}
@@ -1054,7 +1092,13 @@ export function AppFlow() {
         )}
         {mainTab === 'help' && <HelpScreen />}
         {mainTab === 'profile' && (
-          <ProfileScreen onOpenConsent={() => setScreen('consent')} onLogout={handleLogout} />
+          <ProfileScreen
+            distributorId={distributorId}
+            distributorName={distributorProfile?.name}
+            distributorPhone={distributorProfile?.phone}
+            onOpenConsent={() => setScreen('consent')}
+            onLogout={handleLogout}
+          />
         )}
         <BottomTabBar
           activeTab={mainTab}

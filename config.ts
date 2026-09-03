@@ -10,3 +10,14 @@
 // keep both in sync, since this one only stops the client from asking for
 // rendered reels, it doesn't stop the server from making them.
 export const ENABLE_REEL_RENDERING = process.env.EXPO_PUBLIC_ENABLE_REEL_RENDERING === 'true';
+
+// Self-registration for internal test participants (API_CONTRACT.md's
+// POST /register) - an alternative to the 5 seeded accounts, gated the same
+// two-independent-flags way as ENABLE_REEL_RENDERING above. The backend's
+// own ENABLE_SELF_REGISTRATION (src/config/env.ts in the backend repo)
+// actually gates whether the route exists at all; this one only controls
+// whether the app shows the "New distributor? Register" entry point on
+// Login - keep both in sync, since flipping only this one would show a
+// dead-end button, and flipping only the backend one would leave the real
+// endpoint reachable with no in-app way to find it.
+export const ENABLE_SELF_REGISTRATION = process.env.EXPO_PUBLIC_ENABLE_SELF_REGISTRATION === 'true';
