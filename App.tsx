@@ -13,6 +13,7 @@ import {
   PlusJakartaSans_700Bold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppFlow } from './AppFlow';
 import { ThemeProvider } from './theme/ThemeContext';
 import { PaletteSwitcher } from './theme/PaletteSwitcher';
@@ -38,10 +39,12 @@ export default function App() {
   }
 
   return (
-    <ThemeProvider>
-      <AppFlow />
-      <PaletteSwitcher />
-      <StatusBar style="dark" />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppFlow />
+        <PaletteSwitcher />
+        <StatusBar style="dark" />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

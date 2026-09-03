@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -18,7 +19,18 @@ interface Props {
 // lightweight screen-state pattern - no navigation library added.
 export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }: Props) {
   const { colors, spacing, typography } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, spacing, typography), [colors, spacing, typography]);
+  // Real per-device inset (Android 3-button/gesture nav, iOS home indicator)
+  // - was previously unaccounted for entirely, so the tab bar's own content
+  // sat right under/behind the system nav instead of clearing it. Added as
+  // extra height, not swapped in for the fixed 74 - the icon/label row
+  // keeps its usual size, insets.bottom is blank space (colors.surface)
+  // below it, same visual result as apps where the bar sits above the
+  // system buttons.
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(
+    () => makeStyles(colors, spacing, typography, insets.bottom),
+    [colors, spacing, typography, insets.bottom],
+  );
   const inactive = colors.textDisabled;
 
   return (
@@ -69,11 +81,12 @@ function TabItem({
   );
 }
 
-function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typography) {
+function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typography, bottomInset: number) {
   const inactive = colors.textDisabled;
   return StyleSheet.create({
     container: {
-      height: 74,
+      height: 74 + bottomInset,
+      paddingBottom: bottomInset,
       flexDirection: 'row',
       borderTopWidth: 1,
       borderTopColor: colors.borderStrong,

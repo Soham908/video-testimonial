@@ -18,6 +18,7 @@
     "react": "19.2.3",
     "react-native": "0.86.0",
     "react-native-fast-tflite": "^3.0.1",
+    "react-native-safe-area-context": "~5.7.0",
     "react-native-vision-camera": "^5.1.0",
     "react-native-vision-camera-face-detector": "^2.0.2",
     "react-native-vision-camera-worklets": "^5.1.0",
