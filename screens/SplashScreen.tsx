@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -11,10 +11,11 @@ interface Props {
 
 const AUTO_ADVANCE_MS = 1400;
 
-// On screen briefly, carrying one idea only: this is Vardaan Paints, and
-// it's about your voice. The app name sits above the company - the
-// distributor is the subject here, not the brand (design screen 10).
-// Auto-advances; still tappable in case someone doesn't want to wait.
+// On screen briefly, carrying one idea only: this is [company], and it's
+// about your voice. The app name sits above the company - the distributor
+// is the subject here, not the brand (design screen 10). Company name is
+// "Zeist Interactive" for now (placeholder, not the real client). Auto-
+// advances; still tappable in case someone doesn't want to wait.
 export function SplashScreen({ onContinue }: Props) {
   const { colors, spacing, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, typography), [colors, spacing, typography]);
@@ -26,9 +27,13 @@ export function SplashScreen({ onContinue }: Props) {
 
   return (
     <Pressable style={styles.container} onPress={onContinue}>
-      <View style={styles.mark} />
-      <Text style={styles.appName}>Distributor Voices</Text>
-      <Text style={styles.company}>Vardaan Paints</Text>
+      <Image
+        source={require('../assets/Zeist-logo-white.png')}
+        style={styles.mark}
+        resizeMode="contain"
+      />
+      <Text style={styles.appName}>Insight Scoop</Text>
+      <Text style={styles.company}>Zeist Interactive</Text>
     </Pressable>
   );
 }
@@ -42,11 +47,11 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typogra
       justifyContent: 'center',
       gap: spacing.md,
     },
+    // Real logo (245x288 source) - sized to keep its own aspect ratio
+    // rather than forcing it into the old placeholder's square box.
     mark: {
       width: 56,
-      height: 56,
-      borderRadius: 16,
-      backgroundColor: 'rgba(255,255,255,0.2)',
+      height: 66,
       marginBottom: spacing.sm,
     },
     appName: { ...typography.title, fontSize: 22, color: colors.accentText },
