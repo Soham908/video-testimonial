@@ -5,7 +5,6 @@ import { useTheme } from '../theme/ThemeContext';
 import type { Spacing } from '../theme/spacing';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
-import { getQuestionAudioSource } from '../questionAudio';
 
 interface Props {
   questionNumber: number;
@@ -17,11 +16,11 @@ interface Props {
   countingDown: boolean;
   countdownSeconds: number;
   onStartRecording: () => void;
-  // Backend question id (CLAUDE.md) - keys the bundled VO audio the same
-  // way QuestionBriefScreen's "Read to me" does. undefined while questions
-  // are still loading; falls back to no audio the same as an id with no
-  // bundled clip.
-  questionId?: string;
+  // The current question's own vo_playback_url (API_CONTRACT.md), same
+  // source QuestionBriefScreen's "Read to me" uses - a fresh presigned S3
+  // URL, not a bundled/local clip. undefined while questions are still
+  // loading.
+  voPlaybackUrl?: string;
   readQuestionAloud: boolean;
   onToggleReadQuestionAloud: (next: boolean) => void;
 }
@@ -44,17 +43,17 @@ export function CameraCheckScreen({
   countingDown,
   countdownSeconds,
   onStartRecording,
-  questionId,
+  voPlaybackUrl,
   readQuestionAloud,
   onToggleReadQuestionAloud,
 }: Props) {
   const { spacing } = useTheme();
   const styles = useMemo(() => makeStyles(spacing), [spacing]);
 
-  // null (not a missing key) when there's no bundled clip for this question
-  // - useVideoPlayer accepts a null source and stays inert, same fallback
-  // QuestionBriefScreen's "Read to me" uses.
-  const audioSource = getQuestionAudioSource(questionId);
+  // null (not just undefined) while there's nothing to play - useVideoPlayer
+  // accepts a null source and stays inert, same fallback QuestionBriefScreen's
+  // "Read to me" uses.
+  const audioSource = voPlaybackUrl ?? null;
   const player = useVideoPlayer(audioSource);
 
   // Plays once per countdown, from the top, only while the preference is

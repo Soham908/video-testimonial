@@ -5,6 +5,7 @@ import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Chip } from '../components/ui/Chip';
+import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 
 interface Props {
   questionNumber: number;
@@ -89,7 +90,10 @@ export function RecordingScreen({
           </View>
         )}
         <View style={styles.questionBubble}>
-          <Text style={styles.questionText} numberOfLines={3}>
+          <Text
+            style={[styles.questionText, containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('800') }]}
+            numberOfLines={3}
+          >
             {questionText}
           </Text>
         </View>

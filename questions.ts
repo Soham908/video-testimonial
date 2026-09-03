@@ -23,16 +23,15 @@ export interface QuestionDto {
   talking_points: string[] | null;
 }
 
-// Only 'en' is ever requested today - a real language selector is a later
-// change (CLAUDE.md). Passed as a query param rather than hardcoded so the
-// plumbing is already in place once that selector exists; the backend
-// falls back to the distributor's stored language_pref if omitted.
-export const DEFAULT_LANGUAGE = 'en';
-
-export async function fetchQuestions(language: string = DEFAULT_LANGUAGE): Promise<QuestionDto[]> {
-  const { questions } = await apiGet<{ questions: QuestionDto[] }>(
-    `/distributors/me/questions?language=${encodeURIComponent(language)}`,
-  );
+// No in-app language selector exists yet (CLAUDE.md) - `language` is an
+// explicit, deliberate override for when one lands, not something this app
+// has a value for today. Omitted (not defaulted to 'en') whenever the
+// caller doesn't pass one, so the backend falls through to the
+// distributor's own stored language_pref instead of every distributor
+// silently getting English regardless of their real preference.
+export async function fetchQuestions(language?: string): Promise<QuestionDto[]> {
+  const query = language ? `?language=${encodeURIComponent(language)}` : '';
+  const { questions } = await apiGet<{ questions: QuestionDto[] }>(`/distributors/me/questions${query}`);
   return questions;
 }
 

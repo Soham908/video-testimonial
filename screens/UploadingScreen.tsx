@@ -7,6 +7,7 @@ import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
 import { PopupSheet } from '../components/ui/Modal';
+import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 
 export interface UploadItem {
   questionIndex: number;
@@ -92,7 +93,13 @@ export function UploadingScreen({
                 <Text style={styles.rowThumbGlyph}>▶</Text>
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.rowLabel}>
+                <Text
+                  style={[
+                    styles.rowLabel,
+                    item.questionText &&
+                      containsDevanagari(item.questionText) && { fontFamily: devanagariFontFamily('600') },
+                  ]}
+                >
                   {item.questionIndex + 1} · {item.questionText ?? item.label}
                 </Text>
                 <Text style={styles.rowSubLabel}>
@@ -160,7 +167,13 @@ export function UploadingScreen({
 
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background, padding: spacing.xl, paddingTop: spacing.xxl, gap: spacing.xs + 2 },
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      padding: spacing.xl,
+      paddingTop: spacing.xxl + spacing.topExtra,
+      gap: spacing.xs + 2,
+    },
     backLink: { ...typography.body, fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: spacing.xs },
     title: { ...typography.title, fontSize: 25, color: colors.text },
     subtitle: { ...typography.body, color: colors.textMuted },

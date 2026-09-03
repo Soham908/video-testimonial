@@ -9,16 +9,18 @@ import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
 import { Dropdown } from '../components/ui/Dropdown';
 import { Toggle } from '../components/ui/Toggle';
-import { getQuestionAudioSource } from '../questionAudio';
+import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 
 interface Props {
   questionNumber: number;
   totalQuestions: number;
-  // Backend question id (CLAUDE.md) - used to key the bundled VO audio
-  // below, not questionNumber/index. `undefined` while questions are still
-  // loading; falls back to "no audio" the same as an id with no bundled
-  // clip (see QUESTION_AUDIO_EN).
-  questionId?: string;
+  // The current question's own vo_playback_url (API_CONTRACT.md) - a fresh
+  // presigned S3 URL fetched from GET /distributors/me/questions, already
+  // localized server-side. Not bundled/local and not cached beyond however
+  // long the question list itself is cached - `undefined` while questions
+  // are still loading, same "no audio" fallback as a question with no
+  // clip.
+  voPlaybackUrl?: string;
   questionText: string;
   talkingPoints: string[];
   onStartRecording: () => void;
@@ -44,7 +46,7 @@ const SAMPLE_ANSWERS: { name: string; business: string; duration: string }[] = [
 export function QuestionBriefScreen({
   questionNumber,
   totalQuestions,
-  questionId,
+  voPlaybackUrl,
   questionText,
   talkingPoints,
   onStartRecording,
@@ -55,11 +57,11 @@ export function QuestionBriefScreen({
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
   const [readToMe, setReadToMe] = useState(false);
-  // null (not a missing key in the map) when there's no bundled clip for
-  // this question - useVideoPlayer accepts a null source and stays inert,
-  // so a missing clip falls back to plain text rather than crashing or
-  // blocking anything (CLAUDE.md).
-  const audioSource = getQuestionAudioSource(questionId);
+  // undefined (not a missing key in a map) while questions are still
+  // loading or a question genuinely has no VO - useVideoPlayer accepts a
+  // null/undefined source and stays inert, so that falls back to plain
+  // text rather than crashing or blocking anything (CLAUDE.md).
+  const audioSource = voPlaybackUrl ?? null;
   const player = useVideoPlayer(audioSource);
   const sampleAnswer = SAMPLE_ANSWERS[(questionNumber - 1) % SAMPLE_ANSWERS.length];
 
@@ -99,7 +101,11 @@ export function QuestionBriefScreen({
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
         <Text style={styles.questionNumberLabel}>Question {questionNumber}</Text>
-        <Text style={styles.title}>{questionText}</Text>
+        <Text
+          style={[styles.title, containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('700') }]}
+        >
+          {questionText}
+        </Text>
 
         {talkingPoints.length > 0 && (
           <>
@@ -108,7 +114,14 @@ export function QuestionBriefScreen({
               {talkingPoints.map((point, i) => (
                 <View key={point} style={styles.pointRow}>
                   <Text style={styles.pointNumber}>{i + 1}</Text>
-                  <Text style={styles.pointText}>{point}</Text>
+                  <Text
+                    style={[
+                      styles.pointText,
+                      containsDevanagari(point) && { fontFamily: devanagariFontFamily('400') },
+                    ]}
+                  >
+                    {point}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -159,7 +172,7 @@ export function QuestionBriefScreen({
 
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.xl },
+    container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.xl + spacing.topExtra },
     topRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',

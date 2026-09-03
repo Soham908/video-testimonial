@@ -1201,7 +1201,7 @@ export function AppFlow() {
       <QuestionBriefScreen
         questionNumber={questionIndex + 1}
         totalQuestions={questions.length}
-        questionId={currentQuestion?.id}
+        voPlaybackUrl={currentQuestion?.vo_playback_url}
         questionText={questionText}
         talkingPoints={talkingPoints}
         onStartRecording={enterCameraCheck}
@@ -1333,7 +1333,7 @@ export function AppFlow() {
           countingDown={phase === 'countdown'}
           countdownSeconds={countdownRemaining}
           onStartRecording={() => setPhase('countdown')}
-          questionId={currentQuestion?.id}
+          voPlaybackUrl={currentQuestion?.vo_playback_url}
           readQuestionAloud={readQuestionAloud}
           onToggleReadQuestionAloud={setReadQuestionAloud}
         />

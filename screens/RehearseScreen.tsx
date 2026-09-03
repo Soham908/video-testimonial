@@ -5,6 +5,7 @@ import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import { Button } from '../components/ui/Button';
 import { PopupSheet } from '../components/ui/Modal';
+import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 
 interface Props {
   questionText: string;
@@ -34,7 +35,9 @@ export function RehearseScreen({ questionText, onRecordForReal, onBackToBrief }:
       </View>
 
       <View style={styles.promptBox} pointerEvents="none">
-        <Text style={styles.promptText}>{questionText}</Text>
+        <Text style={[styles.promptText, containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('600') }]}>
+          {questionText}
+        </Text>
       </View>
 
       <View style={styles.bottomBar}>

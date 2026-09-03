@@ -1,5 +1,6 @@
 import { Pressable, Text, View, StyleSheet } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
+import { containsDevanagari, devanagariFontFamily } from '../../theme/fonts';
 
 interface ChipProps {
   label: string;
@@ -27,7 +28,20 @@ export function Chip({ label, onPress, selected, onDark, emphasis }: ChipProps) 
 
   const pillStyle = [styles.base, { backgroundColor: background, borderRadius: radius.pill }];
   const content = (
-    <Text style={[styles.label, { color: textColor }, emphasis && styles.labelEmphasis]}>{label}</Text>
+    <Text
+      style={[
+        styles.label,
+        { color: textColor },
+        emphasis && styles.labelEmphasis,
+        // Chip has no fontFamily of its own (relies on the platform default,
+        // which doesn't reliably cover Devanagari either - see theme/fonts.ts).
+        // Only RecordingScreen's talking-point prompts can actually be
+        // Hindi/Marathi; Help's static English tips never match this.
+        containsDevanagari(label) && { fontFamily: devanagariFontFamily(emphasis ? '800' : '600') },
+      ]}
+    >
+      {label}
+    </Text>
   );
 
   return onPress ? (
