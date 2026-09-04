@@ -1,6 +1,12 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import * as NavigationBar from 'expo-navigation-bar';
+// setHidden lives on the `NavigationBar` namespace-merged export itself,
+// not as a standalone top-level export the way the deprecated `setStyle`
+// const is - imported separately (under a different local name to avoid
+// colliding with the `* as NavigationBar` import above) rather than reached
+// via the confusing `NavigationBar.NavigationBar.setHidden` path.
+import { NavigationBar as NavigationBarControls } from 'expo-navigation-bar';
 
 // expo-navigation-bar (SDK 57) no longer exposes a background-color API at
 // all - setBackgroundColorAsync/setButtonStyleAsync were removed, since
@@ -22,4 +28,18 @@ export function NavigationBarSync() {
   }, []);
 
   return null;
+}
+
+// setStyle() only controls icon contrast, not the bar's own fill (see this
+// file's top comment) - Android draws its own translucent contrast scrim
+// behind the buttons regardless, with no exposed API left to disable just
+// that. setHidden() is the one thing that actually removes it, so the
+// full-bleed recording screen hides the bar outright rather than trying to
+// recolor something this API no longer exposes. iOS has no equivalent
+// system bar - no-op there, same as NavigationBarSync above.
+export function useHideNavigationBarWhile(hidden: boolean): void {
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    NavigationBarControls.setHidden(hidden);
+  }, [hidden]);
 }

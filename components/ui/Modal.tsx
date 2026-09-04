@@ -1,4 +1,4 @@
-import { Modal as RNModal, Pressable, View, StyleSheet } from 'react-native';
+import { Keyboard, Modal as RNModal, Pressable, View, StyleSheet } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 
 interface PopupSheetProps {
@@ -32,7 +32,10 @@ export function PopupSheet({ visible, onDismiss, children, dismissable = true }:
               paddingBottom: spacing.xxl,
             },
           ]}
-          onPress={(e) => e.stopPropagation()}
+          onPress={(e) => {
+            e.stopPropagation();
+            Keyboard.dismiss();
+          }}
         >
           <View style={[styles.grabber, { backgroundColor: colors.borderStrong }]} />
           {children}

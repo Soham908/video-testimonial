@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -42,7 +42,7 @@ export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
   }
 
   return (
-    <View style={styles.container}>
+    <Pressable style={styles.container} onPress={Keyboard.dismiss}>
       <View>
         <View style={styles.logoPlaceholder}>
           <Text style={styles.logoPlaceholderText}>LOGO</Text>
@@ -95,7 +95,7 @@ export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
           </Text>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 

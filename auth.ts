@@ -31,13 +31,26 @@ export async function login(username: string, password: string): Promise<void> {
 // participants, gated behind ENABLE_SELF_REGISTRATION on both ends (see
 // config.ts). Same response shape as login() - a token, usable immediately
 // - so callers can treat a successful registration exactly like a
-// successful login from this point on. `phone` is optional and unverified
-// per the contract; omit it entirely rather than sending an empty string.
-export async function register(name: string, phone?: string): Promise<void> {
-  const { token } = await apiPost<LoginResponse>('/register', {
-    name,
-    ...(phone && { phone }),
-  });
+// successful login from this point on. `phone` and `password` are both
+// required now (phone is the identifier loginByPhone() logs back in with) -
+// send whatever format the user typed for phone, the backend normalizes it.
+// A 409 (phone already registered) comes back as an ApiError with
+// code === 'phone_already_registered' - callers should catch that
+// specifically and route to sign-in rather than showing it as a generic
+// error (API_CONTRACT.md).
+export async function register(name: string, phone: string, password: string): Promise<void> {
+  const { token } = await apiPost<LoginResponse>('/register', { name, phone, password });
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  setAuthToken(token);
+}
+
+// POST /login/phone (API_CONTRACT.md) - login counterpart to register(),
+// for distributors who signed up that way. Same gating (ENABLE_SELF_
+// REGISTRATION) and same response shape as login()/register(). Wrong
+// password and unknown phone both come back as the same generic 401
+// message - don't build UI copy that assumes which one happened.
+export async function loginByPhone(phone: string, password: string): Promise<void> {
+  const { token } = await apiPost<LoginResponse>('/login/phone', { phone, password });
   await SecureStore.setItemAsync(TOKEN_KEY, token);
   setAuthToken(token);
 }

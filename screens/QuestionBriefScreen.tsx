@@ -72,13 +72,22 @@ export function QuestionBriefScreen({
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
   const sampleAnswer = SAMPLE_ANSWERS[(questionNumber - 1) % SAMPLE_ANSWERS.length];
 
+  // Same "shared object already released" risk as CameraCheckScreen.tsx's
+  // safePause() (see that file's comment for the mechanism) - lower odds
+  // here since this fires from a direct tap rather than an unmount
+  // cleanup, but the native call can still throw synchronously if the
+  // player was torn down (e.g. navigating away right as this fires).
   function toggleReadToMe() {
     if (audioSource == null) return;
-    if (isPlaying) {
-      player.pause();
-    } else {
-      player.currentTime = 0;
-      player.play();
+    try {
+      if (isPlaying) {
+        player.pause();
+      } else {
+        player.currentTime = 0;
+        player.play();
+      }
+    } catch (error) {
+      console.warn('[question-brief] VO toggle failed', error);
     }
   }
 

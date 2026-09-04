@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -45,7 +45,7 @@ export function IdentityConfirmScreen({ identity = DEFAULT_IDENTITY, onConfirm }
   const [editingField, setEditingField] = useState<keyof Identity | null>(null);
 
   return (
-    <View style={styles.container}>
+    <Pressable style={styles.container} onPress={Keyboard.dismiss}>
       <View>
         <Text style={styles.eyebrow}>Is this you?</Text>
         <Text style={styles.title}>Confirm your details</Text>
@@ -76,7 +76,7 @@ export function IdentityConfirmScreen({ identity = DEFAULT_IDENTITY, onConfirm }
 
         <Button label="This is me" onPress={onConfirm} style={{ marginTop: spacing.xl }} />
       </View>
-    </View>
+    </Pressable>
   );
 }
 

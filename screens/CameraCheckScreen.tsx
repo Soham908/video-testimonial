@@ -56,6 +56,23 @@ export function CameraCheckScreen({
   const audioSource = voPlaybackUrl ?? null;
   const player = useVideoPlayer(audioSource);
 
+  // The underlying native call can throw synchronously with "Cannot use
+  // shared object that was already released" - same root cause and same
+  // defensive pattern as useAmbientNoiseCheck.ts's safeStop() (see that
+  // file's comment for the full mechanism), just for VideoPlayer instead
+  // of AudioRecorder. useVideoPlayer releases its native player
+  // automatically on unmount; there's no ordering guarantee that this
+  // effect's own cleanup runs before that happens - most reliably hit right
+  // when the countdown ends, since that's the same render that unmounts
+  // this component (phase flips away from 'cameraCheck'/'countdown').
+  function safePause() {
+    try {
+      player.pause();
+    } catch (error) {
+      console.warn('[camera-check] VO pause failed', error);
+    }
+  }
+
   // Plays once per countdown, from the top, only while the preference is
   // on - not tied to whether it happened to still be playing from Question
   // Brief's "Read to me", since that's a different moment in the flow and
@@ -67,12 +84,16 @@ export function CameraCheckScreen({
   useEffect(() => {
     if (audioSource == null) return;
     if (!countingDown || !readQuestionAloud) {
-      player.pause();
+      safePause();
       return;
     }
-    player.currentTime = 0;
-    player.play();
-    return () => player.pause();
+    try {
+      player.currentTime = 0;
+      player.play();
+    } catch (error) {
+      console.warn('[camera-check] VO play failed', error);
+    }
+    return safePause;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countingDown, readQuestionAloud, audioSource]);
 

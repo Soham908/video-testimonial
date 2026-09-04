@@ -1,82 +1,153 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
-import { register } from '../auth';
+import { register, loginByPhone } from '../auth';
+import { ApiError } from '../api';
 
 interface Props {
-  onRegistered: () => void;
+  onAuthenticated: () => void;
   onBack: () => void;
 }
 
-// Real self-registration (ENABLE_SELF_REGISTRATION - API_CONTRACT.md's
-// POST /register), only reachable when that flag is on (see LoginScreen's
-// "New distributor? Register" link). Deliberately just a name field and a
-// button - phone is optional/unverified per the contract and adds a second
-// field for no real benefit at this stage, so it's omitted entirely rather
-// than collected and left unused. Structure mirrors LoginScreen.tsx
-// (title/subtitle/label/input/error/button-with-loading) rather than
-// inventing new layout - this is the same shape of screen (an unauthenticated
-// form that ends with a real token), not a themed "welcome" moment.
-export function SelfRegisterScreen({ onRegistered, onBack }: Props) {
+type Mode = 'register' | 'signIn';
+
+// Combined register/sign-in for the phone+password self-registration path
+// (ENABLE_SELF_REGISTRATION - API_CONTRACT.md's POST /register and
+// POST /login/phone), only reachable when that flag is on (see LoginScreen's
+// "New distributor? Register" link). One screen with a mode toggle rather
+// than two separate screens - register() itself can require switching to
+// sign-in mid-flow (a 409 on an already-registered phone), so the two modes
+// need to live together rather than being separately-routed screens anyway.
+// Structure mirrors LoginScreen.tsx (title/subtitle/label/input/error/
+// button-with-loading) rather than inventing new layout.
+export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
+  const [mode, setMode] = useState<Mode>('register');
   const [name, setName] = useState('');
+  // Shared across both modes - phone is the same identifier either way, and
+  // a 409-triggered switch into sign-in mode keeps whatever was typed here.
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set only by the 409 redirect below - a neutral notice, not an error,
+  // since "this phone is already registered" is an expected case per the
+  // contract, not a failure.
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const isRegister = mode === 'register';
+  const canSubmit = isRegister
+    ? name.trim().length > 0 && phone.trim().length > 0 && password.length >= 6
+    : phone.trim().length > 0 && password.length > 0;
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+    setNotice(null);
+  }
 
   async function handleSubmit() {
-    if (!name.trim()) return;
+    if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
+    setNotice(null);
     try {
-      await register(name.trim());
-      onRegistered();
+      if (isRegister) {
+        await register(name.trim(), phone.trim(), password);
+      } else {
+        await loginByPhone(phone.trim(), password);
+      }
+      onAuthenticated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      if (isRegister && err instanceof ApiError && err.code === 'phone_already_registered') {
+        setMode('signIn');
+        setNotice(err.message);
+        setPassword('');
+      } else {
+        setError(err instanceof Error ? err.message : 'Something went wrong.');
+      }
       setSubmitting(false);
     }
   }
 
   return (
-    <View style={styles.container}>
+    <Pressable style={styles.container} onPress={Keyboard.dismiss}>
       <View>
         <Text style={styles.backLink} onPress={onBack}>
           ‹ Back to sign in
         </Text>
-        <Text style={styles.title}>What's your name?</Text>
-        <Text style={styles.subtitle}>This appears on your finished videos - you can change it later.</Text>
+        <Text style={styles.title}>{isRegister ? "What's your name?" : 'Sign in with phone'}</Text>
+        <Text style={styles.subtitle}>
+          {isRegister
+            ? 'This appears on your finished videos - you can change it later.'
+            : 'Use the phone number and password you registered with.'}
+        </Text>
 
-        <Text style={styles.label}>Your name</Text>
+        {isRegister && (
+          <>
+            <Text style={styles.label}>Your name</Text>
+            <TextInput
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              editable={!submitting}
+              placeholderTextColor={colors.textDisabled}
+            />
+          </>
+        )}
+
+        <Text style={styles.label}>Phone number</Text>
         <TextInput
           style={styles.input}
-          value={name}
-          onChangeText={setName}
-          autoFocus
-          autoCapitalize="words"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
           editable={!submitting}
           placeholderTextColor={colors.textDisabled}
         />
 
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          editable={!submitting}
+          placeholderTextColor={colors.textDisabled}
+        />
+
+        {notice && <Text style={styles.notice}>{notice}</Text>}
         {error && <Text style={styles.error}>{error}</Text>}
 
         <Pressable
-          style={[styles.button, (submitting || !name.trim()) && styles.buttonDisabled]}
+          style={[styles.button, (submitting || !canSubmit) && styles.buttonDisabled]}
           onPress={handleSubmit}
-          disabled={submitting || !name.trim()}
+          disabled={submitting || !canSubmit}
         >
           {submitting ? (
             <ActivityIndicator color={colors.accentText} />
           ) : (
-            <Text style={styles.buttonText}>Get started</Text>
+            <Text style={styles.buttonText}>{isRegister ? 'Get started' : 'Sign in'}</Text>
           )}
         </Pressable>
+
+        <Text
+          style={styles.toggleLink}
+          onPress={() => switchMode(isRegister ? 'signIn' : 'register')}
+        >
+          {isRegister ? 'Already registered? Sign in' : "New here? Register instead"}
+        </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -124,6 +195,12 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       color: colors.text,
       marginBottom: spacing.md,
     },
+    notice: {
+      ...typography.body,
+      fontSize: 14,
+      color: colors.accent,
+      marginTop: spacing.xs,
+    },
     error: {
       ...typography.body,
       fontSize: 14,
@@ -144,6 +221,14 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     buttonText: {
       ...typography.button,
       color: colors.accentText,
+    },
+    toggleLink: {
+      ...typography.body,
+      fontSize: 14.5,
+      fontWeight: '600',
+      color: colors.accent,
+      textAlign: 'center',
+      marginTop: spacing.lg,
     },
   });
 }

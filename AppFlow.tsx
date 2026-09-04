@@ -34,6 +34,7 @@ import {
   type RecordedVideo,
 } from './recordings';
 import { useTheme } from './theme/ThemeContext';
+import { useHideNavigationBarWhile } from './theme/NavigationBarSync';
 import { restoreSession, getCurrentAuth, logout } from './auth';
 import { fetchDistributorProfile, type DistributorProfile } from './distributorProfile';
 import { uploadSegment } from './upload';
@@ -67,8 +68,9 @@ type Screen =
   | 'login'
   // Real entry point when ENABLE_SELF_REGISTRATION is on (config.ts) -
   // reachable from Login's "New distributor? Register" link, unlike the
-  // dev-only entry-cluster screens below. A successful registration
-  // proceeds exactly like a successful login (handleAuthenticated).
+  // dev-only entry-cluster screens below. Covers both register and
+  // phone+password sign-in (SelfRegisterScreen's own mode toggle) - either
+  // one proceeds exactly like a successful login (handleAuthenticated).
   | 'selfRegister'
   // Entry-cluster screens (splash / WhatsApp-invite open / identity
   // confirmation / onboarding) - reachable for now only via the
@@ -112,6 +114,18 @@ const MAX_TAKES = 3;
 // on the countdown-tick effect below for why this alone doesn't fully fix
 // it for a VO clip longer than 5s.
 const COUNTDOWN_SECONDS = 5;
+// Extra real time folded into the very first tick (the "5", before
+// counting down to "4") rather than held past "1" at the end - a slightly
+// longer first second is unnoticeable before the countdown has established
+// a rhythm; holding right before recording starts looked like an obvious
+// stall instead. Displayed countdown is still exactly 5..1, unchanged.
+// Today's VO clips run 2.7s-5.1s; the visible countdown alone only spans
+// 5.0s real time (5 one-second ticks), so the longest clip could still
+// outlast it by ~100ms without this. 300ms covers that with margin for
+// normal JS timer jitter. Revisit if VO gets re-recorded longer than
+// ~5.3s - it's tied to today's actual clip lengths, not a structural
+// guarantee.
+const COUNTDOWN_BUFFER_MS = 300;
 
 // Questions (text, count, order, VO) are backend-configured per client now,
 // fetched via GET /distributors/me/questions (API_CONTRACT.md) - not
@@ -135,6 +149,14 @@ export function AppFlow() {
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [phase, setPhase] = useState<QuestionPhase>('brief');
+  // Android's own nav-bar contrast scrim isn't something an app can recolor
+  // (NavigationBarSync's comment) - hiding it outright is the only real way
+  // to get true full-bleed. CameraCheckScreen renders during both
+  // 'cameraCheck' (the alignment/lighting check) and 'countdown' - full-bleed
+  // for both, same as 'recording'.
+  useHideNavigationBarWhile(
+    phase === 'cameraCheck' || phase === 'countdown' || phase === 'recording',
+  );
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [countdownRemaining, setCountdownRemaining] = useState(COUNTDOWN_SECONDS);
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
@@ -741,16 +763,17 @@ export function AppFlow() {
       return;
     }
     if (countdownRemaining <= 0) {
-      // Known sequencing gap, not fixed by the COUNTDOWN_SECONDS bump alone:
-      // startRecording() fires here, in the same tick, BEFORE setPhase
-      // below causes CameraCheckScreen to re-render with countingDown=false
-      // - which is what actually triggers its player.pause() cleanup (see
-      // that component). So if the read-aloud VO is still playing at the
-      // instant the countdown hits zero, recording can start a render cycle
-      // or two before the audio actually stops, not just up to whatever
-      // COUNTDOWN_SECONDS is set to. A real fix would pause the VO player
-      // here, synchronously, before calling startRecording() - not attempted
-      // yet, this comment is a marker for when it is.
+      // Fires immediately, no hold - COUNTDOWN_BUFFER_MS is spent up front
+      // instead (the first tick below), so today's VO clips finish
+      // naturally before this point instead of racing it, without a
+      // visible stall right before recording starts. Not a structural fix
+      // for arbitrarily long VO (see COUNTDOWN_BUFFER_MS's own comment) - a
+      // real fix would pause the VO player synchronously the instant it
+      // starts, rather than relying on it finishing in time. Crash-safe
+      // either way now: CameraCheckScreen's safePause() absorbs the "shared
+      // object already released" race from its cleanup running after
+      // useVideoPlayer's own unmount-triggered release, whether or not the
+      // buffer was enough.
       recordingStartedAtRef.current = Date.now();
       cameraRef.current
         ?.startRecording()
@@ -758,7 +781,11 @@ export function AppFlow() {
       setPhase('recording');
       return;
     }
-    const timeout = setTimeout(() => setCountdownRemaining((r) => r - 1), 1000);
+    // The very first tick (still showing "5") runs COUNTDOWN_BUFFER_MS
+    // longer than the rest - see that constant's comment for why the extra
+    // time lives here instead of at the end.
+    const tickMs = countdownRemaining === COUNTDOWN_SECONDS ? 1000 + COUNTDOWN_BUFFER_MS : 1000;
+    const timeout = setTimeout(() => setCountdownRemaining((r) => r - 1), tickMs);
     return () => clearTimeout(timeout);
   }, [phase, countdownRemaining]);
 
@@ -965,11 +992,11 @@ export function AppFlow() {
     setScreen('login');
   }
 
-  // Shared by a fresh login and a fresh self-registration (auth.ts's
-  // register() leaves the app in an identical state to login() - same
-  // token shape, immediately usable) - so a successful registration
-  // proceeds exactly like a normal login from here on, not a separate path
-  // that could drift out of sync with it.
+  // Shared by a fresh login, self-registration, and phone+password sign-in
+  // (auth.ts's register()/loginByPhone() both leave the app in an identical
+  // state to login() - same token shape, immediately usable) - so all three
+  // proceed exactly the same way from here on, not separate paths that
+  // could drift out of sync with each other.
   function handleAuthenticated() {
     getCurrentAuth().then((auth) => auth && setDistributorId(auth.distributorId));
     fetchDistributorProfile().then(setDistributorProfile).catch(() => {});
@@ -1030,7 +1057,7 @@ export function AppFlow() {
 
   if (screen === 'selfRegister') {
     return (
-      <SelfRegisterScreen onRegistered={handleAuthenticated} onBack={() => setScreen('login')} />
+      <SelfRegisterScreen onAuthenticated={handleAuthenticated} onBack={() => setScreen('login')} />
     );
   }
 
