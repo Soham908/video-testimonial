@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer } from 'expo-video';
+import { useEvent } from 'expo';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -56,23 +57,28 @@ export function QuestionBriefScreen({
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
-  const [readToMe, setReadToMe] = useState(false);
   // undefined (not a missing key in a map) while questions are still
   // loading or a question genuinely has no VO - useVideoPlayer accepts a
   // null/undefined source and stays inert, so that falls back to plain
   // text rather than crashing or blocking anything (CLAUDE.md).
   const audioSource = voPlaybackUrl ?? null;
   const player = useVideoPlayer(audioSource);
+  // Reflects the player's actual playing state, not a separately-tracked
+  // boolean - the previous version set a local `readToMe` flag on tap and
+  // only ever cleared it on another tap, so "Reading..." stayed stuck once
+  // the clip finished on its own (nothing was listening for that). Reading
+  // it straight from the player via useEvent means there's only one source
+  // of truth, so this can't drift out of sync with reality again.
+  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
   const sampleAnswer = SAMPLE_ANSWERS[(questionNumber - 1) % SAMPLE_ANSWERS.length];
 
-  function toggleReadToMe(next: boolean) {
+  function toggleReadToMe() {
     if (audioSource == null) return;
-    setReadToMe(next);
-    if (next) {
+    if (isPlaying) {
+      player.pause();
+    } else {
       player.currentTime = 0;
       player.play();
-    } else {
-      player.pause();
     }
   }
 
@@ -88,12 +94,12 @@ export function QuestionBriefScreen({
           <Text style={styles.eyebrow}>Getting ready</Text>
         </View>
         {audioSource != null && (
-          <View style={[styles.readToMe, readToMe && { backgroundColor: colors.accentSoft }]}>
+          <View style={[styles.readToMe, isPlaying && { backgroundColor: colors.accentSoft }]}>
             <Text
-              style={[styles.readToMeText, { color: readToMe ? colors.accent : colors.textMuted }]}
-              onPress={() => toggleReadToMe(!readToMe)}
+              style={[styles.readToMeText, { color: isPlaying ? colors.accent : colors.textMuted }]}
+              onPress={toggleReadToMe}
             >
-              {readToMe ? 'Reading…' : 'Read to me'}
+              {isPlaying ? 'Reading…' : 'Read to me'}
             </Text>
           </View>
         )}

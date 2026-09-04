@@ -21,6 +21,11 @@ export interface QuestionDto {
   // so a null here is expected, not a bug - QuestionBriefScreen/
   // RecordingScreen already degrade to no prompts for it.
   talking_points: string[] | null;
+  // Bumps whenever this question's text/talking_points/VO changes
+  // server-side (API_CONTRACT.md) - drives voCache.ts's local-first check,
+  // same `updated_at`-compare pattern as myVideos.ts's segments/
+  // rendered-videos caching.
+  updated_at: string;
 }
 
 // No in-app language selector exists yet (CLAUDE.md) - `language` is an

@@ -47,6 +47,7 @@ import {
   cacheQuestions,
   type QuestionDto,
 } from './questions';
+import { cacheQuestionAudio, clearVoCache, getLocalVoUri } from './voCache';
 import {
   saveSession,
   loadSession,
@@ -105,7 +106,12 @@ type QuestionPhase =
   | 'reviewTrim';
 
 const MAX_TAKES = 3;
-const COUNTDOWN_SECONDS = 3;
+// Bumped 3 -> 5 as a stopgap: the question-read-aloud VO can outlast the
+// countdown, and recording starting before it's actually finished is a
+// real clash, not just an audio-overlap glitch - see the sequencing note
+// on the countdown-tick effect below for why this alone doesn't fully fix
+// it for a VO clip longer than 5s.
+const COUNTDOWN_SECONDS = 5;
 
 // Questions (text, count, order, VO) are backend-configured per client now,
 // fetched via GET /distributors/me/questions (API_CONTRACT.md) - not
@@ -147,6 +153,23 @@ export function AppFlow() {
   const [brandedRows, setBrandedRows] = useState<BrandedRow[]>([]);
   const [myVideosRefreshToken, setMyVideosRefreshToken] = useState(0);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
+  // Manual memo (a real useMemo can't live down where this gets read - see
+  // its use site) for the resolved VO source of whichever question is
+  // currently on screen. Pinned to that question's id and never updated
+  // for it again until the id itself changes - deliberately NOT
+  // recomputed on every voCacheVersion bump. useVideoPlayer(source)
+  // creates a fresh native player and releases the old one whenever its
+  // source argument changes; if that happened while CameraCheckScreen (or
+  // QuestionBriefScreen) was still mounted for the same question - e.g.
+  // the background VO download finished mid-countdown, flipping the
+  // source from the remote URL to the just-downloaded local file - the
+  // in-flight play/pause effect's cleanup was left holding a reference to
+  // the now-released old player, crashing with "Cannot use shared object
+  // that was already released" (real crash log, not hypothetical). Only a
+  // question-id change (i.e. actually moving to a different question,
+  // where nothing was still playing on the old one) is allowed to update
+  // this.
+  const voSourceRef = useRef<{ questionId: string; url: string | undefined } | null>(null);
 
   // Backend-configured question set (CLAUDE.md) - cache-first: shown
   // immediately from questions-cache.json on launch/login, refreshed in
@@ -156,6 +179,14 @@ export function AppFlow() {
   // because one request timed out.
   const [questions, setQuestions] = useState<QuestionDto[]>([]);
   const [questionsError, setQuestionsError] = useState<string | null>(null);
+  // Bumped once each time cacheQuestionAudio finishes downloading whatever
+  // wasn't already cached locally (voCache.ts). The value itself is never
+  // read - this is purely a force-a-re-render trigger, so the plain
+  // getLocalVoUri() lookup near the bottom of this component (recomputed
+  // fresh on every render, same as questionText/talkingPoints there) picks
+  // up a just-downloaded local file instead of sitting on the remote URL
+  // until some unrelated state change happens to re-render this component.
+  const [, setVoCacheVersion] = useState(0);
 
   // The one real piece of distributor identity available today - GET /me
   // only returns auth-scoped ids, not a display name/phone (see auth.ts).
@@ -272,6 +303,12 @@ export function AppFlow() {
       cacheQuestions(fresh);
       setQuestions(fresh);
       setQuestionsError(null);
+      // Fire-and-forget, same tolerance as fetchDistributorProfile() above -
+      // a failed download just leaves that question's VO on the remote URL,
+      // it doesn't block anything else here.
+      cacheQuestionAudio(fresh)
+        .then(() => setVoCacheVersion((v) => v + 1))
+        .catch(() => {});
     } catch (error) {
       setQuestions((current) => {
         if (current.length === 0) {
@@ -704,6 +741,16 @@ export function AppFlow() {
       return;
     }
     if (countdownRemaining <= 0) {
+      // Known sequencing gap, not fixed by the COUNTDOWN_SECONDS bump alone:
+      // startRecording() fires here, in the same tick, BEFORE setPhase
+      // below causes CameraCheckScreen to re-render with countingDown=false
+      // - which is what actually triggers its player.pause() cleanup (see
+      // that component). So if the read-aloud VO is still playing at the
+      // instant the countdown hits zero, recording can start a render cycle
+      // or two before the audio actually stops, not just up to whatever
+      // COUNTDOWN_SECONDS is set to. A real fix would pause the VO player
+      // here, synchronously, before calling startRecording() - not attempted
+      // yet, this comment is a marker for when it is.
       recordingStartedAtRef.current = Date.now();
       cameraRef.current
         ?.startRecording()
@@ -967,6 +1014,13 @@ export function AppFlow() {
               { label: 'WhatsApp invite → identity → onboarding', onPress: () => setScreen('whatsappInvite') },
               { label: 'Onboarding only', onPress: () => setScreen('onboarding') },
               { label: 'Reset all recordings (testing)', onPress: startNewSession },
+              {
+                label: 'Refresh questions + VO audio (testing)',
+                onPress: () => {
+                  clearVoCache();
+                  loadQuestions();
+                },
+              },
             ]}
           />
         )}
@@ -1182,6 +1236,16 @@ export function AppFlow() {
   // screen === 'question'
   const currentQuestion = questions[questionIndex];
   const questionText = currentQuestion?.text ?? '';
+  // See voSourceRef's own comment (near cameraRef) for why this is pinned
+  // per question id instead of recomputed on every render/voCacheVersion
+  // bump - resolving fresh only when the question itself actually changes
+  // avoids swapping a mounted player's source out from under it mid-use.
+  if (voSourceRef.current?.questionId !== currentQuestion?.id) {
+    voSourceRef.current = currentQuestion
+      ? { questionId: currentQuestion.id, url: getLocalVoUri(currentQuestion.id) ?? currentQuestion.vo_playback_url }
+      : null;
+  }
+  const voPlaybackUrl = voSourceRef.current?.url;
   // Question Brief's "a good answer usually covers" and Recording's
   // on-screen prompts both read from the same backend-provided list
   // (questions.ts) - null (no talking points configured, or not translated
@@ -1201,7 +1265,7 @@ export function AppFlow() {
       <QuestionBriefScreen
         questionNumber={questionIndex + 1}
         totalQuestions={questions.length}
-        voPlaybackUrl={currentQuestion?.vo_playback_url}
+        voPlaybackUrl={voPlaybackUrl}
         questionText={questionText}
         talkingPoints={talkingPoints}
         onStartRecording={enterCameraCheck}
@@ -1333,7 +1397,7 @@ export function AppFlow() {
           countingDown={phase === 'countdown'}
           countdownSeconds={countdownRemaining}
           onStartRecording={() => setPhase('countdown')}
-          voPlaybackUrl={currentQuestion?.vo_playback_url}
+          voPlaybackUrl={voPlaybackUrl}
           readQuestionAloud={readQuestionAloud}
           onToggleReadQuestionAloud={setReadQuestionAloud}
         />
