@@ -159,7 +159,17 @@ export function AppFlow() {
   );
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [countdownRemaining, setCountdownRemaining] = useState(COUNTDOWN_SECONDS);
+  // Up to 2 entries per questionIndex now (the take-keeping flow below can
+  // keep a runner-up alongside the primary) - `videos` itself is the right
+  // source when something genuinely needs both (My Videos' take picker,
+  // the post-upload cleanup that deletes the runner-up's file), but every
+  // "how many questions has this distributor actually answered" count
+  // elsewhere in this file means one video per question, so those read
+  // primaryVideos instead. Undefined isPrimary is treated as primary (not
+  // filtered out) - a session persisted before this field existed only
+  // ever had exactly one entry per question, which was implicitly it.
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
+  const primaryVideos = videos.filter((v) => v.isPrimary !== false);
   const [playingVideo, setPlayingVideo] = useState<PlayableVideo | null>(null);
   // Non-null while retaking a single already-answered question from My
   // Videos - overrides lockMode to a full lock (this is a cold entry, not
@@ -252,21 +262,21 @@ export function AppFlow() {
   // oldest replaced). Cleared for a question once a take from it is kept.
   const [takesByQuestion, setTakesByQuestion] = useState<Record<number, RecordedVideo[]>>({});
   const [selectedTakeId, setSelectedTakeId] = useState<string | null>(null);
-  // Trim metadata only - see recordings.ts. No media is actually cut here.
-  const [trimStartSeconds, setTrimStartSeconds] = useState(0);
-  const [trimEndSeconds, setTrimEndSeconds] = useState(0);
-  const [removeLastTwoSeconds, setRemoveLastTwoSeconds] = useState(false);
-  // True only once the person has actually dragged a trim handle for the
-  // take currently in Review & Trim - trimStartSeconds/trimEndSeconds above
-  // are pre-seeded to the take's full 0..duration window regardless, so
-  // this is the only way to tell "never touched" apart from "chose the
-  // full clip on purpose." Gates whether handleKeepTake carries trim data
-  // onto the finalized take at all (untouched -> upload.ts sends
-  // trim_start_ms/trim_end_ms as null, not 0/full-duration). Reset to false
-  // everywhere trimStartSeconds/trimEndSeconds are reset to their defaults,
-  // so a retake or a different selected take never inherits a stale take's
-  // adjustment.
-  const [trimAdjusted, setTrimAdjusted] = useState(false);
+  // Trim metadata (recordings.ts) now lives directly on each take object,
+  // not as flat flow-level state - see updatePoolTake below (near
+  // handleKeepTake). This is what lets 2 kept takes each carry their own
+  // trim independently, and what makes switching the previewed take in
+  // Review & Trim never lose an in-progress edit on the take being
+  // switched away from (previously, switching reset a single shared
+  // trimStartSeconds/trimEndSeconds to the newly-selected take's default,
+  // silently discarding whatever hadn't been committed yet).
+  //
+  // Which pool member ids (this question's existing saved takes + this
+  // session's fresh ones - see reviewPoolFor below) are marked to keep.
+  // Only meaningful once the pool exceeds 2 - handleKeepTake keeps
+  // everything in the pool automatically when it's 2 or fewer, no picking
+  // needed.
+  const [keptTakeIds, setKeptTakeIds] = useState<string[]>([]);
   // Shown after "Keep this take" on any question except the last one -
   // DECISIONS.md's "post-keep prompt: next question / my videos / home".
   const [showPostKeepPrompt, setShowPostKeepPrompt] = useState(false);
@@ -390,10 +400,10 @@ export function AppFlow() {
       setVideos(stored.videos);
       setTakesByQuestion(stored.takesByQuestion);
       setSelectedTakeId(stored.selectedTakeId);
-      setTrimStartSeconds(stored.trimStartSeconds);
-      setTrimEndSeconds(stored.trimEndSeconds);
-      setTrimAdjusted(stored.trimAdjusted ?? false);
-      setRemoveLastTwoSeconds(stored.removeLastTwoSeconds);
+      // Optional because a session persisted before this field existed can
+      // be restored without it - an empty selection is always safe (see
+      // handleKeepTake's own pool.length <= 2 fallback).
+      setKeptTakeIds(stored.keptTakeIds ?? []);
       setAutoStart(stored.autoStart);
       setHasSubmittedBatch(stored.hasSubmittedBatch);
       setUploadConfirmed(stored.uploadConfirmed);
@@ -481,10 +491,7 @@ export function AppFlow() {
       videos,
       takesByQuestion,
       selectedTakeId,
-      trimStartSeconds,
-      trimEndSeconds,
-      trimAdjusted,
-      removeLastTwoSeconds,
+      keptTakeIds,
       autoStart,
       hasSubmittedBatch,
       uploadConfirmed,
@@ -500,10 +507,7 @@ export function AppFlow() {
     videos,
     takesByQuestion,
     selectedTakeId,
-    trimStartSeconds,
-    trimEndSeconds,
-    trimAdjusted,
-    removeLastTwoSeconds,
+    keptTakeIds,
     autoStart,
     hasSubmittedBatch,
     uploadConfirmed,
@@ -599,9 +603,9 @@ export function AppFlow() {
     setUploadError(null);
 
     (async () => {
-      for (let i = 0; i < videos.length; i++) {
+      for (let i = 0; i < primaryVideos.length; i++) {
         if (cancelled) return;
-        const video = videos[i];
+        const video = primaryVideos[i];
         // Already confirmed in a previous run of this effect, or in a
         // previous app session before a force-quit mid-upload - see
         // session.ts's uploadedQuestionIndices. Skipping it is what makes
@@ -623,6 +627,17 @@ export function AppFlow() {
       }
       if (!cancelled) {
         setHasSubmittedBatch(true);
+        // The take that wasn't chosen has done its job (comparison,
+        // pre-upload) - free the space now rather than leaving 2x storage
+        // around forever. The backend only ever has the primary anyway
+        // (the loop above uploads primaryVideos, never both), so there's
+        // nothing left to compare once every question has actually gone
+        // out.
+        setVideos((prev) => {
+          const runnersUp = prev.filter((v) => v.isPrimary === false);
+          runnersUp.forEach((v) => deleteRecording(v.filePath));
+          return prev.filter((v) => v.isPrimary !== false);
+        });
       }
     })();
 
@@ -638,8 +653,8 @@ export function AppFlow() {
   // progress immediately, before the loop has uploaded anything new this
   // launch.
   useEffect(() => {
-    setUploadProgress(videos.length ? uploadedQuestionIndices.length / videos.length : 0);
-  }, [uploadedQuestionIndices, videos.length]);
+    setUploadProgress(primaryVideos.length ? uploadedQuestionIndices.length / primaryVideos.length : 0);
+  }, [uploadedQuestionIndices, primaryVideos.length]);
 
   // Fetches My Videos' data whenever that tab is opened while on 'main' -
   // not continuously polled (no push/notification system exists yet per
@@ -673,12 +688,27 @@ export function AppFlow() {
 
         // Local recordings first - the only source of truth before upload,
         // and the only copy that exists at all for a question not yet sent.
+        // Grouped by question first since up to 2 takes (a primary plus a
+        // runner-up) can exist locally pre-upload - the take picker needs
+        // both, `play` itself always reflects whichever is primary.
+        const localByQuestion = new Map<number, RecordedVideo[]>();
         for (const video of videos) {
-          const label = `Question ${video.questionIndex + 1}`;
-          rowsByQuestionIndex.set(video.questionIndex, {
-            questionIndex: video.questionIndex,
+          const list = localByQuestion.get(video.questionIndex) ?? [];
+          list.push(video);
+          localByQuestion.set(video.questionIndex, list);
+        }
+        for (const [qIndex, takes] of localByQuestion) {
+          const primary = takes.find((t) => t.isPrimary !== false) ?? takes[0];
+          const label = `Question ${qIndex + 1}`;
+          rowsByQuestionIndex.set(qIndex, {
+            questionIndex: qIndex,
             label,
-            play: { filePath: video.filePath, label },
+            questionText: questions[qIndex]?.text ?? label,
+            play: { filePath: primary.filePath, label },
+            takes: takes
+              .slice()
+              .sort((a) => (a.id === primary.id ? -1 : 1))
+              .map((t) => ({ id: t.id, play: { filePath: t.filePath, label }, durationSeconds: t.durationSeconds })),
           });
         }
 
@@ -689,19 +719,26 @@ export function AppFlow() {
         // playback_url. `segment.question_index` is the backend's real
         // index (see upload.ts), not this app's local position - resolved
         // back via `questions`, not a `- 1` assumption that only happened
-        // to hold for 1-based-contiguous seed data.
+        // to hold for 1-based-contiguous seed data. Once a segment exists,
+        // the runner-up (if any) has already been - or is about to be -
+        // deleted by the post-upload cleanup, so there's nothing left to
+        // pick between; `takes` collapses to whichever single source is
+        // actually showing.
         for (const segment of segments) {
           const qIndex = questions.findIndex((q) => q.index === segment.question_index);
           if (qIndex === -1) continue; // question no longer in the current set
           const label = `Question ${segment.question_index}`;
-          const local = videos.find((v) => v.questionIndex === qIndex);
+          const local = primaryVideos.find((v) => v.questionIndex === qIndex);
           const useLocal = !!local && checkAndSyncCache(qIndex, segment.updated_at);
+          const play = useLocal
+            ? { filePath: local!.filePath, label }
+            : { filePath: segment.playback_url, label };
           rowsByQuestionIndex.set(qIndex, {
             questionIndex: qIndex,
             label,
-            play: useLocal
-              ? { filePath: local!.filePath, label }
-              : { filePath: segment.playback_url, label },
+            questionText: questions[qIndex]?.text ?? label,
+            play,
+            takes: [{ id: local?.id ?? `segment-${qIndex}`, play, durationSeconds: local?.durationSeconds ?? segment.duration_seconds ?? 0 }],
           });
         }
 
@@ -828,21 +865,25 @@ export function AppFlow() {
       },
     };
 
-    setTakesByQuestion((prev) => {
-      const existing = prev[questionIndex] ?? [];
-      const updated = [...existing, newTake];
-      if (updated.length <= MAX_TAKES) {
-        return { ...prev, [questionIndex]: updated };
-      }
-      const [oldest, ...rest] = updated;
+    const existingLive = takesByQuestion[questionIndex] ?? [];
+    const updatedLive = [...existingLive, newTake];
+    let finalLive = updatedLive;
+    if (updatedLive.length > MAX_TAKES) {
+      const [oldest, ...rest] = updatedLive;
       deleteRecording(oldest.filePath);
-      return { ...prev, [questionIndex]: rest };
-    });
+      finalLive = rest;
+    }
+    setTakesByQuestion((prev) => ({ ...prev, [questionIndex]: finalLive }));
     setSelectedTakeId(newTake.id);
-    setTrimStartSeconds(0);
-    setTrimEndSeconds(durationSeconds);
-    setTrimAdjusted(false);
-    setRemoveLastTwoSeconds(false);
+    // Default "kept" selection once the combined pool (this question's
+    // already-saved takes + this session's fresh ones) exceeds 2 -
+    // most-recent-first, matching the same "newest wins by default"
+    // convention MAX_TAKES already uses for live takes above. Only matters
+    // once the pool is actually over the cap; handleKeepTake keeps
+    // everything automatically otherwise, no picking needed.
+    const savedForQuestion = videos.filter((v) => v.questionIndex === questionIndex);
+    const pool = [...savedForQuestion, ...finalLive];
+    setKeptTakeIds(pool.length > 2 ? pool.slice(-2).map((t) => t.id) : []);
     setPhase('reviewTrim');
   }
 
@@ -851,43 +892,89 @@ export function AppFlow() {
   // files, and routes onward: retakes go straight back to My Videos;
   // otherwise the last question goes to the existing 'complete' screen
   // unchanged, and every other question shows the post-keep prompt.
-  function handleKeepTake() {
-    const currentTakes = takesByQuestion[questionIndex] ?? [];
-    const kept = currentTakes.find((t) => t.id === selectedTakeId) ?? currentTakes[currentTakes.length - 1];
-    if (!kept) return;
+  //
+  // The combined pool for this question - its already-saved takes (0-2,
+  // non-empty only on a retake) plus whatever's been recorded live this
+  // session (0-MAX_TAKES). Computed from source state on every access
+  // rather than stored separately, so it can never drift out of sync with
+  // `videos`/`takesByQuestion`.
+  function reviewPoolFor(qIndex: number): RecordedVideo[] {
+    return [...videos.filter((v) => v.questionIndex === qIndex), ...(takesByQuestion[qIndex] ?? [])];
+  }
 
-    currentTakes.filter((t) => t.id !== kept.id).forEach((t) => deleteRecording(t.filePath));
-    const finalized: RecordedVideo = {
-      ...kept,
-      // Only carry trim points onto the finalized take if the person
-      // actually dragged a handle - trimStartSeconds/trimEndSeconds are
-      // pre-seeded to the full 0..duration window otherwise, and sending
-      // that would misrepresent "never touched" as "chose the full clip."
-      // upload.ts sends trim_start_ms/trim_end_ms as null when these stay
-      // undefined.
-      ...(trimAdjusted && { trimStartSeconds, trimEndSeconds }),
-      removeLastTwoSeconds,
-    };
+  // Applies a patch (trim edits, removeLastTwoSeconds) to whichever pool
+  // member has this id, regardless of whether it's an already-saved take
+  // (in `videos`) or one recorded this session (in `takesByQuestion`) -
+  // callers don't need to know which. This is what lets each take carry
+  // its own trim independently, and what makes switching the previewed
+  // take in Review & Trim never lose an in-progress edit on the take being
+  // switched away from - there's no separate flow-level scratch value to
+  // lose, edits go straight onto the take object.
+  function updatePoolTake(qIndex: number, takeId: string, patch: Partial<RecordedVideo>) {
+    setVideos((prev) => {
+      if (!prev.some((v) => v.id === takeId)) return prev;
+      return prev.map((v) => (v.id === takeId ? { ...v, ...patch } : v));
+    });
+    setTakesByQuestion((prev) => {
+      const list = prev[qIndex];
+      if (!list) return prev;
+      const idx = list.findIndex((t) => t.id === takeId);
+      if (idx === -1) return prev;
+      const next = [...list];
+      next[idx] = { ...next[idx], ...patch };
+      return { ...prev, [qIndex]: next };
+    });
+  }
+
+  // Toggles a pool member's kept/dropped status - capped at 2 (attempting
+  // a 3rd while 2 are already kept is a no-op; drop one first). Only ever
+  // reachable from Review & Trim when the pool exceeds 2 - see
+  // ReviewTrimScreen's takes.length > 2 branch.
+  function handleToggleKept(id: string) {
+    setKeptTakeIds((prev) => {
+      if (prev.includes(id)) return prev.filter((k) => k !== id);
+      if (prev.length >= 2) return prev;
+      return [...prev, id];
+    });
+  }
+
+  function handleKeepTake() {
+    const pool = reviewPoolFor(questionIndex);
+    if (pool.length === 0) return;
+
+    // Everything in the pool is kept automatically when there's room for
+    // all of it (cap is 2) - picking is only required once a 3rd+
+    // candidate exists, via keptTakeIds (Review & Trim's take-strip
+    // checkboxes). The length check below is a defensive guard, not the
+    // real gate - the "Keep" button itself is disabled in the UI until a
+    // valid selection exists.
+    const finalKeptIds = pool.length <= 2 ? pool.map((t) => t.id) : keptTakeIds;
+    if (finalKeptIds.length !== Math.min(pool.length, 2)) return;
+
+    const kept = pool.filter((t) => finalKeptIds.includes(t.id));
+    const dropped = pool.filter((t) => !finalKeptIds.includes(t.id));
+    dropped.forEach((t) => deleteRecording(t.filePath));
+
+    // Primary defaults to whichever kept take was actively being
+    // previewed; falls back to the first kept take if that one somehow
+    // isn't among the kept set (e.g. it was the one just dropped).
+    const primaryId = kept.some((t) => t.id === selectedTakeId) ? selectedTakeId : kept[0]?.id;
+    const finalized = kept.map((t) => ({ ...t, isPrimary: t.id === primaryId }));
 
     setTakesByQuestion((prev) => {
       const next = { ...prev };
       delete next[questionIndex];
       return next;
     });
+    setKeptTakeIds([]);
+    setVideos((prev) => [...prev.filter((v) => v.questionIndex !== questionIndex), ...finalized]);
 
     if (retakeQuestionIndex !== null) {
-      setVideos((prev) => {
-        const previous = prev.find((v) => v.questionIndex === questionIndex);
-        if (previous) deleteRecording(previous.filePath);
-        return prev.map((v) => (v.questionIndex === questionIndex ? finalized : v));
-      });
       setRetakeQuestionIndex(null);
       setMainTab('myVideos');
       setScreen('main');
       return;
     }
-
-    setVideos((prev) => [...prev, finalized]);
 
     // Last question: land on Home, whose "all recorded" state (built in
     // Phase 4b) already carries the "Send all five" CTA - no separate
@@ -899,6 +986,18 @@ export function AppFlow() {
     } else {
       setShowPostKeepPrompt(true);
     }
+  }
+
+  // Purely local - flips which of a question's up to 2 kept takes is the
+  // one that gets uploaded and shown by default in My Videos (no camera,
+  // no network). Only meaningful pre-upload; once a segment exists
+  // server-side there's only ever one video left to show at all (the
+  // runner-up's local file is deleted right after a successful upload -
+  // see the upload effect).
+  function handleSwitchPrimary(qIndex: number, takeId: string) {
+    setVideos((prev) =>
+      prev.map((v) => (v.questionIndex === qIndex ? { ...v, isPrimary: v.id === takeId } : v)),
+    );
   }
 
   function handleRecordAnother() {
@@ -935,7 +1034,7 @@ export function AppFlow() {
   // whenever a later question was started (e.g. tapping "Start" for
   // question 3 deleted questions 1-2). See DEV_NOTES.md.
   function enterNextQuestion() {
-    setQuestionIndex(videos.length);
+    setQuestionIndex(primaryVideos.length);
     setRetakeQuestionIndex(null);
     setChecksReady(false);
     setTakeAttempt(0);
@@ -1092,7 +1191,7 @@ export function AppFlow() {
       <PermissionsScreen
         onContinue={enterNextQuestion}
         onBack={() => setScreen('main')}
-        questionNumber={videos.length + 1}
+        questionNumber={primaryVideos.length + 1}
         totalQuestions={questions.length}
       />
     );
@@ -1129,14 +1228,14 @@ export function AppFlow() {
             // (or, in principle, a distributor genuinely has no name).
             distributorName={distributorProfile?.name}
             totalQuestions={questions.length}
-            questionsAnswered={videos.length}
+            questionsAnswered={primaryVideos.length}
             hasSubmittedBatch={hasSubmittedBatch}
             renderedReadyCount={brandedRows.filter((b) => b.status === 'ready').length}
             nextQuestion={
-              videos.length < questions.length
+              primaryVideos.length < questions.length
                 ? {
-                    index: videos.length + 1,
-                    text: questions[videos.length]?.text ?? '',
+                    index: primaryVideos.length + 1,
+                    text: questions[primaryVideos.length]?.text ?? '',
                     estimate: '45–60 second answer · about 3 minutes',
                   }
                 : null
@@ -1157,13 +1256,14 @@ export function AppFlow() {
             loading={myVideosLoading}
             error={myVideosError}
             onRetryLoad={() => setMyVideosRefreshToken((n) => n + 1)}
-            totalQuestions={questions.length}
+            questionTexts={questions.map((q) => q.text)}
             answers={answerRows}
             branded={brandedRows}
             reelRenderingEnabled={ENABLE_REEL_RENDERING}
             onPressAnswer={(row) => setPlayingVideo(row.play)}
             onPressBranded={(row) => row.play && setPlayingVideo({ ...row.play, celebratory: true })}
             onRetake={(qIndex) => setPendingRetake(qIndex)}
+            onSwitchPrimary={handleSwitchPrimary}
             onUploadAll={() => {
               setUploadConfirmed(false);
               setUploadedQuestionIndices([]);
@@ -1217,7 +1317,7 @@ export function AppFlow() {
           // retake's re-upload and would wrongly skip straight to "done"
           // on a batch that's actually still sending. This is the actual
           // per-run signal the upload effect below drives.
-          uploading={uploadedQuestionIndices.length < videos.length}
+          uploading={uploadedQuestionIndices.length < primaryVideos.length}
           progress={uploadProgress}
           reelsEnabled={ENABLE_REEL_RENDERING}
           onDone={() => {
@@ -1230,7 +1330,7 @@ export function AppFlow() {
 
     return (
       <UploadingScreen
-        items={videos.map((v) => ({
+        items={primaryVideos.map((v) => ({
           questionIndex: v.questionIndex,
           label: `Question ${v.questionIndex + 1}`,
           questionText: questions[v.questionIndex]?.text ?? '',
@@ -1253,7 +1353,7 @@ export function AppFlow() {
         // still local-only (nothing's uploaded yet), so play it straight
         // from disk, same shape My Videos uses for its own answer rows.
         onReviewItem={(qIndex) => {
-          const video = videos.find((v) => v.questionIndex === qIndex);
+          const video = primaryVideos.find((v) => v.questionIndex === qIndex);
           if (video) setPlayingVideo({ filePath: video.filePath, label: `Question ${qIndex + 1}` });
         }}
       />
@@ -1285,7 +1385,6 @@ export function AppFlow() {
   // as question 1's first-time entry.
   const lockMode = retakeQuestionIndex !== null || questionIndex === 0 ? 'initial' : 'recheck';
   const resetToken = `${questionIndex}-${takeAttempt}`;
-  const currentTakes = takesByQuestion[questionIndex] ?? [];
 
   if (phase === 'brief') {
     return (
@@ -1306,29 +1405,35 @@ export function AppFlow() {
   }
 
   if (phase === 'reviewTrim') {
-    const activeTakeId = selectedTakeId ?? currentTakes[currentTakes.length - 1]?.id ?? '';
+    const pool = reviewPoolFor(questionIndex);
+    const activeTakeId = selectedTakeId ?? pool[pool.length - 1]?.id ?? '';
+    const savedIds = new Set(videos.filter((v) => v.questionIndex === questionIndex).map((v) => v.id));
     return (
       <View style={{ flex: 1 }}>
         <ReviewTrimScreen
           questionNumber={questionIndex + 1}
-          takes={currentTakes.map((t) => ({ id: t.id, filePath: t.filePath, durationSeconds: t.durationSeconds }))}
+          takes={pool.map((t) => ({
+            id: t.id,
+            filePath: t.filePath,
+            durationSeconds: t.durationSeconds,
+            trimStartSeconds: t.trimStartSeconds,
+            trimEndSeconds: t.trimEndSeconds,
+            removeLastTwoSeconds: t.removeLastTwoSeconds,
+            saved: savedIds.has(t.id),
+          }))}
           selectedTakeId={activeTakeId}
-          onSelectTake={(id) => {
-            setSelectedTakeId(id);
-            const take = currentTakes.find((t) => t.id === id);
-            setTrimStartSeconds(0);
-            setTrimEndSeconds(take?.durationSeconds ?? 0);
-            setTrimAdjusted(false);
-          }}
-          removeLastTwoSeconds={removeLastTwoSeconds}
-          onToggleRemoveLastTwoSeconds={setRemoveLastTwoSeconds}
-          trimStartSeconds={trimStartSeconds}
-          trimEndSeconds={trimEndSeconds}
-          onChangeTrim={(s, e) => {
-            setTrimStartSeconds(s);
-            setTrimEndSeconds(e);
-            setTrimAdjusted(true);
-          }}
+          onSelectTake={setSelectedTakeId}
+          onToggleRemoveLastTwoSeconds={(next) =>
+            updatePoolTake(questionIndex, activeTakeId, { removeLastTwoSeconds: next })
+          }
+          onChangeTrim={(s, e) =>
+            updatePoolTake(questionIndex, activeTakeId, { trimStartSeconds: s, trimEndSeconds: e })
+          }
+          // Everything in the pool counts as "kept" once it's 2 or fewer -
+          // no picking needed, keptTakeIds only holds a real selection once
+          // handleRecordingFinished has populated it for a 3rd+ candidate.
+          keptTakeIds={pool.length <= 2 ? pool.map((t) => t.id) : keptTakeIds}
+          onToggleKept={handleToggleKept}
           onRecordAnother={handleRecordAnother}
           onKeep={handleKeepTake}
         />

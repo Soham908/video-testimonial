@@ -1,130 +1,129 @@
-# Session handoff — 2026-09-01
+# Session handoff — 2026-09-04
 
-Continuity doc for picking this up in a different chat session. Snapshot of
-today's work, not a permanent project doc — fold the useful parts into
-`DECISIONS.md`/`DEV_NOTES.md` once absorbed, same pattern as the previous
-version of this file (2026-08-31, superseded by this one).
+Continuity doc for picking this up on a different machine/chat session.
+Snapshot of where things stand, not a permanent project doc — fold the
+useful parts into `DECISIONS.md`/`DEV_NOTES.md` once absorbed, same pattern
+as the previous version of this file (2026-09-01, superseded by this one).
 
-Repo state at time of writing: **everything below is uncommitted** on
-`feature/ui-revamp-v2` (working tree only — nothing staged or committed this
-session). The one backend change (`testimonial-backend/src/routes/
-segments.ts`) is also uncommitted in that sibling repo. A separate peer
-session was concurrently working elsewhere in the backend repo today
-(worker/jobs/dashboard-contract work, unrelated to this) — don't assume
-everything showing as changed there came from this session.
+Repo state at time of writing: everything through the 2-take-cap feature
+below is committed and pushed to `feature/ui-revamp-v2` on `origin`. If
+`git log` shows commits after this file's last entry that this doc doesn't
+mention, trust `git log` — this file can go stale the moment someone
+continues past it.
 
-## What got built today, roughly in order
+## What's landed since the last handoff (2026-09-01), briefly
 
-1. **Recording screen rework** (`RecordingScreen.tsx`, `CameraCheckScreen.tsx`,
-   new `questionAudio.ts`, new `preferences.ts`):
-   - The 3-2-1 countdown (on Camera Check) now reads the question aloud
-     using the same bundled per-question VO audio Question Brief's "Read to
-     me" already used — that audio map was lifted out of
-     `QuestionBriefScreen.tsx` into a shared `questionAudio.ts` so both
-     screens key off one place.
-   - New "Read question aloud" toggle next to "Auto start" on Camera Check,
-     default on, persisted across launches via `expo-secure-store`
-     (`preferences.ts`, same mechanism `theme/ThemeContext.tsx` already
-     uses for palette/font — this is a standing device preference, not
-     session state, so it deliberately isn't in `session.ts`).
-   - Audio is explicitly stopped the instant the countdown ends and
-     recording actually starts (not left to fade/bleed) — CLAUDE.md's "no
-     simultaneous playback + record" still holds.
-   - Question text moved to the top of `RecordingScreen`, larger/bolder,
-     with a dark scrim behind it (it's no longer backed by the bottom bar).
-   - On-screen prompts now pull from the question's real `talking_points`
-     (see #2) instead of an always-empty placeholder array; given more
-     contrast/weight via a new `emphasis` prop on `Chip`, kept at the
-     bottom.
-2. **`talking_points` wired end-to-end** (`questions.ts`, `AppFlow.tsx`,
-   `API_CONTRACT.md`) — added to `QuestionDto` (`string[] | null`) and
-   threaded into both `QuestionBriefScreen`'s "a good answer usually
-   covers" and `RecordingScreen`'s prompts, replacing the hardcoded empty
-   arrays from yesterday. The backend already had this field live
-   (confirmed against `src/services/questions.ts` in the sibling repo) —
-   nothing here was guessed.
-3. **Guide-circle recalibration** (`alignment.ts`) — `GUIDE_TOP_OFFSET`
-   150→230. The guide oval sat noticeably above true screen-center, forcing
-   an unnatural downward phone tilt to line up a face in it. Confirmed with
-   Soham before changing (he was about to test on-device anyway) — treat
-   230 as a starting estimate, **not yet verified against real footage**.
-4. **Trim wiring, review screen → upload → backend** (`AppFlow.tsx`,
-   `upload.ts`, `session.ts`, and `testimonial-backend/src/routes/
-   segments.ts`):
-   - New `trimAdjusted` flag in `AppFlow.tsx` tracks whether a trim handle
-     was actually dragged (trim start/end state is pre-seeded to the full
-     0..duration window regardless, so this is the only way to tell
-     "never touched" apart from "chose the full clip on purpose"). Only
-     carries trim data onto the finalized take when true; reset alongside
-     the existing trim-state resets (new take finished, different take
-     selected) so a retake never inherits the prior take's window.
-     Persisted in `session.ts` (optional field, same backward-compat
-     convention as `captureMetadata`).
-   - `upload.ts` sends `trim_start_ms`/`trim_end_ms` in the `/segments/
-     confirm` payload — explicit `null` (not `0`/full-duration) when
-     untouched, real millisecond values otherwise.
-   - **Backend confirm route now actually reads these fields** — was a
-     known gap as of this morning (DB columns + downstream ffmpeg consumer
-     existed, but the route silently dropped them). Now validates
-     (non-negative number or null; `trim_end_ms > trim_start_ms` when both
-     are numbers) and writes them into the `segment.upsert`, following the
-     same omit-vs-null convention `capture` already used (field omitted
-     entirely from the request → leaves existing DB value alone; explicit
-     `null` → clears to "full clip"). This closes the loop — trim now
-     reaches storage.
-5. **UI string extraction** (new `i18n/strings.en.json`) — every
-   user-facing string in the app (buttons, labels, titles, errors,
-   instructions) pulled into one key-value JSON file, organized by
-   screen/purpose, ~288 strings across 25 sections. Explicitly excludes the
-   5 question texts + talking points (DB-sourced, already trilingual) and
-   two `__DEV__`-only screens (theme switcher, dev nav menu). Uses
-   `{{placeholder}}` tokens for dynamic content and separate singular/
-   plural keys where English's grammar forced it. **No i18n library wired
-   yet** — this is extraction only, the app still reads strings from source
-   files, not from this JSON. A `_meta` block inside the file itself
-   explains the conventions for non-technical reviewers.
+Full detail is in each commit's own message - `git log --oneline` on this
+branch. Compressed pointer list, newest first:
 
-## Known gaps / things to verify next
+- **2-take-cap keeping** (this session, detailed below) - up to 2 takes can
+  now be kept per question instead of forced-down-to-1, with a take picker
+  in My Videos.
+- **Phone+password self-registration** - `SelfRegisterScreen.tsx` is one
+  screen with a register/sign-in mode toggle (`POST /register` now requires
+  phone+password, not just name; new `POST /login/phone`). Backend-driven
+  409 (`phone_already_registered`) auto-switches the screen into sign-in
+  mode rather than showing a generic error.
+- **VO player crash fix** - `CameraCheckScreen.tsx`'s `player.pause()`
+  could run after `expo-video`'s own unmount-triggered release of the
+  native player, throwing "shared object already released" synchronously.
+  Fixed with the same `try/catch`-around-native-calls pattern
+  `useAmbientNoiseCheck.ts` already used for `AudioRecorder`.
+- **Countdown timing** - the VO-safety buffer moved from a visible hold on
+  "1" (looked like a stall) to padding the *first* tick instead (5 shown
+  300ms longer, invisible). See `COUNTDOWN_BUFFER_MS`'s comment in
+  `AppFlow.tsx` for the exact numbers this is tuned against.
+- **Android nav bar hidden during cameraCheck/countdown/recording** -
+  `theme/NavigationBarSync.tsx`'s `useHideNavigationBarWhile` - the OS's
+  own contrast scrim can't be recolored (`expo-navigation-bar`'s
+  background-color API was removed in this SDK), only hidden outright.
+- **Tap-outside-to-dismiss-keyboard** on every screen with a `TextInput`,
+  plus the shared `PopupSheet` component (covers any future popup-based
+  form for free).
+- **VO local caching + staleness detection** (`voCache.ts`) - downloads
+  each question's VO once, and now re-downloads automatically when the
+  backend's `updated_at` on that question changes (mirrors `myVideos.ts`'s
+  segment/rendered-video sync-cache pattern), instead of relying on a
+  manual dev-menu cache clear.
 
-- **Nothing from today has been committed** in either repo — do that
-  deliberately (probably as a few separate commits given the mix of
-  unrelated work: recording-screen UX, trim wiring, string extraction)
-  rather than one giant commit, and only when asked.
-- **Not tested on a real device this session** — same caveat as yesterday,
-  now compounded: the guide-circle offset (230), the countdown VO timing/
-  cutoff, and the new question-text/prompts layout all need an on-device
-  pass before trusting them. Soham was doing a parallel record-and-check-
-  file-size pass during this session but no findings came back into this
-  conversation.
-- **`GUIDE_TOP_OFFSET = 230` is an estimate**, not a measurement — derived
-  from typical chrome heights on an assumed ~850dp-tall reference screen,
-  explicitly flagged as needing tuning against real footage across device
-  sizes (see the comment in `alignment.ts`).
-- **`i18n/strings.en.json` is a snapshot** — if any UI copy changes in
-  future sessions, this file will drift out of sync unless someone
-  remembers to update it by hand (no build-time check ties them together
-  yet, since there's no i18n library wired).
-- **Talking points only exist in English today** — `null` for hi/mr per the
-  backend's own `localizeQuestion` (translation is separate, tracked work).
-  Both `QuestionBriefScreen` and `RecordingScreen` already degrade to "no
-  prompts shown" for that case, not an error.
-- **Two independent `ENABLE_REEL_RENDERING` flags** (unchanged from
-  yesterday) — still worth a periodic manual check until/unless this
-  becomes one real config source.
-- **7-question restructuring** (unchanged from yesterday) — still blocked
-  on a decision from Soham's boss.
+## What got built today: keeping up to 2 takes per question
+
+**The ask**: instead of forcing a distributor down to exactly 1 take the
+moment they finish recording, let them keep up to 2 and decide which one
+represents their answer later, from My Videos — right up until upload.
+
+**Why this doesn't need a backend change**: upload was already deferred
+and batched (only fires on "Upload videos", not per-take) - confirmed
+before building anything. The backend still only ever receives exactly one
+video per question either way; the second take is a purely local,
+pre-upload convenience. This was clarified mid-session after an initial
+wrong assumption (that keeping 2 takes would mean uploading 2 - it
+doesn't, `uploadSegment` is still called once per question, filtered to
+`isPrimary` takes only).
+
+**Files touched**: `recordings.ts` (`RecordedVideo` gained `isPrimary?`
+and per-take `trimStartSeconds?`/`trimEndSeconds?`/
+`removeLastTwoSeconds?` - trim used to be flow-level flat state, now lives
+directly on each take object, which is also what fixed a separate bug:
+switching the previewed take in Review & Trim used to silently discard
+whatever trim you'd set on the take you switched away from), `session.ts`
+(persisted shape: dropped the flat trim fields, added `keptTakeIds?`),
+`AppFlow.tsx` (the core state machine - see `reviewPoolFor()`,
+`updatePoolTake()`, `handleKeepTake()`, `handleToggleKept()`,
+`handleSwitchPrimary()`, and the new `primaryVideos` derived value used
+everywhere `videos.length` used to mean "questions answered"),
+`ReviewTrimScreen.tsx` (take-picker checkboxes, only shown once the
+combined pool - existing saved takes + this session's fresh ones - exceeds
+2), `MyVideosScreen.tsx` (this is also where "Option C" from the design
+exploration landed for real - truncated question text that expands in
+place, a take-switcher, real question text on every row, which it never
+had before this), `RetakeConfirmOverlay.tsx` (copy fix - it used to
+promise "your current answer will be replaced," no longer always true).
+
+**Known open question, not yet resolved with Soham**: a plain single
+retake (1 existing take → record exactly 1 new one, pool size 2) currently
+defaults to **keeping both** rather than replacing - the new one becomes
+primary automatically (so nothing looks different from My Videos unless
+you open the expand panel), the old one just sticks around as a switchable
+option until upload. This was a judgment call made to avoid forcing a
+decision on the common case, not an explicit ask - flagged to Soham at the
+end of the session, verbal "fairly decent" but this specific behavior
+wasn't separately confirmed. If it should instead cleanly replace by
+default (old behavior) and only pair up once there are genuinely 3+
+candidates, that's a small change scoped to `handleKeepTake`'s
+`pool.length <= 2` branch.
+
+## Not yet built - discussed and designed, but no code
+
+- **Language selection UI** - Settings' "Language" row is still a static
+  display, no picker. Design agreed: local-only override (backend has no
+  write-back for `language_pref` yet, only the per-call `?language=`
+  query override on `/distributors/me/questions`), 3-language picker shown
+  in-script (English/हिन्दी/मराठी), re-fetch+re-cache VO immediately on
+  switch. Not started.
+- **Multi-language VO cache key gap** - `voCache.ts` keys cached audio
+  files by `questionId` only, not `(questionId, language)`. Real gap if
+  the language picker above ever ships without this fix first - a language
+  switch would silently keep playing whichever language got cached first.
+- **VO/countdown sequencing gap (audio bleed, not crash)** - recording can
+  still start a render cycle or two before the read-aloud VO is fully
+  paused, so the mic could theoretically catch a sliver of VO tail. The
+  crash this used to cause is fixed (see above); this specific audio-bleed
+  timing gap is separate and still open. A real fix would pause the VO
+  player synchronously the instant the countdown reaches zero, before
+  calling `startRecording()` - marked with a comment in `AppFlow.tsx`
+  where this would go.
 
 ## What to do first in a new chat session
 
-- `git status` in both repos to confirm you're looking at this session's
-  uncommitted work (nothing was committed), then read this file.
-- If continuing the on-device verification pass: check the guide-circle
-  position feels natural at a normal holding angle, that the countdown VO
-  actually plays and cuts off cleanly when recording starts, and that a
-  trimmed take's `trim_start_ms`/`trim_end_ms` actually shows up on the
-  segment after upload (the backend route is wired now, but end-to-end
-  hasn't been exercised against a live upload).
-- If picking up the i18n work: the extraction is done
-  (`i18n/strings.en.json`) but nothing is wired — actually swapping the app
-  over to read from it (and picking/adding a real i18n library) is
-  deliberately deferred, separate work.
+- `git pull` on this branch, then read this file.
+- If continuing the 2-take feature: test the actual on-device flow this
+  session did not get to verify - record 2+ takes on a fresh question,
+  confirm the pool>2 picker in Review & Trim behaves, confirm My Videos'
+  expand panel switches primary correctly, confirm upload only sends the
+  primary and cleans up the runner-up file afterward. Also worth settling
+  the "plain retake keeps both by default" question above with Soham
+  directly rather than assuming either way.
+- If picking up language selection: the design is agreed (see above) -
+  fix the VO cache key gap first, then build the picker, then wire
+  re-fetch-on-switch.

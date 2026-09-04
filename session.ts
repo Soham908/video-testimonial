@@ -30,14 +30,16 @@ export interface PersistedSession {
   videos: RecordedVideo[];
   takesByQuestion: Record<number, RecordedVideo[]>;
   selectedTakeId: string | null;
-  trimStartSeconds: number;
-  trimEndSeconds: number;
-  // Optional because a session persisted before this field existed (see
-  // recordings.ts's captureMetadata for the same convention) can be
-  // restored without it - treated as false (never manually trimmed) rather
-  // than failing to load.
-  trimAdjusted?: boolean;
-  removeLastTwoSeconds: boolean;
+  // Which pool member ids (existing saved takes + this session's fresh
+  // ones) are marked to keep, only meaningful once the combined pool
+  // exceeds 2 (AppFlow.tsx's handleKeepTake) - trim/removeLastTwoSeconds
+  // moved onto each take itself (recordings.ts) since up to 2 takes can
+  // now be kept per question, so there's no longer a single flow-level
+  // trim value to persist here. Optional because a session persisted
+  // before this field existed can be restored without it - an empty
+  // selection is always a safe default (handleKeepTake's own
+  // pool.length <= 2 fallback keeps everything automatically anyway).
+  keptTakeIds?: string[];
   autoStart: boolean;
   hasSubmittedBatch: boolean;
   uploadConfirmed: boolean;

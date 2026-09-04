@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { PanResponder, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
@@ -13,6 +13,16 @@ export interface Take {
   id: string;
   filePath: string;
   durationSeconds: number;
+  // Trim metadata lives per-take now (recordings.ts) - undefined means
+  // "never touched," same untouched-vs-full-clip distinction upload.ts
+  // already relies on.
+  trimStartSeconds?: number;
+  trimEndSeconds?: number;
+  removeLastTwoSeconds?: boolean;
+  // True for a take that already existed before this session (a retake) -
+  // shown with a "Saved" tag instead of counting as one of this
+  // recording's live attempts, so it's clear which ones are new.
+  saved?: boolean;
 }
 
 interface Props {
@@ -20,11 +30,13 @@ interface Props {
   takes: Take[];
   selectedTakeId: string;
   onSelectTake: (id: string) => void;
-  removeLastTwoSeconds: boolean;
   onToggleRemoveLastTwoSeconds: (next: boolean) => void;
-  trimStartSeconds: number;
-  trimEndSeconds: number;
   onChangeTrim: (start: number, end: number) => void;
+  // Up to 2 take ids marked to keep. Only user-editable (via onToggleKept)
+  // when takes.length > 2 - below that, the caller already marks
+  // everything kept automatically, since there's no cap to enforce yet.
+  keptTakeIds: string[];
+  onToggleKept: (id: string) => void;
   onRecordAnother: () => void;
   onKeep: () => void;
 }
@@ -46,11 +58,10 @@ export function ReviewTrimScreen({
   takes,
   selectedTakeId,
   onSelectTake,
-  removeLastTwoSeconds,
   onToggleRemoveLastTwoSeconds,
-  trimStartSeconds,
-  trimEndSeconds,
   onChangeTrim,
+  keptTakeIds,
+  onToggleKept,
   onRecordAnother,
   onKeep,
 }: Props) {
@@ -61,6 +72,21 @@ export function ReviewTrimScreen({
   const player = useVideoPlayer(selected?.filePath ?? null, (p) => {
     p.pause();
   });
+
+  // Picking is only required once there's more to choose from than the
+  // 2-take cap allows - below that, the caller already marks everything in
+  // `takes` as kept (keptTakeIds mirrors `takes` 1:1 in that case), so
+  // there's nothing to decide here.
+  const mustPick = takes.length > 2;
+  const keepButtonLabel = !mustPick
+    ? takes.length > 1
+      ? 'Keep both takes'
+      : 'Keep this take'
+    : keptTakeIds.length === 2
+      ? 'Keep these 2'
+      : `Select 2 to keep (${keptTakeIds.length} of 2)`;
+  const keepDisabled = mustPick && keptTakeIds.length !== 2;
+  const droppedTake = mustPick && keptTakeIds.length === 2 ? takes.find((t) => !keptTakeIds.includes(t.id)) : undefined;
 
   return (
     <View style={styles.container}>
@@ -80,27 +106,53 @@ export function ReviewTrimScreen({
           </View>
         </View>
 
+        {mustPick && (
+          <Text style={styles.pickHint}>
+            You can keep 2 takes for this question — tap the checkmark to choose which ones.
+          </Text>
+        )}
+
         {takes.length > 1 && (
           <Carousel style={styles.takesRow}>
-            {takes.map((take, i) => (
-              <View
-                key={take.id}
-                onTouchEnd={() => onSelectTake(take.id)}
-                style={[
-                  styles.takeThumb,
-                  { borderColor: take.id === selected?.id ? colors.accent : colors.border },
-                ]}
-              >
-                {take.id === selected?.id && (
-                  <View style={styles.usingBadge}>
-                    <Text style={styles.usingBadgeText}>Using</Text>
-                  </View>
-                )}
-                <Text style={styles.takeThumbLabel}>Take {i + 1}</Text>
-                <Text style={styles.takeThumbDuration}>{formatTime(take.durationSeconds)}</Text>
-              </View>
-            ))}
+            {takes.map((take, i) => {
+              const isKept = keptTakeIds.includes(take.id);
+              return (
+                <View
+                  key={take.id}
+                  onTouchEnd={() => onSelectTake(take.id)}
+                  style={[
+                    styles.takeThumb,
+                    { borderColor: take.id === selected?.id ? colors.accent : colors.border },
+                    mustPick && !isKept && styles.takeThumbDropped,
+                  ]}
+                >
+                  {take.id === selected?.id && (
+                    <View style={styles.usingBadge}>
+                      <Text style={styles.usingBadgeText}>Using</Text>
+                    </View>
+                  )}
+                  {mustPick && (
+                    <Pressable
+                      hitSlop={8}
+                      onPress={() => onToggleKept(take.id)}
+                      style={[styles.keepBadge, isKept && { backgroundColor: colors.accent }]}
+                    >
+                      {isKept && <Text style={styles.keepBadgeCheck}>✓</Text>}
+                    </Pressable>
+                  )}
+                  <Text style={styles.takeThumbLabel}>Take {i + 1}</Text>
+                  {take.saved && <Text style={styles.savedTag}>Saved</Text>}
+                  <Text style={styles.takeThumbDuration}>{formatTime(take.durationSeconds)}</Text>
+                </View>
+              );
+            })}
           </Carousel>
+        )}
+
+        {droppedTake && (
+          <Text style={styles.dropNote}>
+            Take {takes.findIndex((t) => t.id === droppedTake.id) + 1} will be deleted from your phone.
+          </Text>
         )}
 
         <View style={styles.toggleRow}>
@@ -108,21 +160,21 @@ export function ReviewTrimScreen({
             <Text style={styles.toggleLabel}>Remove the last 2 seconds</Text>
             <Text style={styles.toggleReason}>Useful if you fumbled the sign-off</Text>
           </View>
-          <Toggle value={removeLastTwoSeconds} onValueChange={onToggleRemoveLastTwoSeconds} />
+          <Toggle value={selected?.removeLastTwoSeconds ?? false} onValueChange={onToggleRemoveLastTwoSeconds} />
         </View>
 
         {selected && (
           <TrimTimeline
             durationSeconds={selected.durationSeconds}
-            startSeconds={trimStartSeconds}
-            endSeconds={trimEndSeconds}
+            startSeconds={selected.trimStartSeconds ?? 0}
+            endSeconds={selected.trimEndSeconds ?? selected.durationSeconds}
             onChange={onChangeTrim}
             colors={colors}
           />
         )}
 
         <View style={styles.actions}>
-          <Button label="Keep this take" onPress={onKeep} />
+          <Button label={keepButtonLabel} onPress={onKeep} disabled={keepDisabled} />
           <Button label="Record another" onPress={onRecordAnother} variant="secondary" />
         </View>
       </View>
@@ -270,6 +322,24 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius) {
     usingBadgeText: { fontSize: 8, fontWeight: '700', color: colors.accentText },
     takeThumbLabel: { fontSize: 12.5, fontWeight: '700', color: colors.text },
     takeThumbDuration: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
+    takeThumbDropped: { opacity: 0.45 },
+    savedTag: { fontSize: 9.5, fontWeight: '700', color: colors.accent, marginTop: 1 },
+    pickHint: { fontSize: 12.5, color: colors.textMuted, lineHeight: 18 },
+    keepBadge: {
+      position: 'absolute',
+      top: 5,
+      left: 5,
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    keepBadgeCheck: { fontSize: 10, fontWeight: '700', color: colors.accentText },
+    dropNote: { fontSize: 12, fontWeight: '600', color: colors.danger },
     toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     toggleLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
     toggleReason: { fontSize: 12.5, color: colors.textFaint, marginTop: 2 },

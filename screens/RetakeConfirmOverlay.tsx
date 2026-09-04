@@ -23,7 +23,7 @@ export function RetakeConfirmOverlay({ questionNumber, onConfirm, onCancel }: Pr
       <View style={styles.card}>
         <Text style={styles.title}>Record again for Question {questionNumber}?</Text>
         <Text style={styles.body}>
-          Your current answer will be replaced.
+          You'll get to choose which take to keep afterward - nothing is replaced until then.
         </Text>
         <Pressable style={styles.primaryButton} onPress={onConfirm}>
           <Text style={styles.primaryButtonText}>Yes, record again</Text>
