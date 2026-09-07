@@ -42,11 +42,20 @@ export function AlignmentGuideOverlay({ visible, signals, goodFrameStreak, requi
 
   return (
     <Animated.View pointerEvents="none" style={[styles.overlay, { opacity }]}>
-      <View style={[styles.guideOutline, allGood && { borderColor: dark.accent }]} />
       <Text style={styles.message}>{guidanceMessage(signals)}</Text>
+      <View style={[styles.guideOutline, allGood && { borderColor: dark.accent }]} />
     </Animated.View>
   );
 }
+
+// How far above the oval's own top (GUIDE_TOP_OFFSET) the guidance message
+// sits - independent of the message's own height (position: 'absolute'),
+// so a longer message wrapping to 2 lines never pushes into the oval
+// itself, and the oval's tuned vertical position (see alignment.ts) is
+// never affected by the message at all. Kept close to the oval (not up
+// near the top bar) so it reads as guidance about the circle right below
+// it, not a separate, disconnected instruction.
+const MESSAGE_TOP_OFFSET = GUIDE_TOP_OFFSET - 60;
 
 function makeStyles(dark: PaletteDarkColors) {
   return StyleSheet.create({
@@ -71,8 +80,15 @@ function makeStyles(dark: PaletteDarkColors) {
       borderWidth: 1.5,
       borderColor: 'rgba(255,255,255,0.18)',
     },
+    // Above the oval now, not below it - once the oval was recentered
+    // lower on screen (GUIDE_TOP_OFFSET raised to 230), a message below it
+    // started overlapping AlignmentStatusStrip's checklist, which is
+    // anchored from the bottom edge independently.
     message: {
-      marginTop: 18,
+      position: 'absolute',
+      top: MESSAGE_TOP_OFFSET,
+      left: 0,
+      right: 0,
       color: dark.text,
       fontSize: 16.5,
       fontWeight: '600',

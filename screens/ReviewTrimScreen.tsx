@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
@@ -7,7 +8,7 @@ import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import { Button } from '../components/ui/Button';
 import { Toggle } from '../components/ui/Toggle';
-import { Carousel } from '../components/ui/Carousel';
+import { MAX_KEPT_TAKES } from '../recordings';
 
 export interface Take {
   id: string;
@@ -32,9 +33,10 @@ interface Props {
   onSelectTake: (id: string) => void;
   onToggleRemoveLastTwoSeconds: (next: boolean) => void;
   onChangeTrim: (start: number, end: number) => void;
-  // Up to 2 take ids marked to keep. Only user-editable (via onToggleKept)
-  // when takes.length > 2 - below that, the caller already marks
-  // everything kept automatically, since there's no cap to enforce yet.
+  // Up to MAX_KEPT_TAKES take ids marked to keep. Only user-editable (via
+  // onToggleKept) once takes.length exceeds MAX_KEPT_TAKES - below that,
+  // the caller already marks everything kept automatically, since there's
+  // no cap to enforce yet.
   keptTakeIds: string[];
   onToggleKept: (id: string) => void;
   onRecordAnother: () => void;
@@ -66,7 +68,15 @@ export function ReviewTrimScreen({
   onKeep,
 }: Props) {
   const { colors, spacing, radius } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, spacing, radius), [colors, spacing, radius]);
+  // The fixed action-button footer sits at the real bottom of the screen
+  // now (not just after whatever content preceded it), so it needs the
+  // same real per-device bottom inset BottomTabBar.tsx already accounts
+  // for - otherwise Android's 3-button/gesture nav bar sits on top of it.
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(
+    () => makeStyles(colors, spacing, radius, insets.bottom),
+    [colors, spacing, radius, insets.bottom],
+  );
 
   const selected = takes.find((t) => t.id === selectedTakeId) ?? takes[takes.length - 1];
   const player = useVideoPlayer(selected?.filePath ?? null, (p) => {
@@ -74,79 +84,92 @@ export function ReviewTrimScreen({
   });
 
   // Picking is only required once there's more to choose from than the
-  // 2-take cap allows - below that, the caller already marks everything in
+  // take cap allows - below that, the caller already marks everything in
   // `takes` as kept (keptTakeIds mirrors `takes` 1:1 in that case), so
   // there's nothing to decide here.
-  const mustPick = takes.length > 2;
+  const mustPick = takes.length > MAX_KEPT_TAKES;
   const keepButtonLabel = !mustPick
     ? takes.length > 1
       ? 'Keep both takes'
       : 'Keep this take'
-    : keptTakeIds.length === 2
-      ? 'Keep these 2'
-      : `Select 2 to keep (${keptTakeIds.length} of 2)`;
-  const keepDisabled = mustPick && keptTakeIds.length !== 2;
-  const droppedTake = mustPick && keptTakeIds.length === 2 ? takes.find((t) => !keptTakeIds.includes(t.id)) : undefined;
+    : keptTakeIds.length === MAX_KEPT_TAKES
+      ? `Keep these ${MAX_KEPT_TAKES}`
+      : `Select ${MAX_KEPT_TAKES} to keep (${keptTakeIds.length} of ${MAX_KEPT_TAKES})`;
+  const keepDisabled = mustPick && keptTakeIds.length !== MAX_KEPT_TAKES;
+  const droppedTake =
+    mustPick && keptTakeIds.length === MAX_KEPT_TAKES
+      ? takes.find((t) => !keptTakeIds.includes(t.id))
+      : undefined;
 
   return (
     <View style={styles.container}>
       <View style={styles.videoWrap}>
         {selected && (
-          <VideoView style={styles.video} player={player} contentFit="cover" nativeControls />
+          // "contain" (not "cover") - the wrap's height is an arbitrary
+          // fixed box unrelated to the recording's real aspect ratio;
+          // "cover" was cropping/zooming into it instead of showing the
+          // true framing the distributor actually recorded.
+          <VideoView style={styles.video} player={player} contentFit="contain" nativeControls />
         )}
       </View>
 
-      <View style={styles.sheet}>
+      {/* Scrollable, not a plain flex column - a short device with 3 takes
+          showing must never silently clip the trim controls/buttons off
+          the bottom with no way to reach them; a tall device just never
+          shows a scroll indicator at all. */}
+      <ScrollView style={styles.sheet} contentContainerStyle={styles.sheetContent}>
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>Have a look</Text>
-            <Text style={styles.subtitle}>
-              Take {takes.findIndex((t) => t.id === selected?.id) + 1} · {formatTime(selected?.durationSeconds ?? 0)}
-            </Text>
-          </View>
+          <Text style={styles.title}>Have a look</Text>
+          <Text style={styles.subtitle}>
+            Take {takes.findIndex((t) => t.id === selected?.id) + 1} · {formatTime(selected?.durationSeconds ?? 0)}
+          </Text>
         </View>
 
         {mustPick && (
           <Text style={styles.pickHint}>
-            You can keep 2 takes for this question — tap the checkmark to choose which ones.
+            Keep {MAX_KEPT_TAKES} of these {takes.length} — tap a take to preview it, tap the checkmark to keep or drop it.
           </Text>
         )}
 
         {takes.length > 1 && (
-          <Carousel style={styles.takesRow}>
+          <View style={styles.list}>
             {takes.map((take, i) => {
               const isKept = keptTakeIds.includes(take.id);
+              const isSelected = take.id === selected?.id;
               return (
-                <View
+                <Pressable
                   key={take.id}
-                  onTouchEnd={() => onSelectTake(take.id)}
+                  onPress={() => onSelectTake(take.id)}
                   style={[
-                    styles.takeThumb,
-                    { borderColor: take.id === selected?.id ? colors.accent : colors.border },
-                    mustPick && !isKept && styles.takeThumbDropped,
+                    styles.takeRow,
+                    { borderColor: isSelected ? colors.accent : colors.border },
+                    mustPick && !isKept && styles.takeRowDropped,
                   ]}
                 >
-                  {take.id === selected?.id && (
-                    <View style={styles.usingBadge}>
-                      <Text style={styles.usingBadgeText}>Using</Text>
-                    </View>
-                  )}
+                  <View style={styles.rowThumb}>
+                    <View style={styles.rowThumbPlay} />
+                  </View>
+                  <Text style={styles.rowLabel} numberOfLines={1}>
+                    Take {i + 1} <Text style={styles.rowMeta}>· {formatTime(take.durationSeconds)}</Text>
+                    {isSelected && <Text style={styles.rowInlineTag}> · Using</Text>}
+                    {take.saved && <Text style={styles.rowInlineTag}> · Saved</Text>}
+                  </Text>
                   {mustPick && (
                     <Pressable
-                      hitSlop={8}
-                      onPress={() => onToggleKept(take.id)}
-                      style={[styles.keepBadge, isKept && { backgroundColor: colors.accent }]}
+                      hitSlop={10}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        onToggleKept(take.id);
+                      }}
+                      style={[styles.rowKeep, isKept && styles.rowKeepKept]}
                     >
-                      {isKept && <Text style={styles.keepBadgeCheck}>✓</Text>}
+                      {isKept && <Text style={styles.rowKeepGlyph}>✓</Text>}
                     </Pressable>
                   )}
-                  <Text style={styles.takeThumbLabel}>Take {i + 1}</Text>
-                  {take.saved && <Text style={styles.savedTag}>Saved</Text>}
-                  <Text style={styles.takeThumbDuration}>{formatTime(take.durationSeconds)}</Text>
-                </View>
+                </Pressable>
               );
             })}
-          </Carousel>
+          </View>
         )}
 
         {droppedTake && (
@@ -172,11 +195,27 @@ export function ReviewTrimScreen({
             colors={colors}
           />
         )}
+      </ScrollView>
 
-        <View style={styles.actions}>
-          <Button label={keepButtonLabel} onPress={onKeep} disabled={keepDisabled} />
-          <Button label="Record another" onPress={onRecordAnother} variant="secondary" />
-        </View>
+      {/* Outside the ScrollView, not its last child - a fixed footer that
+          always sits at the bottom of the screen regardless of how much
+          content is above it or whether that content is scrolled, instead
+          of just trailing whatever happened to come before it. */}
+      <View style={styles.actions}>
+        <Button
+          label={keepButtonLabel}
+          onPress={onKeep}
+          disabled={keepDisabled}
+          style={styles.actionButton}
+          textStyle={styles.actionButtonText}
+        />
+        <Button
+          label="Record another"
+          onPress={onRecordAnother}
+          variant="secondary"
+          style={styles.actionButton}
+          textStyle={styles.actionButtonText}
+        />
       </View>
     </View>
   );
@@ -291,58 +330,90 @@ function TrimTimeline({
   );
 }
 
-function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius) {
+function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, insetBottom: number) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     videoWrap: { height: '38%', backgroundColor: '#000' },
     video: { flex: 1 },
-    sheet: { flex: 1, padding: spacing.xl, gap: spacing.md },
-    headerRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    sheet: { flex: 1 },
+    sheetContent: { padding: spacing.xl, gap: spacing.md },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
     title: { fontSize: 22, fontWeight: '700', color: colors.text },
-    subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
-    takesRow: { flexGrow: 0 },
-    takeThumb: {
-      width: 84,
-      height: 60,
-      borderRadius: radius.md,
-      borderWidth: 2,
+    subtitle: { fontSize: 13, color: colors.textMuted },
+    pickHint: { fontSize: 12.5, color: colors.textMuted, lineHeight: 18 },
+    // Vertical, compact rows - not the horizontal thumbnail strip this
+    // replaced. Sized to keep 3 rows well under 200px total so the trim
+    // timeline and both action buttons stay on-screen without scrolling on
+    // a typical device (the ScrollView above is the fallback for whatever
+    // doesn't fit, not the primary plan).
+    list: { gap: spacing.xs + 2 },
+    takeRow: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      gap: spacing.sm + 2,
+      borderWidth: 2,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm - 1,
+      paddingHorizontal: spacing.sm + 2,
       backgroundColor: colors.surface,
     },
-    usingBadge: {
-      position: 'absolute',
-      top: 5,
-      right: 5,
-      backgroundColor: colors.accent,
-      borderRadius: 3,
-      paddingHorizontal: 4,
-      paddingVertical: 1,
+    takeRowDropped: { opacity: 0.45 },
+    rowThumb: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.sm,
+      backgroundColor: colors.canvas,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    usingBadgeText: { fontSize: 8, fontWeight: '700', color: colors.accentText },
-    takeThumbLabel: { fontSize: 12.5, fontWeight: '700', color: colors.text },
-    takeThumbDuration: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
-    takeThumbDropped: { opacity: 0.45 },
-    savedTag: { fontSize: 9.5, fontWeight: '700', color: colors.accent, marginTop: 1 },
-    pickHint: { fontSize: 12.5, color: colors.textMuted, lineHeight: 18 },
-    keepBadge: {
-      position: 'absolute',
-      top: 5,
-      left: 5,
-      width: 18,
-      height: 18,
-      borderRadius: 9,
+    rowThumbPlay: {
+      width: 0,
+      height: 0,
+      borderTopWidth: 5,
+      borderBottomWidth: 5,
+      borderLeftWidth: 7,
+      borderTopColor: 'transparent',
+      borderBottomColor: 'transparent',
+      borderLeftColor: colors.textMuted,
+      marginLeft: 2,
+    },
+    rowLabel: { flex: 1, fontSize: 13.5, fontWeight: '700', color: colors.text },
+    rowMeta: { fontSize: 12, fontWeight: '400', color: colors.textFaint },
+    rowInlineTag: { fontSize: 12, fontWeight: '700', color: colors.accent },
+    // A real touch target (28px + hitSlop 10), not the old 18px corner
+    // badge - and its own Pressable with stopPropagation, not a raw
+    // onTouchEnd on the row competing with a nested Pressable for the
+    // touch (that mismatch was why selecting a take felt unreliable).
+    rowKeep: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
       borderWidth: 1.5,
       borderColor: colors.border,
       backgroundColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    keepBadgeCheck: { fontSize: 10, fontWeight: '700', color: colors.accentText },
+    rowKeepKept: { backgroundColor: colors.accent, borderColor: colors.accent },
+    rowKeepGlyph: { fontSize: 13, fontWeight: '700', color: colors.accentText },
     dropNote: { fontSize: 12, fontWeight: '600', color: colors.danger },
     toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     toggleLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
     toggleReason: { fontSize: 12.5, color: colors.textFaint, marginTop: 2 },
-    actions: { marginTop: 'auto', gap: spacing.sm },
+    actions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.sm,
+      // Just the real device inset plus a small fixed margin - not
+      // spacing.lg on top of it, which left far more air below the
+      // buttons than the system nav bar actually needs cleared.
+      paddingBottom: insetBottom + spacing.xs,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    actionButton: { flex: 1, paddingHorizontal: spacing.sm },
+    actionButtonText: { fontSize: 14.5 },
   });
 }

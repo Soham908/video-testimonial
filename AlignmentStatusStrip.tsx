@@ -85,7 +85,12 @@ function makeStyles(spacing: Spacing) {
       position: 'absolute',
       left: spacing.md + 4,
       right: spacing.md + 4,
-      bottom: 130,
+      // Nudged down from 130 - was sitting close enough to the guidance
+      // message above it (AlignmentGuideOverlay) to overlap on shorter
+      // screens. The message no longer renders below the oval at all now,
+      // but this still leaves a bit more breathing room above the
+      // Start-recording button/countdown row below.
+      bottom: 104,
     },
     rows: { gap: spacing.xs },
     skipRow: { alignItems: 'center', marginTop: spacing.md },

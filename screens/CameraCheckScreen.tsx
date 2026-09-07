@@ -3,12 +3,20 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer } from 'expo-video';
 import { useTheme } from '../theme/ThemeContext';
 import type { Spacing } from '../theme/spacing';
+import type { Radius } from '../theme/radius';
+import type { Typography } from '../theme/typography';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
+import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 
 interface Props {
   questionNumber: number;
   totalQuestions: number;
+  // Shown once countingDown is true, in the same place/style RecordingScreen
+  // shows it - reinforces the question that was just read aloud (or is
+  // being read aloud right now, if readQuestionAloud is on) instead of it
+  // only ever being audio, or only appearing once recording actually starts.
+  questionText: string;
   autoStart: boolean;
   onToggleAutoStart: (next: boolean) => void;
   /** True once alignment has locked and noise is clear (or overridden). */
@@ -37,6 +45,7 @@ interface Props {
 export function CameraCheckScreen({
   questionNumber,
   totalQuestions,
+  questionText,
   autoStart,
   onToggleAutoStart,
   checksReady,
@@ -47,8 +56,8 @@ export function CameraCheckScreen({
   readQuestionAloud,
   onToggleReadQuestionAloud,
 }: Props) {
-  const { spacing } = useTheme();
-  const styles = useMemo(() => makeStyles(spacing), [spacing]);
+  const { spacing, radius, typography } = useTheme();
+  const styles = useMemo(() => makeStyles(spacing, radius, typography), [spacing, radius, typography]);
 
   // null (not just undefined) while there's nothing to play - useVideoPlayer
   // accepts a null source and stays inert, same fallback QuestionBriefScreen's
@@ -100,22 +109,59 @@ export function CameraCheckScreen({
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.topBar} pointerEvents="box-none">
-        <View>
-          <Text style={styles.title}>Let's check your camera</Text>
-          <Text style={styles.subtitle}>
-            Question {questionNumber} of {totalQuestions}
-          </Text>
-        </View>
-        <View style={styles.toggleColumn}>
-          <View style={styles.autoStartRow}>
-            <Text style={styles.autoStartLabel}>Auto start</Text>
-            <Toggle value={autoStart} onValueChange={onToggleAutoStart} onDark />
-          </View>
-          <View style={styles.autoStartRow}>
-            <Text style={styles.autoStartLabel}>Read question aloud</Text>
-            <Toggle value={readQuestionAloud} onValueChange={onToggleReadQuestionAloud} onDark />
-          </View>
-        </View>
+        {countingDown ? (
+          // Same style/place RecordingScreen shows the question in, once
+          // recording actually starts - the progress badge above it mirrors
+          // RecordingScreen's own topRow (just without the rec dot/timer,
+          // since recording hasn't started yet), so the question bubble
+          // lands at the same vertical position here as it will the moment
+          // 'recording' takes over, instead of sitting flush at the very
+          // top with nothing above it.
+          <>
+            <View style={styles.countdownTopRow}>
+              <View style={styles.progressBadge}>
+                <Text style={styles.progressText}>
+                  {questionNumber} of {totalQuestions}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.questionBubble}>
+              <Text
+                style={[
+                  styles.questionText,
+                  containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('800') },
+                ]}
+                numberOfLines={3}
+              >
+                {questionText}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <>
+            <View>
+              <Text style={styles.title}>Let's check your camera</Text>
+              <Text style={styles.subtitle}>
+                Question {questionNumber} of {totalQuestions}
+              </Text>
+            </View>
+            {/* Its own row below the title, not squeezed into the title's
+                corner - was hugging the top-right edge, low-contrast
+                against a bright/plain background and hard to reach. Each
+                toggle now has its own translucent pill for contrast and
+                a real touch target that isn't right at the screen edge. */}
+            <View style={styles.togglePillRow}>
+              <View style={styles.togglePill}>
+                <Text style={styles.toggleLabel}>Auto start</Text>
+                <Toggle value={autoStart} onValueChange={onToggleAutoStart} onDark />
+              </View>
+              <View style={styles.togglePill}>
+                <Text style={styles.toggleLabel}>Read question aloud</Text>
+                <Toggle value={readQuestionAloud} onValueChange={onToggleReadQuestionAloud} onDark />
+              </View>
+            </View>
+          </>
+        )}
       </View>
 
       <View style={styles.bottomBar} pointerEvents="box-none">
@@ -138,7 +184,7 @@ export function CameraCheckScreen({
   );
 }
 
-function makeStyles(spacing: Spacing) {
+function makeStyles(spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     topBar: {
@@ -146,16 +192,53 @@ function makeStyles(spacing: Spacing) {
       top: 16,
       left: spacing.lg,
       right: spacing.lg,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      gap: spacing.md,
+      gap: spacing.sm + 2,
     },
     title: { color: '#FFFFFF', fontSize: 21, fontWeight: '700', letterSpacing: -0.3 },
     subtitle: { color: 'rgba(255,255,255,0.55)', fontSize: 13.5, marginTop: 4 },
-    toggleColumn: { gap: 10, alignItems: 'flex-end' },
-    autoStartRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-    autoStartLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
+    // A row of its own pills, not a right-aligned column squeezed beside
+    // the title - each one has real background contrast instead of bare
+    // text floating over whatever the camera happens to be showing.
+    togglePillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    togglePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm - 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      borderRadius: radius.pill,
+      paddingVertical: spacing.xs + 2,
+      paddingHorizontal: spacing.sm + 2,
+    },
+    toggleLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '600' },
+    // Right-aligned regardless of what else is (or isn't) in the row -
+    // RecordingScreen's own progressBadge sits here because it has a rec
+    // indicator on the left pushing it there via space-between; there's no
+    // rec indicator during countdown, so this is pinned there directly
+    // instead of relying on a sibling that doesn't exist yet.
+    countdownTopRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+    progressBadge: {
+      backgroundColor: 'rgba(255,255,255,0.14)',
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.md - 1,
+      paddingVertical: spacing.sm + 1,
+    },
+    progressText: { fontSize: 12.5, fontWeight: '600', color: 'rgba(255,255,255,0.9)' },
+    // Same treatment RecordingScreen uses for the question once recording
+    // starts - deliberately identical so it reads as "the same question,"
+    // not a different UI element.
+    questionBubble: {
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 2,
+    },
+    questionText: {
+      ...typography.title,
+      fontSize: 22,
+      fontWeight: '800',
+      color: '#FFFFFF',
+      lineHeight: 28,
+    },
     bottomBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: 30 },
     countdownRow: { alignItems: 'center', gap: spacing.sm },
     countdownCircle: {
