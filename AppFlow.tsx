@@ -483,6 +483,23 @@ export function AppFlow() {
     if (!sessionRestored) return;
     const persistedScreen: PersistedScreen =
       screen === 'question' || screen === 'uploading' ? screen : 'main';
+    // uploadConfirmed is restored unconditionally on every app launch
+    // (see loadSession() above) and the upload effect fires purely off
+    // that flag, with no dependency on `screen` - deliberately, so a
+    // genuinely-interrupted upload (force-quit mid-send) resumes on the
+    // next launch instead of silently staying half-sent. But without this
+    // guard, that same persisted `true` would never turn itself back off
+    // once a batch actually finishes - every future app launch would
+    // re-arm the upload effect and silently send whatever new question
+    // happens to exist by then, with no UI and no confirmation. Found via
+    // a report of a question showing as uploaded that was never
+    // knowingly sent - 4 separate uploads that turned out to be 4
+    // separate app reloads across one testing session, not 4 deliberate
+    // sends. Only persist `true` while something from the current batch
+    // is genuinely still pending (mirrors the loop's own skip check
+    // above) - once every primary take is already in
+    // uploadedQuestionIndices, there's nothing left to resume.
+    const uploadPending = primaryVideos.some((v) => !uploadedQuestionIndices.includes(v.questionIndex));
     saveSession({
       screen: persistedScreen,
       mainTab,
@@ -495,7 +512,7 @@ export function AppFlow() {
       keptTakeIds,
       autoStart,
       hasSubmittedBatch,
-      uploadConfirmed,
+      uploadConfirmed: uploadConfirmed && uploadPending,
       uploadedQuestionIndices,
     });
   }, [
