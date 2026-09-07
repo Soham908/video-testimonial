@@ -125,7 +125,12 @@ export function HomeScreen({
           <Text style={styles.stateBody}>Head to My Videos to watch and share them.</Text>
           <Button label="Go to My Videos" onPress={onOpenMyVideos} style={{ marginTop: spacing.md }} />
         </Card>
-      ) : hasSubmittedBatch ? (
+      ) : hasSubmittedBatch && allRecorded ? (
+        // Only the fully-recorded-and-sent case shows "being made" - a
+        // partial send from My Videos' own independent upload button
+        // (reachable before all questions are answered) also flips
+        // hasSubmittedBatch, but that must never hide the "record the rest"
+        // prompt below while questions are still pending.
         <Card style={[styles.stateCard, styles.stateCardDark]}>
           <Text style={[styles.stateEyebrow, { color: '#C9A184' }]}>Sent, being made</Text>
           <Text style={[styles.stateTitle, { color: '#FFFFFF' }]}>

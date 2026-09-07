@@ -31,6 +31,7 @@ import {
   moveRecordingToDurableStorage,
   clearAllRecordings,
   deleteRecording,
+  MAX_KEPT_TAKES,
   type RecordedVideo,
 } from './recordings';
 import { useTheme } from './theme/ThemeContext';
@@ -709,6 +710,7 @@ export function AppFlow() {
               .slice()
               .sort((a) => (a.id === primary.id ? -1 : 1))
               .map((t) => ({ id: t.id, play: { filePath: t.filePath, label }, durationSeconds: t.durationSeconds })),
+            uploaded: false,
           });
         }
 
@@ -739,6 +741,7 @@ export function AppFlow() {
             questionText: questions[qIndex]?.text ?? label,
             play,
             takes: [{ id: local?.id ?? `segment-${qIndex}`, play, durationSeconds: local?.durationSeconds ?? segment.duration_seconds ?? 0 }],
+            uploaded: true,
           });
         }
 
@@ -876,14 +879,20 @@ export function AppFlow() {
     setTakesByQuestion((prev) => ({ ...prev, [questionIndex]: finalLive }));
     setSelectedTakeId(newTake.id);
     // Default "kept" selection once the combined pool (this question's
-    // already-saved takes + this session's fresh ones) exceeds 2 -
-    // most-recent-first, matching the same "newest wins by default"
-    // convention MAX_TAKES already uses for live takes above. Only matters
-    // once the pool is actually over the cap; handleKeepTake keeps
-    // everything automatically otherwise, no picking needed.
+    // already-saved takes + this session's fresh ones) exceeds the cap.
+    // The current primary (if there is one) is always protected in this
+    // default - it's the take someone already chose as their answer, so a
+    // 3rd/4th take shouldn't silently bump it out of the picker's
+    // preselection. The just-recorded take fills the other slot. Only a
+    // preselection either way - handleToggleKept still lets the user pick
+    // differently before confirming with "Keep."
     const savedForQuestion = videos.filter((v) => v.questionIndex === questionIndex);
     const pool = [...savedForQuestion, ...finalLive];
-    setKeptTakeIds(pool.length > 2 ? pool.slice(-2).map((t) => t.id) : []);
+    const currentPrimary = pool.find((t) => t.isPrimary);
+    const defaultKeptIds = currentPrimary
+      ? [currentPrimary.id, newTake.id]
+      : pool.slice(-MAX_KEPT_TAKES).map((t) => t.id);
+    setKeptTakeIds(pool.length > MAX_KEPT_TAKES ? defaultKeptIds : []);
     setPhase('reviewTrim');
   }
 
@@ -926,14 +935,14 @@ export function AppFlow() {
     });
   }
 
-  // Toggles a pool member's kept/dropped status - capped at 2 (attempting
-  // a 3rd while 2 are already kept is a no-op; drop one first). Only ever
-  // reachable from Review & Trim when the pool exceeds 2 - see
-  // ReviewTrimScreen's takes.length > 2 branch.
+  // Toggles a pool member's kept/dropped status - capped at MAX_KEPT_TAKES
+  // (attempting one more while already at the cap is a no-op; drop one
+  // first). Only ever reachable from Review & Trim when the pool exceeds
+  // the cap - see ReviewTrimScreen's takes.length > MAX_KEPT_TAKES branch.
   function handleToggleKept(id: string) {
     setKeptTakeIds((prev) => {
       if (prev.includes(id)) return prev.filter((k) => k !== id);
-      if (prev.length >= 2) return prev;
+      if (prev.length >= MAX_KEPT_TAKES) return prev;
       return [...prev, id];
     });
   }
@@ -943,13 +952,13 @@ export function AppFlow() {
     if (pool.length === 0) return;
 
     // Everything in the pool is kept automatically when there's room for
-    // all of it (cap is 2) - picking is only required once a 3rd+
-    // candidate exists, via keptTakeIds (Review & Trim's take-strip
+    // all of it - picking is only required once the pool exceeds
+    // MAX_KEPT_TAKES, via keptTakeIds (Review & Trim's take-strip
     // checkboxes). The length check below is a defensive guard, not the
     // real gate - the "Keep" button itself is disabled in the UI until a
     // valid selection exists.
-    const finalKeptIds = pool.length <= 2 ? pool.map((t) => t.id) : keptTakeIds;
-    if (finalKeptIds.length !== Math.min(pool.length, 2)) return;
+    const finalKeptIds = pool.length <= MAX_KEPT_TAKES ? pool.map((t) => t.id) : keptTakeIds;
+    if (finalKeptIds.length !== Math.min(pool.length, MAX_KEPT_TAKES)) return;
 
     const kept = pool.filter((t) => finalKeptIds.includes(t.id));
     const dropped = pool.filter((t) => !finalKeptIds.includes(t.id));
@@ -1006,13 +1015,26 @@ export function AppFlow() {
 
   // Confirmed exit from the hardware-back popup during cameraCheck/
   // countdown/recording/reviewTrim. Discards an in-progress recording if
-  // there is one; a take already sitting in takesByQuestion (reviewTrim,
-  // not yet kept) is deliberately left alone so it's still there if the
-  // person comes back to this question.
+  // there is one. A take already sitting in takesByQuestion (reviewTrim,
+  // not yet kept) is normally left alone so it's still there if the person
+  // comes back to this question - except when backing out of a forced pick
+  // (pool over MAX_KEPT_TAKES, no valid keep confirmed yet): there, every
+  // live take for this question is discarded instead, leaving the
+  // already-saved takes and the current primary exactly as they were
+  // before this attempt.
   function confirmExitQuestionFlow() {
     setPendingExitConfirm(false);
     if (phase === 'recording') {
       cameraRef.current?.cancelRecording().catch((error) => console.error('[recording] cancel failed', error));
+    }
+    if (phase === 'reviewTrim' && reviewPoolFor(questionIndex).length > MAX_KEPT_TAKES) {
+      (takesByQuestion[questionIndex] ?? []).forEach((t) => deleteRecording(t.filePath));
+      setTakesByQuestion((prev) => {
+        const next = { ...prev };
+        delete next[questionIndex];
+        return next;
+      });
+      setKeptTakeIds([]);
     }
     setChecksReady(false);
     setTakeAttempt(0);
@@ -1290,6 +1312,7 @@ export function AppFlow() {
         {pendingRetake !== null && (
           <RetakeConfirmOverlay
             questionNumber={pendingRetake + 1}
+            isRetake={videos.some((v) => v.questionIndex === pendingRetake)}
             onCancel={() => setPendingRetake(null)}
             onConfirm={() => {
               const qIndex = pendingRetake;
@@ -1429,10 +1452,11 @@ export function AppFlow() {
           onChangeTrim={(s, e) =>
             updatePoolTake(questionIndex, activeTakeId, { trimStartSeconds: s, trimEndSeconds: e })
           }
-          // Everything in the pool counts as "kept" once it's 2 or fewer -
-          // no picking needed, keptTakeIds only holds a real selection once
-          // handleRecordingFinished has populated it for a 3rd+ candidate.
-          keptTakeIds={pool.length <= 2 ? pool.map((t) => t.id) : keptTakeIds}
+          // Everything in the pool counts as "kept" once it's at or below
+          // the cap - no picking needed, keptTakeIds only holds a real
+          // selection once handleRecordingFinished has populated it for a
+          // pool that exceeds MAX_KEPT_TAKES.
+          keptTakeIds={pool.length <= MAX_KEPT_TAKES ? pool.map((t) => t.id) : keptTakeIds}
           onToggleKept={handleToggleKept}
           onRecordAnother={handleRecordAnother}
           onKeep={handleKeepTake}
@@ -1523,6 +1547,7 @@ export function AppFlow() {
         <CameraCheckScreen
           questionNumber={questionIndex + 1}
           totalQuestions={questions.length}
+          questionText={questionText}
           autoStart={autoStart}
           onToggleAutoStart={setAutoStart}
           checksReady={checksReady}

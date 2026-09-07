@@ -57,6 +57,12 @@ export interface RecordedVideo {
   captureMetadata?: CaptureMetadata;
 }
 
+// How many takes a distributor can keep per question before having to pick
+// which to drop (AppFlow.tsx's take-keeping flow, ReviewTrimScreen.tsx's
+// picker). Single source of truth so raising this later (e.g. product
+// wants 3) is a one-line change here, not a hunt for hardcoded 2s.
+export const MAX_KEPT_TAKES = 2;
+
 const RECORDINGS_DIR_NAME = 'recordings';
 
 function getRecordingsDirectory(): Directory {

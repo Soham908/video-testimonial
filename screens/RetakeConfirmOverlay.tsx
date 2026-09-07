@@ -8,31 +8,51 @@ import type { Typography } from '../theme/typography';
 
 interface Props {
   questionNumber: number;
+  // False for a question with no takes yet (the plain "Record" entry
+  // point on My Videos' unanswered row) - true only once there's an
+  // existing take to actually record "again" over. Same overlay either
+  // way (a second popup would just duplicate this layout/styling) - only
+  // the copy changes, via the conditional below.
+  isRetake: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 // Shown from My Videos before entering the camera flow at all - styled as
 // a bottom-sheet, matching the app's other keep/redo-style confirmations.
-export function RetakeConfirmOverlay({ questionNumber, onConfirm, onCancel }: Props) {
+export function RetakeConfirmOverlay({ questionNumber, isRetake, onConfirm, onCancel }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
   return (
-    <View style={styles.overlay}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Record again for Question {questionNumber}?</Text>
-        <Text style={styles.body}>
-          You'll get to choose which take to keep afterward - nothing is replaced until then.
-        </Text>
-        <Pressable style={styles.primaryButton} onPress={onConfirm}>
-          <Text style={styles.primaryButtonText}>Yes, record again</Text>
-        </Pressable>
+    <Pressable style={styles.overlay} onPress={onCancel}>
+      <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
+        {isRetake ? (
+          <>
+            <Text style={styles.title}>Record again for Question {questionNumber}?</Text>
+            <Text style={styles.body}>
+              You'll get to choose which take to keep afterward - nothing is replaced until then.
+            </Text>
+            <Pressable style={styles.primaryButton} onPress={onConfirm}>
+              <Text style={styles.primaryButtonText}>Yes, record again</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.title}>Ready to record Question {questionNumber}?</Text>
+            <Text style={styles.body}>
+              We'll check your camera and lighting first, then walk you through recording your answer.
+            </Text>
+            <Pressable style={styles.primaryButton} onPress={onConfirm}>
+              <Text style={styles.primaryButtonText}>Start recording</Text>
+            </Pressable>
+          </>
+        )}
         <Pressable style={styles.secondaryButton} onPress={onCancel}>
           <Text style={styles.secondaryButtonText}>Cancel</Text>
         </Pressable>
-      </View>
-    </View>
+      </Pressable>
+    </Pressable>
   );
 }
 

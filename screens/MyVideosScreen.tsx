@@ -22,6 +22,12 @@ export interface AnswerRow {
   // successful upload - there's nothing left to choose between at that
   // point). `play` always mirrors whichever entry here is primary.
   takes: { id: string; play: PlayableVideo; durationSeconds: number }[];
+  // True once this question's row was built from a server-confirmed
+  // segment (AppFlow.tsx's segments merge), not just a local recording -
+  // the source of truth for "has this actually been sent," not a local
+  // session flag. Retake isn't offered once true, since re-upload after an
+  // already-confirmed segment isn't supported yet.
+  uploaded: boolean;
 }
 
 export interface BrandedRow {
@@ -288,7 +294,11 @@ function AnswerRowCard({
           {!expanded && (
             <Text style={styles.rowMeta}>
               {formatTime(primaryTake?.durationSeconds ?? 0)}
-              {hasTwoTakes ? ' · 2 takes saved' : ' · Recorded'}
+              {answer.uploaded
+                ? ' · Uploaded'
+                : hasTwoTakes
+                  ? ` · ${answer.takes.length} takes saved`
+                  : ' · Recorded'}
             </Text>
           )}
         </View>
@@ -306,36 +316,44 @@ function AnswerRowCard({
 
       {expanded && (
         <View style={styles.expandPanel}>
-          {hasTwoTakes && (
+          {answer.uploaded ? (
+            <Text style={styles.uploadedNote}>
+              This answer has already been sent and can't be changed here.
+            </Text>
+          ) : (
             <>
-              <Text style={styles.takesLabel}>Choose which take to send</Text>
-              <Carousel style={{ flexGrow: 0 }}>
-                {answer.takes.map((take, i) => {
-                  const isPrimary = i === 0;
-                  return (
-                    <Pressable
-                      key={take.id}
-                      onPress={() => onSwitchPrimary(questionIndex, take.id)}
-                      style={[styles.takeCard, { borderColor: isPrimary ? colors.accent : colors.border }]}
-                    >
-                      <View style={styles.takeCardPlay}>
-                        <View style={styles.playTriangleTiny} />
-                      </View>
-                      <Text style={styles.takeCardDuration}>{formatTime(take.durationSeconds)}</Text>
-                      {isPrimary && (
-                        <View style={styles.takeCardCheck}>
-                          <Text style={styles.takeCardCheckGlyph}>✓</Text>
-                        </View>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </Carousel>
+              {hasTwoTakes && (
+                <>
+                  <Text style={styles.takesLabel}>Choose which take to send</Text>
+                  <Carousel style={{ flexGrow: 0 }}>
+                    {answer.takes.map((take, i) => {
+                      const isPrimary = i === 0;
+                      return (
+                        <Pressable
+                          key={take.id}
+                          onPress={() => onSwitchPrimary(questionIndex, take.id)}
+                          style={[styles.takeCard, { borderColor: isPrimary ? colors.accent : colors.border }]}
+                        >
+                          <View style={styles.takeCardPlay}>
+                            <View style={styles.playTriangleTiny} />
+                          </View>
+                          <Text style={styles.takeCardDuration}>{formatTime(take.durationSeconds)}</Text>
+                          {isPrimary && (
+                            <View style={styles.takeCardCheck}>
+                              <Text style={styles.takeCardCheckGlyph}>✓</Text>
+                            </View>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </Carousel>
+                </>
+              )}
+              <Text style={styles.retakeText} onPress={() => onRetake(questionIndex)}>
+                {hasTwoTakes ? 'Record another take' : 'Retake'}
+              </Text>
             </>
           )}
-          <Text style={styles.retakeText} onPress={() => onRetake(questionIndex)}>
-            {hasTwoTakes ? 'Record another take' : 'Retake'}
-          </Text>
         </View>
       )}
     </View>
@@ -465,6 +483,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     },
     takeCardCheckGlyph: { fontSize: 8, fontWeight: '700', color: colors.accentText },
     retakeText: { fontSize: 13, fontWeight: '700', color: colors.accent, marginTop: 2 },
+    uploadedNote: { fontSize: 13, color: colors.textFaint, lineHeight: 18 },
     emptyBrandedCard: {
       borderWidth: 1.5,
       borderColor: colors.borderStrong,
