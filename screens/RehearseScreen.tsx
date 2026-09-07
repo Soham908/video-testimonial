@@ -6,6 +6,7 @@ import type { Radius } from '../theme/radius';
 import { Button } from '../components/ui/Button';
 import { PopupSheet } from '../components/ui/Modal';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   questionText: string;
@@ -27,11 +28,12 @@ export function RehearseScreen({ questionText, onRecordForReal, onBackToBrief }:
   const { colors, spacing, radius } = useTheme();
   const styles = useMemo(() => makeStyles(spacing, radius), [spacing, radius]);
   const [finishing, setFinishing] = useState(false);
+  const { t } = useStrings();
 
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.topBanner} pointerEvents="none">
-        <Text style={styles.topBannerText}>Practice — nothing is being saved</Text>
+        <Text style={styles.topBannerText}>{t('rehearse.topBanner')}</Text>
       </View>
 
       <View style={styles.promptBox} pointerEvents="none">
@@ -41,26 +43,26 @@ export function RehearseScreen({ questionText, onRecordForReal, onBackToBrief }:
       </View>
 
       <View style={styles.bottomBar}>
-        <Button label="Finish practicing" onPress={() => setFinishing(true)} />
+        <Button label={t('rehearse.finishButton')} onPress={() => setFinishing(true)} />
       </View>
 
       <PopupSheet visible={finishing} onDismiss={() => setFinishing(false)}>
         <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-          Ready for the real one?
+          {t('rehearse.popupTitle')}
         </Text>
         <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 20, marginBottom: 20 }}>
-          That was just practice - nothing from it was saved.
+          {t('rehearse.popupBody')}
         </Text>
         <View style={{ gap: 10 }}>
           <Button
-            label="Record for real"
+            label={t('rehearse.popupRecordForRealButton')}
             onPress={() => {
               setFinishing(false);
               onRecordForReal();
             }}
           />
           <Button
-            label="Back to the brief"
+            label={t('rehearse.popupBackToBriefButton')}
             variant="secondary"
             onPress={() => {
               setFinishing(false);

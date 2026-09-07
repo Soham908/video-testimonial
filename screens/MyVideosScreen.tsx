@@ -10,6 +10,7 @@ import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
 import { Carousel } from '../components/ui/Carousel';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import { useStrings } from '../i18n/useStrings';
 
 export interface AnswerRow {
   questionIndex: number;
@@ -71,12 +72,6 @@ interface Props {
   onUploadAll: () => void;
 }
 
-const STATUS_LABEL: Record<UserFacingStatus, string> = {
-  processing: 'Processing',
-  ready: 'Ready',
-  failed: 'Failed',
-};
-
 // Design screens 6C (branded reels as a carousel) + 6E (no take
 // thumbnails - a recorded row just says which take is chosen and offers
 // Change; a missing row carries the only button that looks like a
@@ -102,13 +97,20 @@ export function MyVideosScreen({
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const { t } = useStrings();
+
+  const STATUS_LABEL: Record<UserFacingStatus, string> = {
+    processing: t('myVideos.statusProcessing'),
+    ready: t('myVideos.statusReady'),
+    failed: t('myVideos.statusFailed'),
+  };
 
   if (error) {
     return (
       <View style={styles.centeredContainer}>
-        <Text style={styles.errorTitle}>Couldn't load your videos</Text>
+        <Text style={styles.errorTitle}>{t('myVideos.errorTitle')}</Text>
         <Text style={styles.errorSubtitle}>{error}</Text>
-        <Button label="Try again" onPress={onRetryLoad} variant="secondary" style={{ marginTop: spacing.lg }} />
+        <Button label={t('myVideos.tryAgainButton')} onPress={onRetryLoad} variant="secondary" style={{ marginTop: spacing.lg }} />
       </View>
     );
   }
@@ -125,7 +127,7 @@ export function MyVideosScreen({
 
   const answersSection = (
     <View style={styles.section}>
-      <Text style={styles.sectionLabel}>Your answers</Text>
+      <Text style={styles.sectionLabel}>{t('myVideos.answersSectionTitle')}</Text>
       <View style={styles.rowsCard}>
         {questionTexts.map((questionText, questionIndex) => {
           const answer = answers.find((a) => a.questionIndex === questionIndex);
@@ -152,12 +154,12 @@ export function MyVideosScreen({
 
   const brandedSection = (
     <View style={styles.section}>
-      <Text style={styles.sectionLabel}>Your branded videos</Text>
+      <Text style={styles.sectionLabel}>{t('myVideos.brandedSectionTitle')}</Text>
       {branded.length === 0 ? (
         <View style={styles.emptyBrandedCard}>
           <View style={styles.emptyBrandedThumb} />
           <Text style={styles.emptyBrandedText}>
-            Your branded videos will appear here once every answer has been sent and made.
+            {t('myVideos.emptyBrandedText')}
           </Text>
         </View>
       ) : (
@@ -199,10 +201,10 @@ export function MyVideosScreen({
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>My Videos</Text>
-          <Text style={styles.headerSubtitle}>Record all videos to start the upload</Text>
+          <Text style={styles.title}>{t('myVideos.title')}</Text>
+          <Text style={styles.headerSubtitle}>{t('myVideos.headerSubtitle')}</Text>
         </View>
-        <Button label="Upload videos" onPress={onUploadAll} />
+        <Button label={t('myVideos.uploadButton')} onPress={onUploadAll} />
       </View>
 
       {hasAnyReady ? (
@@ -260,6 +262,7 @@ function AnswerRowCard({
   colors: PaletteColors;
 }) {
   const devanagariStyle = containsDevanagari(questionText) ? { fontFamily: devanagariFontFamily('600') } : undefined;
+  const { t } = useStrings();
 
   if (!answer) {
     return (
@@ -272,9 +275,9 @@ function AnswerRowCard({
             <Text style={[styles.rowQuestionText, devanagariStyle]} numberOfLines={1}>
               {questionText}
             </Text>
-            <Text style={styles.rowMeta}>Not recorded yet</Text>
+            <Text style={styles.rowMeta}>{t('myVideos.notRecordedYet')}</Text>
           </View>
-          <Button label="Record" onPress={() => onRetake(questionIndex)} variant="quiet" />
+          <Button label={t('myVideos.recordButton')} onPress={() => onRetake(questionIndex)} variant="quiet" />
         </View>
       </View>
     );
@@ -297,12 +300,12 @@ function AnswerRowCard({
           </Text>
           {!expanded && (
             <Text style={styles.rowMeta}>
-              {formatTime(primaryTake?.durationSeconds ?? 0)}
+              {formatTime(primaryTake?.durationSeconds ?? 0)}{' '}
               {answer.uploaded
-                ? ' · Uploaded'
+                ? t('myVideos.metaUploaded')
                 : hasTwoTakes
-                  ? ` · ${answer.takes.length} takes saved`
-                  : ' · Recorded'}
+                  ? t('myVideos.metaTakesSaved', { count: answer.takes.length })
+                  : t('myVideos.metaRecorded')}
             </Text>
           )}
         </View>
@@ -322,13 +325,13 @@ function AnswerRowCard({
         <View style={styles.expandPanel}>
           {answer.uploaded ? (
             <Text style={styles.uploadedNote}>
-              This answer has already been sent and can't be changed here.
+              {t('myVideos.uploadedNote')}
             </Text>
           ) : (
             <>
               {hasTwoTakes && (
                 <>
-                  <Text style={styles.takesLabel}>Choose which take to send</Text>
+                  <Text style={styles.takesLabel}>{t('myVideos.chooseTakeLabel')}</Text>
                   <Carousel style={{ flexGrow: 0 }}>
                     {answer.takes.map((take, i) => {
                       const isPrimary = i === 0;
@@ -355,10 +358,10 @@ function AnswerRowCard({
               )}
               <View style={styles.actionLinkRow}>
                 <Text style={styles.retakeText} onPress={() => onEditTakes(questionIndex)}>
-                  {hasTwoTakes ? 'Edit takes' : 'Edit take'}
+                  {hasTwoTakes ? t('myVideos.editTakesLink') : t('myVideos.editTakeLink')}
                 </Text>
                 <Text style={styles.retakeText} onPress={() => onRetake(questionIndex)}>
-                  {hasTwoTakes ? 'Record another take' : 'Retake'}
+                  {hasTwoTakes ? t('myVideos.recordAnotherTakeLink') : t('myVideos.retakeLink')}
                 </Text>
               </View>
             </>

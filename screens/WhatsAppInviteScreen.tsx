@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useStrings } from '../i18n/useStrings';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -14,40 +15,41 @@ interface Props {
   onContinue: () => void;
 }
 
-const FACTS = [
-  { label: 'How many', value: '5 short questions' },
-  { label: 'How long', value: 'About 10 minutes' },
-  { label: 'What you get', value: 'Your own branded videos to keep and share' },
-];
-
 // A person invited you, not a system - the inviter's name is the first
 // thing on the screen, company underneath. Three plain facts answer what
 // people actually ask before tapping anything (design screen 11).
 export function WhatsAppInviteScreen({
-  inviterName = 'Rajesh',
-  companyName = 'Vardaan Paints',
+  inviterName,
+  companyName,
   onContinue,
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
+
+  const facts = [
+    { key: 'howMany', label: t('whatsAppInvite.factHowManyLabel'), value: t('whatsAppInvite.factHowManyValue') },
+    { key: 'howLong', label: t('whatsAppInvite.factHowLongLabel'), value: t('whatsAppInvite.factHowLongValue') },
+    { key: 'whatYouGet', label: t('whatsAppInvite.factWhatYouGetLabel'), value: t('whatsAppInvite.factWhatYouGetValue') },
+  ];
 
   return (
     <View style={styles.container}>
       <View>
-        <Text style={styles.eyebrow}>You were invited by</Text>
-        <Text style={styles.title}>{inviterName}</Text>
-        <Text style={styles.subtitle}>{companyName}</Text>
+        <Text style={styles.eyebrow}>{t('whatsAppInvite.invitedByEyebrow')}</Text>
+        <Text style={styles.title}>{inviterName ?? t('whatsAppInvite.inviterNameDefault')}</Text>
+        <Text style={styles.subtitle}>{companyName ?? t('whatsAppInvite.companyNameDefault')}</Text>
 
         <View style={styles.factsGroup}>
-          {FACTS.map((fact) => (
-            <View key={fact.label} style={styles.factRow}>
+          {facts.map((fact) => (
+            <View key={fact.key} style={styles.factRow}>
               <Text style={styles.factLabel}>{fact.label}</Text>
               <Text style={styles.factValue}>{fact.value}</Text>
             </View>
           ))}
         </View>
 
-        <Button label="Continue" onPress={onContinue} style={{ marginTop: spacing.xl }} />
+        <Button label={t('whatsAppInvite.continueButton')} onPress={onContinue} style={{ marginTop: spacing.xl }} />
       </View>
     </View>
   );

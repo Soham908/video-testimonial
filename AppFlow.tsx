@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
+import { useCameraPermission, useMicrophonePermission } from 'react-native-vision-camera';
+import { setActiveLanguage, useStrings } from './i18n/useStrings';
 import { LoginScreen } from './screens/LoginScreen';
 import { SelfRegisterScreen } from './screens/SelfRegisterScreen';
 import { SplashScreen } from './screens/SplashScreen';
@@ -42,7 +44,13 @@ import { uploadSegment } from './upload';
 import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
 import { getDeviceInfo } from './deviceInfo';
 import { ENABLE_REEL_RENDERING, ENABLE_SELF_REGISTRATION } from './config';
-import { getReadQuestionAloudPref, setReadQuestionAloudPref } from './preferences';
+import {
+  getReadQuestionAloudPref,
+  setReadQuestionAloudPref,
+  getLanguagePref,
+  setLanguagePref,
+  type LanguageCode,
+} from './preferences';
 import {
   fetchQuestions,
   getCachedQuestions,
@@ -146,6 +154,7 @@ const COUNTDOWN_BUFFER_MS = 300;
 // all real.
 export function AppFlow() {
   const { colors, spacing } = useTheme();
+  const { t } = useStrings();
   const [screen, setScreen] = useState<Screen>('sessionLoading');
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -186,6 +195,16 @@ export function AppFlow() {
   const [brandedRows, setBrandedRows] = useState<BrandedRow[]>([]);
   const [myVideosRefreshToken, setMyVideosRefreshToken] = useState(0);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
+  // Live camera/mic permission status, read here (not just inside
+  // CameraAlignment/PermissionsScreen) so "Start this question" from Home
+  // can skip the whole Permissions explainer once both are already
+  // granted - it was previously routing there unconditionally on every
+  // tap, forcing a redundant "Allow camera and microphone" confirmation
+  // even after the distributor had already granted both and completed a
+  // question. Only a genuinely first-time or denied state should still
+  // land on that screen.
+  const cameraPermission = useCameraPermission();
+  const microphonePermission = useMicrophonePermission();
   // Manual memo (a real useMemo can't live down where this gets read - see
   // its use site) for the resolved VO source of whichever question is
   // currently on screen. Pinned to that question's id and never updated
@@ -201,8 +220,10 @@ export function AppFlow() {
   // that was already released" (real crash log, not hypothetical). Only a
   // question-id change (i.e. actually moving to a different question,
   // where nothing was still playing on the old one) is allowed to update
-  // this.
-  const voSourceRef = useRef<{ questionId: string; url: string | undefined } | null>(null);
+  // this - a language switch is also allowed to, since that can only
+  // happen from Settings, never while a question's VO player is actually
+  // mounted/playing.
+  const voSourceRef = useRef<{ questionId: string; language: string; url: string | undefined } | null>(null);
 
   // Backend-configured question set (CLAUDE.md) - cache-first: shown
   // immediately from questions-cache.json on launch/login, refreshed in
@@ -248,6 +269,25 @@ export function AppFlow() {
   // true; loaded async below, same pattern ThemeContext uses for
   // palette/font.
   const [readQuestionAloud, setReadQuestionAloudState] = useState(true);
+  // Local-only override for GET /distributors/me/questions' ?language=
+  // param (preferences.ts) - null means "never explicitly chosen," which
+  // is meaningfully different from 'en': it lets the backend fall through
+  // to the distributor's own stored language_pref instead of forcing
+  // English. Loaded together with the initial restore below (not in its
+  // own simple effect like readQuestionAloud) because the very first
+  // loadQuestions() call needs the resolved value before it fires, not
+  // whatever this state happens to hold by the time that unrelated effect
+  // gets around to resolving - two independent async reads racing each
+  // other would make that ordering unreliable.
+  const [language, setLanguageState] = useState<LanguageCode | null>(null);
+  // Mirrors `language` into the i18n module's own external store (see its
+  // own comment for why - AppFlow has many early `return`s, no single JSX
+  // root to wrap in a Context Provider) so every screen's useStrings()
+  // re-renders whenever this state changes, without threading `language`
+  // as a prop through every one of them.
+  useEffect(() => {
+    setActiveLanguage(language);
+  }, [language]);
   // True once CameraAlignment's onLocked has fired for the current attempt
   // (framing/distance locked and sound clear or overridden) - drives
   // whether Camera Check's Start button is tappable.
@@ -330,23 +370,32 @@ export function AppFlow() {
   // keeps whatever's already showing (the cache, already loaded into state
   // before this is called) rather than clearing it - only sets
   // `questionsError` when there's truly nothing to fall back to.
-  async function loadQuestions() {
+  // `languageOverride` lets a caller pass the just-resolved/just-picked
+  // value explicitly instead of relying on `language` state, which may not
+  // have committed yet in the same tick (the initial launch call, and the
+  // language-switch handler, both need this) - omit it entirely to use
+  // whatever `language` currently holds, which is correct for every other
+  // caller (retry button, fresh login/register).
+  async function loadQuestions(languageOverride?: LanguageCode | null) {
+    const lang = languageOverride === undefined ? language : languageOverride;
     try {
-      const fresh = await fetchQuestions();
+      const fresh = await fetchQuestions(lang ?? undefined);
       cacheQuestions(fresh);
       setQuestions(fresh);
       setQuestionsError(null);
       // Fire-and-forget, same tolerance as fetchDistributorProfile() above -
       // a failed download just leaves that question's VO on the remote URL,
-      // it doesn't block anything else here.
-      cacheQuestionAudio(fresh)
+      // it doesn't block anything else here. 'default' (not 'en') when no
+      // override has ever been chosen - see voCache.ts's own comment for
+      // why guessing a real language code here would be wrong.
+      cacheQuestionAudio(fresh, lang ?? 'default')
         .then(() => setVoCacheVersion((v) => v + 1))
         .catch(() => {});
     } catch (error) {
       setQuestions((current) => {
         if (current.length === 0) {
           setQuestionsError(
-            error instanceof Error ? error.message : 'Could not load your questions.',
+            error instanceof Error ? error.message : t('appFlow.questionsLoadErrorFallback'),
           );
         }
         return current;
@@ -367,7 +416,12 @@ export function AppFlow() {
   // restore attempt has finished, whether or not there was anything to
   // restore.
   useEffect(() => {
-    restoreSession().then((auth) => {
+    // Resolved together, not in two independent effects each racing to
+    // finish first - the very first loadQuestions() call below needs the
+    // real preference value, not whichever of two unrelated async reads
+    // happens to land first.
+    Promise.all([restoreSession(), getLanguagePref()]).then(([auth, lang]) => {
+      setLanguageState(lang);
       if (!auth) {
         setScreen('login');
         setSessionRestored(true);
@@ -386,7 +440,7 @@ export function AppFlow() {
       if (cachedQuestions && cachedQuestions.length > 0) {
         setQuestions(cachedQuestions);
       }
-      loadQuestions();
+      loadQuestions(lang);
 
       const stored = loadSession();
       if (!stored || !hasMeaningfulProgress(stored)) {
@@ -473,6 +527,19 @@ export function AppFlow() {
   function setReadQuestionAloud(next: boolean) {
     setReadQuestionAloudState(next);
     setReadQuestionAloudPref(next);
+  }
+
+  // Settings' language picker - local-only override (API_CONTRACT.md:
+  // nothing is written back to the distributor's stored language_pref).
+  // Re-fetches and re-caches immediately so My Videos' question text and
+  // every question's VO reflect the new language right away, rather than
+  // waiting for the next natural loadQuestions() call. Passes `next`
+  // explicitly instead of relying on `language` state, which wouldn't
+  // have committed yet in this same tick.
+  function handleChangeLanguage(next: LanguageCode) {
+    setLanguageState(next);
+    setLanguagePref(next);
+    loadQuestions(next);
   }
 
   // Persists the whole session as it changes - not only on screen
@@ -784,7 +851,7 @@ export function AppFlow() {
       } catch (error) {
         if (!cancelled) {
           setMyVideosError(
-            error instanceof Error ? error.message : 'Could not load your videos.',
+            error instanceof Error ? error.message : t('appFlow.myVideosLoadErrorFallback'),
           );
         }
       } finally {
@@ -1271,8 +1338,6 @@ export function AppFlow() {
       <PermissionsScreen
         onContinue={enterNextQuestion}
         onBack={() => setScreen('main')}
-        questionNumber={primaryVideos.length + 1}
-        totalQuestions={questions.length}
       />
     );
   }
@@ -1287,13 +1352,13 @@ export function AppFlow() {
           // genuinely nothing to show without at least one of the two.
           <View style={styles.questionsErrorContainer}>
             <Text style={[styles.questionsErrorTitle, { color: colors.text }]}>
-              Couldn't load your questions
+              {t('appFlow.questionsLoadErrorTitle')}
             </Text>
             <Text style={[styles.questionsErrorSubtitle, { color: colors.textMuted }]}>
               {questionsError}
             </Text>
             <Button
-              label="Try again"
+              label={t('appFlow.questionsLoadErrorTryAgainButton')}
               onPress={loadQuestions}
               variant="secondary"
               style={{ marginTop: spacing.lg }}
@@ -1321,7 +1386,13 @@ export function AppFlow() {
                 : null
             }
             readyReel={null}
-            onStartNextQuestion={() => setScreen('permissions')}
+            onStartNextQuestion={() => {
+              if (cameraPermission.hasPermission && microphonePermission.hasPermission) {
+                enterNextQuestion();
+              } else {
+                setScreen('permissions');
+              }
+            }}
             onSendAll={() => {
               setUploadConfirmed(false);
               setUploadedQuestionIndices([]);
@@ -1358,6 +1429,8 @@ export function AppFlow() {
             distributorId={distributorId}
             distributorName={distributorProfile?.name}
             distributorPhone={distributorProfile?.phone}
+            language={language}
+            onChangeLanguage={handleChangeLanguage}
             onOpenConsent={() => setScreen('consent')}
             onLogout={handleLogout}
           />
@@ -1445,13 +1518,22 @@ export function AppFlow() {
   // screen === 'question'
   const currentQuestion = questions[questionIndex];
   const questionText = currentQuestion?.text ?? '';
+  // Same 'default' sentinel loadQuestions()/voCache.ts use - never a
+  // guessed real language code for a lookup that hasn't been explicitly
+  // chosen yet.
+  const resolvedLanguage = language ?? 'default';
   // See voSourceRef's own comment (near cameraRef) for why this is pinned
-  // per question id instead of recomputed on every render/voCacheVersion
-  // bump - resolving fresh only when the question itself actually changes
-  // avoids swapping a mounted player's source out from under it mid-use.
-  if (voSourceRef.current?.questionId !== currentQuestion?.id) {
+  // per question id + language instead of recomputed on every render/
+  // voCacheVersion bump - resolving fresh only when the question or the
+  // language itself actually changes avoids swapping a mounted player's
+  // source out from under it mid-use.
+  if (voSourceRef.current?.questionId !== currentQuestion?.id || voSourceRef.current?.language !== resolvedLanguage) {
     voSourceRef.current = currentQuestion
-      ? { questionId: currentQuestion.id, url: getLocalVoUri(currentQuestion.id) ?? currentQuestion.vo_playback_url }
+      ? {
+          questionId: currentQuestion.id,
+          language: resolvedLanguage,
+          url: getLocalVoUri(currentQuestion.id, resolvedLanguage) ?? currentQuestion.vo_playback_url,
+        }
       : null;
   }
   const voPlaybackUrl = voSourceRef.current?.url;
@@ -1523,17 +1605,16 @@ export function AppFlow() {
 
         <PopupSheet visible={showPostKeepPrompt} onDismiss={() => setShowPostKeepPrompt(false)} dismissable={false}>
           <Text style={{ fontSize: 21, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-            Saved on your phone
+            {t('appFlow.postKeepPopupTitle')}
           </Text>
           <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
-            Question {questionIndex + 1} is ready. Nothing is sent yet — all your videos go up together once
-            you've recorded all five.
+            {t('appFlow.postKeepPopupBody', { questionNumber: questionIndex + 1 })}
           </Text>
           <View style={{ gap: 9 }}>
-            <Button label="Next question" onPress={goToNextQuestion} />
+            <Button label={t('appFlow.postKeepPopupNextQuestionButton')} onPress={goToNextQuestion} />
             <View style={{ flexDirection: 'row', gap: 9 }}>
               <Button
-                label="My Videos"
+                label={t('appFlow.postKeepPopupMyVideosButton')}
                 variant="secondary"
                 style={{ flex: 1 }}
                 onPress={() => {
@@ -1543,7 +1624,7 @@ export function AppFlow() {
                 }}
               />
               <Button
-                label="Home"
+                label={t('appFlow.postKeepPopupHomeButton')}
                 variant="secondary"
                 style={{ flex: 1 }}
                 onPress={() => {
@@ -1558,14 +1639,18 @@ export function AppFlow() {
 
         <PopupSheet visible={pendingExitConfirm} onDismiss={() => setPendingExitConfirm(false)}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-            Stop and go back?
+            {t('appFlow.exitConfirmPopupTitle')}
           </Text>
           <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
-            You'll return to the question.
+            {t('appFlow.exitConfirmPopupBodyDefault')}
           </Text>
           <View style={{ gap: 9 }}>
-            <Button label="Stop and go back" onPress={confirmExitQuestionFlow} />
-            <Button label="Keep going" variant="secondary" onPress={() => setPendingExitConfirm(false)} />
+            <Button label={t('appFlow.exitConfirmPopupStopButton')} onPress={confirmExitQuestionFlow} />
+            <Button
+              label={t('appFlow.exitConfirmPopupKeepGoingButton')}
+              variant="secondary"
+              onPress={() => setPendingExitConfirm(false)}
+            />
           </View>
         </PopupSheet>
       </View>
@@ -1637,16 +1722,20 @@ export function AppFlow() {
 
       <PopupSheet visible={pendingExitConfirm} onDismiss={() => setPendingExitConfirm(false)}>
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-          Stop and go back?
+          {t('appFlow.exitConfirmPopupTitle')}
         </Text>
         <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
           {phase === 'recording'
-            ? "This take won't be saved. You'll return to the question."
-            : "You'll return to the question."}
+            ? t('appFlow.exitConfirmPopupBodyRecording')
+            : t('appFlow.exitConfirmPopupBodyDefault')}
         </Text>
         <View style={{ gap: 9 }}>
-          <Button label="Stop and go back" onPress={confirmExitQuestionFlow} />
-          <Button label="Keep going" variant="secondary" onPress={() => setPendingExitConfirm(false)} />
+          <Button label={t('appFlow.exitConfirmPopupStopButton')} onPress={confirmExitQuestionFlow} />
+          <Button
+            label={t('appFlow.exitConfirmPopupKeepGoingButton')}
+            variant="secondary"
+            onPress={() => setPendingExitConfirm(false)}
+          />
         </View>
       </PopupSheet>
     </View>

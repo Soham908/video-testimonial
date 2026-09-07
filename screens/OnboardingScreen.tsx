@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useStrings } from '../i18n/useStrings';
 import type { PaletteColors, PaletteDarkColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -28,38 +29,41 @@ interface Step {
   body: string;
 }
 
-// Three swipes, one idea each - the middle one is the reward, shown rather
-// than described (DECISIONS.md, 14B, replaces the old single-screen
-// WelcomeScreen). No tab bar - this is a one-time, pre-login-adjacent
-// sequence, not part of the main app shell.
-const STEPS: Step[] = [
-  {
-    variant: 'ask',
-    eyebrow: 'What you\'ll do',
-    title: 'Answer 5 quick questions on camera',
-    body: 'The app guides you one step at a time — good light, good framing, a quiet moment. About 10 minutes, start to finish.',
-  },
-  {
-    variant: 'reward',
-    eyebrow: 'What you get',
-    title: 'You get five finished videos',
-    body: 'We add the frame, your name and your shop. They come back to you to keep and to send to whoever you like.',
-  },
-  {
-    variant: 'share',
-    eyebrow: 'Sharing them',
-    title: 'Share your reel however you like',
-    body: 'WhatsApp is the fastest way, and it\'s always your call — nothing goes out until you press send.',
-  },
-];
-
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export function OnboardingScreen({ onGetStarted }: Props) {
   const { colors, themeDark, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
+
+  // Three swipes, one idea each - the middle one is the reward, shown
+  // rather than described (DECISIONS.md, 14B, replaces the old
+  // single-screen WelcomeScreen). No tab bar - this is a one-time,
+  // pre-login-adjacent sequence, not part of the main app shell. Built
+  // inside the component (not module-level) since translating each step
+  // needs `t`, only available here.
+  const steps: Step[] = [
+    {
+      variant: 'ask',
+      eyebrow: t('onboarding.step1Eyebrow'),
+      title: t('onboarding.step1Title'),
+      body: t('onboarding.step1Body'),
+    },
+    {
+      variant: 'reward',
+      eyebrow: t('onboarding.step2Eyebrow'),
+      title: t('onboarding.step2Title'),
+      body: t('onboarding.step2Body'),
+    },
+    {
+      variant: 'share',
+      eyebrow: t('onboarding.step3Eyebrow'),
+      title: t('onboarding.step3Title'),
+      body: t('onboarding.step3Body'),
+    },
+  ];
 
   function goTo(nextIndex: number) {
     setIndex(nextIndex);
@@ -71,14 +75,14 @@ export function OnboardingScreen({ onGetStarted }: Props) {
     setIndex(next);
   }
 
-  const isLast = index === STEPS.length - 1;
+  const isLast = index === steps.length - 1;
 
   return (
     <View style={styles.container}>
       <View style={styles.topRow}>
         <View style={{ flex: 1 }} />
         <Pressable onPress={onGetStarted}>
-          <Text style={styles.skip}>Skip</Text>
+          <Text style={styles.skip}>{t('onboarding.skipButton')}</Text>
         </Pressable>
       </View>
 
@@ -90,10 +94,10 @@ export function OnboardingScreen({ onGetStarted }: Props) {
         onMomentumScrollEnd={handleMomentumEnd}
         style={styles.pager}
       >
-        {STEPS.map((step) => (
-          <View key={step.title} style={[styles.page, { width: SCREEN_WIDTH }]}>
+        {steps.map((step) => (
+          <View key={step.variant} style={[styles.page, { width: SCREEN_WIDTH }]}>
             <View style={styles.artwork}>
-              <StepIllustration variant={step.variant} styles={styles} themeDark={themeDark} accent={colors.accent} />
+              <StepIllustration variant={step.variant} styles={styles} themeDark={themeDark} accent={colors.accent} t={t} />
             </View>
             <Text style={styles.eyebrow}>{step.eyebrow}</Text>
             <Text style={styles.title}>{step.title}</Text>
@@ -104,13 +108,13 @@ export function OnboardingScreen({ onGetStarted }: Props) {
 
       <View style={styles.bottomRow}>
         <Pressable onPress={() => goTo(Math.max(0, index - 1))} disabled={index === 0}>
-          <Text style={[styles.back, index === 0 && styles.backHidden]}>Back</Text>
+          <Text style={[styles.back, index === 0 && styles.backHidden]}>{t('onboarding.backButton')}</Text>
         </Pressable>
 
         <View style={styles.dots}>
-          {STEPS.map((step, i) => (
+          {steps.map((step, i) => (
             <View
-              key={step.title}
+              key={step.variant}
               style={[styles.dot, i === index && styles.dotActive, i === index && { backgroundColor: colors.accent }]}
             />
           ))}
@@ -120,7 +124,7 @@ export function OnboardingScreen({ onGetStarted }: Props) {
           style={styles.nextButton}
           onPress={() => (isLast ? onGetStarted() : goTo(index + 1))}
         >
-          <Text style={styles.nextButtonText}>{isLast ? 'Get started' : 'Next'}</Text>
+          <Text style={styles.nextButtonText}>{isLast ? t('onboarding.getStartedButton') : t('onboarding.nextButton')}</Text>
         </Pressable>
       </View>
     </View>
@@ -136,11 +140,13 @@ function StepIllustration({
   styles,
   themeDark,
   accent,
+  t,
 }: {
   variant: StepVariant;
   styles: ReturnType<typeof makeStyles>;
   themeDark: PaletteDarkColors;
   accent: string;
+  t: (path: string, vars?: Record<string, string | number>) => string;
 }) {
   const cardStyle = [styles.illoCard, { backgroundColor: themeDark.background }];
 
@@ -165,7 +171,7 @@ function StepIllustration({
     return (
       <View style={cardStyle}>
         <View style={styles.illoBadge}>
-          <Text style={styles.illoBadgeText}>YOUR VIDEO</Text>
+          <Text style={styles.illoBadgeText}>{t('onboarding.rewardBadge')}</Text>
         </View>
         <View style={[styles.illoPhoneCard, { backgroundColor: themeDark.chromeStrong }]}>
           <View style={styles.illoAvatarBlock} />

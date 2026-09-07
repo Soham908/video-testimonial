@@ -26,6 +26,7 @@ import { AlignmentStatusStrip } from './AlignmentStatusStrip';
 import { computeAlignmentSignals, isFullyAligned, type AlignmentSignals } from './alignment';
 import { useAlignmentLock, type AlignmentLockMode } from './useAlignmentLock';
 import { useAmbientNoiseCheck } from './useAmbientNoiseCheck';
+import { useStrings } from './i18n/useStrings';
 
 // ML Kit searches across a range of face sizes by default (as small as 15%
 // of frame width) - raising this shrinks that search space (ML Kit's own
@@ -131,6 +132,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
       requestPermission: requestMic,
       canRequestPermission: canRequestMic,
     } = useMicrophonePermission();
+    const { t } = useStrings();
 
     // Front camera — this is a selfie testimonial recording flow.
     const device = useCameraDevice('front');
@@ -445,8 +447,8 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
         <View style={styles.center}>
           <Text style={styles.text}>
             {canRetry
-              ? 'Camera & microphone access is needed to continue.'
-              : "Camera & microphone access was turned off, and your phone won't ask again here."}
+              ? t('cameraAlignment.permissionNeeded')
+              : t('cameraAlignment.permissionDeniedPermanently')}
           </Text>
           {canRetry ? (
             <Pressable
@@ -456,11 +458,11 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
                 if (!hasMic) requestMic();
               }}
             >
-              <Text style={styles.retryButtonText}>Try again</Text>
+              <Text style={styles.retryButtonText}>{t('cameraAlignment.tryAgainButton')}</Text>
             </Pressable>
           ) : (
             <Pressable style={styles.retryButton} onPress={() => Linking.openSettings()}>
-              <Text style={styles.retryButtonText}>Open phone settings</Text>
+              <Text style={styles.retryButtonText}>{t('cameraAlignment.openSettingsButton')}</Text>
             </Pressable>
           )}
         </View>
@@ -470,7 +472,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     if (device == null) {
       return (
         <View style={styles.center}>
-          <Text style={styles.text}>No camera device found</Text>
+          <Text style={styles.text}>{t('cameraAlignment.noCameraDevice')}</Text>
         </View>
       );
     }

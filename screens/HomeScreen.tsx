@@ -8,6 +8,7 @@ import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Carousel } from '../components/ui/Carousel';
+import { useStrings } from '../i18n/useStrings';
 
 interface NextQuestion {
   index: number;
@@ -43,16 +44,8 @@ interface Props {
   onShareReadyReel: () => void;
 }
 
-const HOW_TO_VIDEOS = [
-  { title: 'Where to stand for good light', duration: '1:10' },
-  { title: 'Speaking without a script', duration: '0:48' },
-];
-
-const SAMPLE_VIDEOS = [
-  { title: 'A good answer', duration: '0:48' },
-  { title: 'Keeping it short', duration: '0:39' },
-  { title: 'Speaking plainly', duration: '0:52' },
-];
+const HOW_TO_VIDEO_DURATIONS = ['1:10', '0:48'];
+const SAMPLE_VIDEO_DURATIONS = ['0:48', '0:39', '0:52'];
 
 // Home's job is prompting the next action - the distributor's own content
 // lives in My Videos, not here (DECISIONS.md). Five states derived from
@@ -78,6 +71,7 @@ export function HomeScreen({
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   const allRecorded = questionsAnswered >= totalQuestions;
   const allRendered = renderedReadyCount >= totalQuestions;
@@ -94,15 +88,29 @@ export function HomeScreen({
     .join('')
     .slice(0, 2)
     .toUpperCase();
+  // The JSON strings always include ", {{name}}" - when there's no real
+  // name yet (see Props), interpolate an empty string and trim the
+  // trailing separator rather than needing a second no-name key per
+  // language for what's just a loading-state fallback.
+  const greetingRaw = t(questionsAnswered === 0 ? 'home.greetingFirstTime' : 'home.greetingReturning', {
+    name: firstName ?? '',
+  });
+  const greeting = firstName ? greetingRaw : greetingRaw.replace(/[,،]\s*$/, '');
+  const howToVideos = [
+    { title: t('home.howToVideo1Title'), duration: HOW_TO_VIDEO_DURATIONS[0] },
+    { title: t('home.howToVideo2Title'), duration: HOW_TO_VIDEO_DURATIONS[1] },
+  ];
+  const sampleVideos = [
+    { title: t('home.sampleVideo1Title'), duration: SAMPLE_VIDEO_DURATIONS[0] },
+    { title: t('home.sampleVideo2Title'), duration: SAMPLE_VIDEO_DURATIONS[1] },
+    { title: t('home.sampleVideo3Title'), duration: SAMPLE_VIDEO_DURATIONS[2] },
+  ];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>
-            {questionsAnswered === 0 ? 'Welcome' : 'Welcome back'}
-            {firstName ? `, ${firstName}` : ''}
-          </Text>
+          <Text style={styles.greeting}>{greeting}</Text>
           {subGreeting.length > 0 && <Text style={styles.subGreeting}>{subGreeting}</Text>}
         </View>
         <View style={styles.avatar}>
@@ -113,17 +121,17 @@ export function HomeScreen({
       {readyReel && (
         <View style={styles.readyBanner}>
           <View style={styles.readyBannerThumb} />
-          <Text style={styles.readyBannerText}>{readyReel.label} is ready to share</Text>
-          <Button label="Share" onPress={onShareReadyReel} variant="quiet" style={styles.readyBannerButton} />
+          <Text style={styles.readyBannerText}>{t('home.readyBannerText', { label: readyReel.label })}</Text>
+          <Button label={t('home.readyBannerShareButton')} onPress={onShareReadyReel} variant="quiet" style={styles.readyBannerButton} />
         </View>
       )}
 
       {allRendered ? (
         <Card style={styles.stateCard}>
-          <Text style={styles.stateEyebrow}>All five are ready</Text>
-          <Text style={styles.stateTitle}>Your branded videos are waiting for you</Text>
-          <Text style={styles.stateBody}>Head to My Videos to watch and share them.</Text>
-          <Button label="Go to My Videos" onPress={onOpenMyVideos} style={{ marginTop: spacing.md }} />
+          <Text style={styles.stateEyebrow}>{t('home.allRenderedEyebrow')}</Text>
+          <Text style={styles.stateTitle}>{t('home.allRenderedTitle')}</Text>
+          <Text style={styles.stateBody}>{t('home.allRenderedBody')}</Text>
+          <Button label={t('home.allRenderedButton')} onPress={onOpenMyVideos} style={{ marginTop: spacing.md }} />
         </Card>
       ) : hasSubmittedBatch && allRecorded ? (
         // Only the fully-recorded-and-sent case shows "being made" - a
@@ -132,41 +140,41 @@ export function HomeScreen({
         // hasSubmittedBatch, but that must never hide the "record the rest"
         // prompt below while questions are still pending.
         <Card style={[styles.stateCard, styles.stateCardDark]}>
-          <Text style={[styles.stateEyebrow, { color: '#C9A184' }]}>Sent, being made</Text>
+          <Text style={[styles.stateEyebrow, { color: '#C9A184' }]}>{t('home.submittedEyebrow')}</Text>
           <Text style={[styles.stateTitle, { color: '#FFFFFF' }]}>
-            We're turning your answers into branded videos
+            {t('home.submittedTitle')}
           </Text>
           <Text style={[styles.stateBody, { color: 'rgba(255,255,255,0.72)' }]}>
-            Keep the app installed - we'll let you know the moment they're ready.
+            {t('home.submittedBody')}
           </Text>
         </Card>
       ) : allRecorded ? (
         <Card style={[styles.stateCard, styles.stateCardDark]}>
           <View style={styles.progressRow}>
-            <Text style={[styles.stateEyebrow, { color: '#C9A184' }]}>All five answered</Text>
+            <Text style={[styles.stateEyebrow, { color: '#C9A184' }]}>{t('home.allRecordedEyebrow')}</Text>
             <ProgressDots done={totalQuestions} total={totalQuestions} accent="#C9A184" />
           </View>
           <Text style={[styles.stateTitle, { color: '#FFFFFF' }]}>
-            Send them to us and we'll make your videos
+            {t('home.allRecordedTitle')}
           </Text>
           <Text style={[styles.stateBody, { color: 'rgba(255,255,255,0.72)' }]}>
-            They're still only on your phone.
+            {t('home.allRecordedBody')}
           </Text>
-          <Button label="Send all five" onPress={onSendAll} style={{ marginTop: spacing.md }} />
+          <Button label={t('home.allRecordedButton')} onPress={onSendAll} style={{ marginTop: spacing.md }} />
         </Card>
       ) : (
         nextQuestion && (
           <Card emphasized style={styles.stateCard}>
             <View style={styles.progressRow}>
               <Text style={styles.stateEyebrow}>
-                Question {nextQuestion.index} of {totalQuestions}
+                {t('home.nextQuestionEyebrow', { index: nextQuestion.index, total: totalQuestions })}
               </Text>
               <ProgressDots done={questionsAnswered} total={totalQuestions} accent={colors.accent} />
             </View>
             <Text style={styles.stateTitle}>{nextQuestion.text}</Text>
             <Text style={styles.stateBody}>{nextQuestion.estimate}</Text>
             <Button
-              label={questionsAnswered === 0 ? 'Start your first question' : 'Start this question'}
+              label={questionsAnswered === 0 ? t('home.nextQuestionButtonFirst') : t('home.nextQuestionButtonLater')}
               onPress={onStartNextQuestion}
               style={{ marginTop: spacing.md }}
             />
@@ -177,14 +185,14 @@ export function HomeScreen({
       {questionsAnswered === 0 && (
         <View style={styles.emptyVideosHint}>
           <Text style={styles.emptyVideosHintText}>
-            Your finished videos appear here after you answer all five and send them.
+            {t('home.emptyVideosHint')}
           </Text>
         </View>
       )}
 
-      <SectionHeader title="How to record well" onSeeAll={() => {}} styles={styles} />
+      <SectionHeader title={t('home.howToSectionTitle')} onSeeAll={() => {}} styles={styles} />
       <View style={styles.howToRow}>
-        {HOW_TO_VIDEOS.map((v) => (
+        {howToVideos.map((v) => (
           <View key={v.title} style={styles.howToItem}>
             <View style={styles.howToThumb}>
               <PlayGlyph size={32} />
@@ -201,18 +209,15 @@ export function HomeScreen({
           <View style={[styles.statAvatarDot, { backgroundColor: '#A9846A', marginLeft: -9 }]} />
           <View style={[styles.statAvatarDot, { backgroundColor: '#7E6B5C', marginLeft: -9 }]} />
         </View>
-        <Text style={styles.statText}>
-          <Text style={{ fontWeight: '700' }}>41 distributors</Text> have already finished all five
-          questions
-        </Text>
+        <Text style={styles.statText}>{t('home.statLine', { count: 41 })}</Text>
       </View>
 
-      <SectionHeader title="Sample videos" subtitle="Made by the company to show what a good answer looks like" styles={styles} />
+      <SectionHeader title={t('home.sampleVideosSectionTitle')} subtitle={t('home.sampleVideosSectionSubtitle')} styles={styles} />
       <Carousel>
-        {SAMPLE_VIDEOS.map((v) => (
+        {sampleVideos.map((v) => (
           <View key={v.title} style={styles.sampleThumb}>
             <View style={styles.exampleTag}>
-              <Text style={styles.exampleTagText}>EXAMPLE</Text>
+              <Text style={styles.exampleTagText}>{t('home.exampleTag')}</Text>
             </View>
             <Text style={styles.sampleTitle}>{v.title}</Text>
             <Text style={styles.sampleDuration}>{v.duration}</Text>
@@ -295,13 +300,14 @@ function SectionHeader({
   onSeeAll?: () => void;
   styles: ReturnType<typeof makeStyles>;
 }) {
+  const { t } = useStrings();
   return (
     <View>
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>{title}</Text>
         {onSeeAll && (
           <Text style={styles.sectionSeeAll} onPress={onSeeAll}>
-            See all
+            {t('home.seeAll')}
           </Text>
         )}
       </View>

@@ -7,6 +7,7 @@ import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { register, loginByPhone } from '../auth';
 import { ApiError } from '../api';
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   onAuthenticated: () => void;
@@ -27,6 +28,7 @@ type Mode = 'register' | 'signIn';
 export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   const [mode, setMode] = useState<Mode>('register');
   const [name, setName] = useState('');
@@ -70,7 +72,7 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
         setNotice(err.message);
         setPassword('');
       } else {
-        setError(err instanceof Error ? err.message : 'Something went wrong.');
+        setError(err instanceof Error ? err.message : t('login.genericError'));
       }
       setSubmitting(false);
     }
@@ -80,18 +82,18 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
     <Pressable style={styles.container} onPress={Keyboard.dismiss}>
       <View>
         <Text style={styles.backLink} onPress={onBack}>
-          ‹ Back to sign in
+          {t('selfRegister.backLink')}
         </Text>
-        <Text style={styles.title}>{isRegister ? "What's your name?" : 'Sign in with phone'}</Text>
+        <Text style={styles.title}>
+          {isRegister ? t('selfRegister.registerTitle') : t('selfRegister.signInTitle')}
+        </Text>
         <Text style={styles.subtitle}>
-          {isRegister
-            ? 'This appears on your finished videos - you can change it later.'
-            : 'Use the phone number and password you registered with.'}
+          {isRegister ? t('selfRegister.registerSubtitle') : t('selfRegister.signInSubtitle')}
         </Text>
 
         {isRegister && (
           <>
-            <Text style={styles.label}>Your name</Text>
+            <Text style={styles.label}>{t('selfRegister.nameLabel')}</Text>
             <TextInput
               style={styles.input}
               value={name}
@@ -103,7 +105,7 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
           </>
         )}
 
-        <Text style={styles.label}>Phone number</Text>
+        <Text style={styles.label}>{t('selfRegister.phoneLabel')}</Text>
         <TextInput
           style={styles.input}
           value={phone}
@@ -113,7 +115,7 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
           placeholderTextColor={colors.textDisabled}
         />
 
-        <Text style={styles.label}>Password</Text>
+        <Text style={styles.label}>{t('selfRegister.passwordLabel')}</Text>
         <TextInput
           style={styles.input}
           value={password}
@@ -136,7 +138,9 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
           {submitting ? (
             <ActivityIndicator color={colors.accentText} />
           ) : (
-            <Text style={styles.buttonText}>{isRegister ? 'Get started' : 'Sign in'}</Text>
+            <Text style={styles.buttonText}>
+              {isRegister ? t('selfRegister.registerButton') : t('login.signInButton')}
+            </Text>
           )}
         </Pressable>
 
@@ -144,7 +148,7 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
           style={styles.toggleLink}
           onPress={() => switchMode(isRegister ? 'signIn' : 'register')}
         >
-          {isRegister ? 'Already registered? Sign in' : "New here? Register instead"}
+          {isRegister ? t('selfRegister.switchToSignInLink') : t('selfRegister.switchToRegisterLink')}
         </Text>
       </View>
     </Pressable>

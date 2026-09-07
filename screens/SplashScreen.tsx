@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useStrings } from '../i18n/useStrings';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Typography } from '../theme/typography';
@@ -19,6 +20,7 @@ const AUTO_ADVANCE_MS = 1400;
 export function SplashScreen({ onContinue }: Props) {
   const { colors, spacing, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, typography), [colors, spacing, typography]);
+  const { t } = useStrings();
 
   useEffect(() => {
     const timer = setTimeout(onContinue, AUTO_ADVANCE_MS);
@@ -32,8 +34,8 @@ export function SplashScreen({ onContinue }: Props) {
         style={styles.mark}
         resizeMode="contain"
       />
-      <Text style={styles.appName}>Insight Scoop</Text>
-      <Text style={styles.company}>Zeist Interactive</Text>
+      <Text style={styles.appName}>{t('splash.appName')}</Text>
+      <Text style={styles.company}>{t('splash.companyName')}</Text>
     </Pressable>
   );
 }

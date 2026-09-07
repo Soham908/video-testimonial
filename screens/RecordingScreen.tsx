@@ -6,6 +6,7 @@ import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Chip } from '../components/ui/Chip';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   questionNumber: number;
@@ -66,6 +67,7 @@ export function RecordingScreen({
 }: Props) {
   const { spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(spacing, radius, typography), [spacing, radius, typography]);
+  const { t } = useStrings();
   const showNudge = isRecording && elapsedSeconds >= LENGTH_NUDGE_AT_SECONDS;
 
   return (
@@ -86,7 +88,7 @@ export function RecordingScreen({
         </View>
         {showNudge && (
           <View style={styles.nudgePill}>
-            <Text style={styles.nudgeText}>That's a good length — start wrapping up</Text>
+            <Text style={styles.nudgeText}>{t('recording.lengthNudge')}</Text>
           </View>
         )}
         <View style={styles.questionBubble}>
@@ -109,7 +111,7 @@ export function RecordingScreen({
         )}
         {isRecording && onFinishAnswer && (
           <Pressable style={styles.finishButton} onPress={onFinishAnswer}>
-            <Text style={styles.finishButtonText}>I'm done answering</Text>
+            <Text style={styles.finishButtonText}>{t('recording.finishAnswerButton')}</Text>
           </Pressable>
         )}
       </View>

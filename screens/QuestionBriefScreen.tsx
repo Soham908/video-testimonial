@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer } from 'expo-video';
 import { useEvent } from 'expo';
 import { useTheme } from '../theme/ThemeContext';
@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Dropdown } from '../components/ui/Dropdown';
 import { Toggle } from '../components/ui/Toggle';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   questionNumber: number;
@@ -56,6 +57,7 @@ export function QuestionBriefScreen({
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   // undefined (not a missing key in a map) while questions are still
   // loading or a question genuinely has no VO - useVideoPlayer accepts a
@@ -94,28 +96,29 @@ export function QuestionBriefScreen({
   return (
     <View style={styles.container}>
       <View style={styles.topRow}>
-        <View style={styles.topRowLeft}>
-          {onBack && (
-            <Text style={styles.backChevron} onPress={onBack}>
-              ‹
-            </Text>
-          )}
-          <Text style={styles.eyebrow}>Getting ready</Text>
-        </View>
-        {audioSource != null && (
-          <View style={[styles.readToMe, isPlaying && { backgroundColor: colors.accentSoft }]}>
-            <Text
-              style={[styles.readToMeText, { color: isPlaying ? colors.accent : colors.textMuted }]}
-              onPress={toggleReadToMe}
-            >
-              {isPlaying ? 'Reading…' : 'Read to me'}
-            </Text>
-          </View>
+        {onBack && (
+          <Pressable style={styles.backRow} onPress={onBack} hitSlop={8}>
+            <Text style={styles.backChevron}>‹</Text>
+            <Text style={styles.backText}>{t('questionBrief.backButton')}</Text>
+          </Pressable>
         )}
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.questionNumberLabel}>Question {questionNumber}</Text>
+        <View style={styles.questionHeaderRow}>
+          <Text style={styles.questionNumberLabel}>{t('questionBrief.questionNumberLabel', { number: questionNumber })}</Text>
+          {audioSource != null && (
+            <Pressable
+              style={[styles.readToMe, isPlaying && styles.readToMeActive]}
+              onPress={toggleReadToMe}
+            >
+              <MicIcon color={isPlaying ? colors.accentText : colors.accent} />
+              <Text style={[styles.readToMeText, isPlaying && styles.readToMeTextActive]}>
+                {isPlaying ? t('questionBrief.readToMeActive') : t('questionBrief.readToMeIdle')}
+              </Text>
+            </Pressable>
+          )}
+        </View>
         <Text
           style={[styles.title, containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('700') }]}
         >
@@ -124,7 +127,7 @@ export function QuestionBriefScreen({
 
         {talkingPoints.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>A good answer usually covers</Text>
+            <Text style={styles.sectionLabel}>{t('questionBrief.talkingPointsSectionTitle')}</Text>
             <View style={styles.pointsList}>
               {talkingPoints.map((point, i) => (
                 <View key={point} style={styles.pointRow}>
@@ -144,7 +147,7 @@ export function QuestionBriefScreen({
         )}
 
         <View style={styles.addPromptRow}>
-          <Text style={styles.addPromptText}>+ Add your own prompts</Text>
+          <Text style={styles.addPromptText}>{t('questionBrief.addPromptRow')}</Text>
         </View>
 
         <View style={styles.sampleRow}>
@@ -154,7 +157,7 @@ export function QuestionBriefScreen({
             </View>
           </View>
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.sampleTitle}>Hear how {sampleAnswer.name} answered</Text>
+            <Text style={styles.sampleTitle}>{t('questionBrief.sampleAnswerTitle', { name: sampleAnswer.name })}</Text>
             <Text style={styles.sampleSubtitle}>
               {sampleAnswer.business} · {sampleAnswer.duration}
             </Text>
@@ -162,25 +165,32 @@ export function QuestionBriefScreen({
         </View>
 
         <View style={{ gap: spacing.sm }}>
-          <Dropdown title="Before you start" subtitle="Light · quiet · 45–60 seconds">
-            <Text style={styles.dropdownBody}>
-              Face a window or lamp, find a quiet moment, and keep your answer to about
-              45-60 seconds - enough to say something real, short enough to hold attention.
-            </Text>
+          <Dropdown title={t('questionBrief.beforeYouStartTitle')} subtitle={t('questionBrief.beforeYouStartSubtitle')}>
+            <Text style={styles.dropdownBody}>{t('questionBrief.beforeYouStartBody')}</Text>
           </Dropdown>
-          <Dropdown title="Nervous on camera?" subtitle="Three things that help">
-            <Text style={styles.dropdownBody}>
-              Talk to the camera like a friend, not an audience. Take a breath before you
-              start. If you stumble, just keep going - the natural version is the good one.
-            </Text>
+          <Dropdown title={t('questionBrief.nervousTitle')} subtitle={t('questionBrief.nervousSubtitle')}>
+            <Text style={styles.dropdownBody}>{t('questionBrief.nervousBody')}</Text>
           </Dropdown>
         </View>
       </ScrollView>
 
       <View style={styles.actions}>
-        <Button label="Start recording" onPress={onStartRecording} />
-        <Button label="Rehearse once — nothing is saved" onPress={onRehearse} variant="secondary" />
+        <Button label={t('questionBrief.startRecordingButton')} onPress={onStartRecording} />
+        <Button label={t('questionBrief.rehearseButton')} onPress={onRehearse} variant="secondary" />
       </View>
+    </View>
+  );
+}
+
+// Small mic silhouette (capsule + stem + base) for the "Read to me" chip -
+// same shape convention PermissionsScreen's mic icon already uses, just
+// scaled down to sit inline in a pill instead of its own icon tile.
+function MicIcon({ color }: { color: string }) {
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ width: 8, height: 12, borderRadius: 4, backgroundColor: color }} />
+      <View style={{ width: 1.5, height: 3, backgroundColor: color, marginTop: 1 }} />
+      <View style={{ width: 8, height: 1.5, borderRadius: 1, backgroundColor: color, marginTop: 1 }} />
     </View>
   );
 }
@@ -190,15 +200,38 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.xl + spacing.topExtra },
     topRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
       paddingHorizontal: spacing.xl,
     },
-    topRowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 },
-    backChevron: { fontSize: 24, fontWeight: '700', color: colors.text, lineHeight: 24 },
-    eyebrow: { fontSize: 15, fontWeight: '600', color: colors.text },
-    readToMe: { flexDirection: 'row', alignItems: 'center', borderRadius: 999, paddingVertical: 7, paddingHorizontal: 13 },
-    readToMeText: { fontSize: 13, fontWeight: '700' },
+    // One tappable row (arrow + label together) instead of a lone
+    // arrow-only hit target beside inert "Getting ready" text - the label
+    // now says what the tap does.
+    backRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
+    // Explicit matching lineHeight on both so alignItems:'center' has
+    // identical boxes to center - without it the two default line-heights
+    // (tied to each Text's own fontSize) disagree and the row centers them
+    // against different heights. The glyph itself still sits low within
+    // its own box regardless (a `‹` character's natural vertical metrics,
+    // not a layout bug), so a small negative marginTop nudges it the rest
+    // of the way to actually look centered next to the label text.
+    backChevron: { fontSize: 22, fontWeight: '700', color: colors.text, lineHeight: 22, marginTop: -2 },
+    backText: { fontSize: 15, fontWeight: '600', color: colors.text, lineHeight: 22 },
+    questionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    // Always accent-tinted, not just while playing - the old muted-grey
+    // idle state read as inert label text, not a control worth tapping.
+    readToMe: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 999,
+      borderWidth: 1.5,
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
+      paddingVertical: 7,
+      paddingHorizontal: 13,
+    },
+    readToMeActive: { backgroundColor: colors.accent },
+    readToMeText: { fontSize: 13, fontWeight: '700', color: colors.accent },
+    readToMeTextActive: { color: colors.accentText },
     scrollContent: { padding: spacing.xl, paddingTop: spacing.lg, gap: spacing.md },
     questionNumberLabel: {
       fontSize: 11.5,

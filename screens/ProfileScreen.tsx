@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
+import type { LanguageCode } from '../preferences';
 import { Button } from '../components/ui/Button';
 import { ListRow } from '../components/ui/ListRow';
 import { PopupSheet } from '../components/ui/Modal';
+
+// Display name shown in-script, per language - matches the CLAUDE.md-
+// agreed picker (English/हिन्दी/मराठी), not a translated "Language" label.
+const LANGUAGE_LABELS: Record<LanguageCode, string> = {
+  en: 'English',
+  hi: 'हिन्दी',
+  mr: 'मराठी',
+};
 
 interface Props {
   // Real distributor identity (auth.ts / distributorProfile.ts) - null/
@@ -18,6 +27,11 @@ interface Props {
   distributorId: string | null;
   distributorName?: string;
   distributorPhone?: string;
+  // null means "never explicitly chosen" - shown as English (the backend's
+  // own fallback, API_CONTRACT.md) since that's what's actually in effect,
+  // without implying a real local override exists yet.
+  language: LanguageCode | null;
+  onChangeLanguage: (next: LanguageCode) => void;
   /** "Consent and privacy" row (design 9C) - re-opens the consent gate for reference. */
   onOpenConsent?: () => void;
   /** Clears the stored session and returns to the login screen. */
@@ -45,11 +59,20 @@ function formatDistributorId(id: string): string {
 // pre-fill from (business/years_as_distributor exist on the backend now too,
 // but are internal-test-phase-only fields this screen deliberately doesn't
 // consume yet) and stay blank until the person fills them in themselves.
-export function ProfileScreen({ distributorId, distributorName, distributorPhone, onOpenConsent, onLogout }: Props) {
+export function ProfileScreen({
+  distributorId,
+  distributorName,
+  distributorPhone,
+  language,
+  onChangeLanguage,
+  onOpenConsent,
+  onLogout,
+}: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
 
   const [editing, setEditing] = useState(false);
+  const [changingLanguage, setChangingLanguage] = useState(false);
   const [reelName, setReelName] = useState('');
   const [reelBusiness, setReelBusiness] = useState('');
   const [showYears, setShowYears] = useState(false);
@@ -139,7 +162,12 @@ export function ProfileScreen({ distributorId, distributorName, distributorPhone
             title="Upload on Wi-Fi only"
             trailing={<Switch value={wifiOnly} onValueChange={setWifiOnly} trackColor={{ true: colors.accent }} />}
           />
-          <ListRow title="Language" subtitle="English" />
+          <ListRow
+            title="Language"
+            subtitle={LANGUAGE_LABELS[language ?? 'en']}
+            onPress={() => setChangingLanguage(true)}
+            trailing={<Text style={styles.rowChevron}>›</Text>}
+          />
           <ListRow
             title="Consent and privacy"
             onPress={onOpenConsent}
@@ -178,6 +206,34 @@ export function ProfileScreen({ distributorId, distributorName, distributorPhone
         </View>
 
         <Button label="Save" onPress={() => setEditing(false)} style={{ marginTop: spacing.xl }} />
+      </PopupSheet>
+
+      <PopupSheet visible={changingLanguage} onDismiss={() => setChangingLanguage(false)}>
+        <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+          Language
+        </Text>
+        <Text style={{ fontSize: 13, color: colors.textFaint, marginBottom: 18, lineHeight: 18 }}>
+          Changes the questions and the read-aloud voice on this phone only.
+        </Text>
+
+        <View style={{ gap: spacing.sm }}>
+          {(Object.keys(LANGUAGE_LABELS) as LanguageCode[]).map((code) => {
+            const selected = (language ?? 'en') === code;
+            return (
+              <Pressable
+                key={code}
+                style={[styles.languageRow, selected && { borderColor: colors.accent }]}
+                onPress={() => {
+                  onChangeLanguage(code);
+                  setChangingLanguage(false);
+                }}
+              >
+                <Text style={styles.languageRowText}>{LANGUAGE_LABELS[code]}</Text>
+                {selected && <Text style={styles.languageRowCheck}>✓</Text>}
+              </Pressable>
+            );
+          })}
+        </View>
       </PopupSheet>
     </ScrollView>
   );
@@ -280,5 +336,17 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       color: colors.text,
     },
     yearsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    languageRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm + 4,
+      paddingHorizontal: spacing.md,
+    },
+    languageRowText: { ...typography.body, fontSize: 16, fontWeight: '600', color: colors.text },
+    languageRowCheck: { fontSize: 16, fontWeight: '700', color: colors.accent },
   });
 }

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useCameraPermission, useMicrophonePermission } from 'react-native-vision-camera';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
@@ -7,13 +7,12 @@ import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   onContinue: () => void;
   /** Where "Not now" / "Back to the question" return to - Home, in practice. */
   onBack?: () => void;
-  questionNumber?: number;
-  totalQuestions?: number;
 }
 
 // Pre-permission explainer, shown only when "Record a new testimonial" is
@@ -30,9 +29,10 @@ interface Props {
 // mid-flow, not during onboarding), one card per permission with its own
 // reason, a "here's what we promise" box, and a quiet secondary way out
 // instead of a dead end.
-export function PermissionsScreen({ onContinue, onBack, questionNumber = 1, totalQuestions = 5 }: Props) {
+export function PermissionsScreen({ onContinue, onBack }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   // Both hooks already re-check on every AppState 'active' transition (see
   // usePermission.ts), so returning from Settings after granting updates
@@ -43,16 +43,12 @@ export function PermissionsScreen({ onContinue, onBack, questionNumber = 1, tota
     (!camera.hasPermission && !camera.canRequestPermission) ||
     (!microphone.hasPermission && !microphone.canRequestPermission);
 
-  const header = (
+  const header = onBack && (
     <View style={styles.headerRow}>
-      {onBack && (
-        <Text style={styles.backChevron} onPress={onBack}>
-          ‹
-        </Text>
-      )}
-      <Text style={styles.headerTitle}>
-        Question {questionNumber} of {totalQuestions}
-      </Text>
+      <Pressable style={styles.backRow} onPress={onBack} hitSlop={8}>
+        <Text style={styles.backChevron}>‹</Text>
+        <Text style={styles.headerTitle}>{t('permissions.backButton')}</Text>
+      </Pressable>
     </View>
   );
 
@@ -65,40 +61,39 @@ export function PermissionsScreen({ onContinue, onBack, questionNumber = 1, tota
             <View style={styles.deniedBadgeIcon}>
               <View style={styles.iconLensSmall} />
             </View>
-            <Text style={styles.deniedBadgeText}>Camera is switched off</Text>
+            <Text style={styles.deniedBadgeText}>{t('permissions.deniedBadge')}</Text>
           </View>
-          <Text style={styles.title}>Your phone needs to let us use the camera</Text>
-          <Text style={styles.subtitle}>
-            It was turned down earlier, so your phone will not ask again. You can switch
-            it back on in a few taps.
-          </Text>
+          <Text style={styles.title}>{t('permissions.deniedTitle')}</Text>
+          <Text style={styles.subtitle}>{t('permissions.deniedSubtitle')}</Text>
 
           <View style={styles.stepsCard}>
-            {['Open Settings for this app', 'Turn on Camera and Microphone', 'Come back here and carry on'].map(
-              (step, i) => (
-                <View key={step} style={[styles.stepRow, i < 2 && styles.stepRowBorder]}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>{i + 1}</Text>
-                  </View>
-                  <Text style={styles.stepText}>{step}</Text>
+            {[
+              t('permissions.deniedStep1'),
+              t('permissions.deniedStep2'),
+              t('permissions.deniedStep3'),
+            ].map((step, i) => (
+              <View key={step} style={[styles.stepRow, i < 2 && styles.stepRowBorder]}>
+                <View style={styles.stepNumber}>
+                  <Text style={styles.stepNumberText}>{i + 1}</Text>
                 </View>
-              ),
-            )}
+                <Text style={styles.stepText}>{step}</Text>
+              </View>
+            ))}
           </View>
 
           <View style={styles.reassuranceBox}>
             <View style={styles.reassuranceDot} />
-            <Text style={styles.reassuranceText}>
-              Anything you have already recorded is safe. Nothing is lost by waiting.
-            </Text>
+            <Text style={styles.reassuranceText}>{t('permissions.deniedReassurance')}</Text>
           </View>
         </View>
 
         <View style={styles.spacer} />
         <View style={styles.footer}>
-          <Button label="Open phone settings" onPress={() => Linking.openSettings()} />
-          {onBack && <Button label="Back to the question" onPress={onBack} variant="secondary" />}
-          <Text style={styles.helpHint}>Stuck? Help has a short video showing exactly where to look.</Text>
+          <Button label={t('permissions.deniedOpenSettingsButton')} onPress={() => Linking.openSettings()} />
+          {onBack && (
+            <Button label={t('permissions.deniedBackButton')} onPress={onBack} variant="secondary" />
+          )}
+          <Text style={styles.helpHint}>{t('permissions.deniedHelpHint')}</Text>
         </View>
       </View>
     );
@@ -108,8 +103,8 @@ export function PermissionsScreen({ onContinue, onBack, questionNumber = 1, tota
     <View style={styles.container}>
       {header}
       <View style={styles.body}>
-        <Text style={styles.title}>Two things to allow</Text>
-        <Text style={styles.subtitle}>Your phone will ask you next. Here is what each one is for.</Text>
+        <Text style={styles.title}>{t('permissions.grantedTitle')}</Text>
+        <Text style={styles.subtitle}>{t('permissions.grantedSubtitle')}</Text>
 
         <View style={styles.permissionCards}>
           <View style={styles.permissionCard}>
@@ -119,11 +114,8 @@ export function PermissionsScreen({ onContinue, onBack, questionNumber = 1, tota
               </View>
             </View>
             <View style={styles.permissionCardText}>
-              <Text style={styles.permissionCardTitle}>Camera</Text>
-              <Text style={styles.permissionCardBody}>
-                So you can see yourself while you speak, and so the video can be saved on
-                your phone.
-              </Text>
+              <Text style={styles.permissionCardTitle}>{t('permissions.cameraCardTitle')}</Text>
+              <Text style={styles.permissionCardBody}>{t('permissions.cameraCardBody')}</Text>
             </View>
           </View>
           <View style={styles.permissionCard}>
@@ -135,11 +127,8 @@ export function PermissionsScreen({ onContinue, onBack, questionNumber = 1, tota
               </View>
             </View>
             <View style={styles.permissionCardText}>
-              <Text style={styles.permissionCardTitle}>Microphone</Text>
-              <Text style={styles.permissionCardBody}>
-                So your voice is recorded along with the picture. Without it the video is
-                silent.
-              </Text>
+              <Text style={styles.permissionCardTitle}>{t('permissions.microphoneCardTitle')}</Text>
+              <Text style={styles.permissionCardBody}>{t('permissions.microphoneCardBody')}</Text>
             </View>
           </View>
         </View>
@@ -147,21 +136,21 @@ export function PermissionsScreen({ onContinue, onBack, questionNumber = 1, tota
         <View style={styles.promisesBox}>
           <View style={styles.promiseRow}>
             <View style={styles.reassuranceDot} />
-            <Text style={styles.reassuranceText}>Nothing is recorded until you press the record button.</Text>
+            <Text style={styles.reassuranceText}>{t('permissions.promise1')}</Text>
           </View>
           <View style={styles.promiseRow}>
             <View style={styles.reassuranceDot} />
-            <Text style={styles.reassuranceText}>Nothing leaves your phone until you choose to send it.</Text>
+            <Text style={styles.reassuranceText}>{t('permissions.promise2')}</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.spacer} />
       <View style={styles.footer}>
-        <Button label="Allow camera and microphone" onPress={onContinue} />
+        <Button label={t('permissions.allowButton')} onPress={onContinue} />
         {onBack && (
           <Text style={styles.notNow} onPress={onBack}>
-            Not now
+            {t('permissions.notNowButton')}
           </Text>
         )}
       </View>
@@ -178,9 +167,15 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       paddingTop: spacing.xxl + spacing.topExtra,
       paddingBottom: spacing.footerBottom,
     },
-    headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 },
-    backChevron: { fontSize: 26, fontWeight: '700', color: colors.text, lineHeight: 26 },
-    headerTitle: { ...typography.body, fontSize: 15.5, fontWeight: '700', color: colors.text },
+    headerRow: { flexDirection: 'row' },
+    // One tappable row (arrow + label), not an arrow-only hit target -
+    // same fix as QuestionBriefScreen's own back control. Matching
+    // lineHeight on both Texts gives alignItems:'center' identical boxes
+    // to center; the chevron glyph still sits low within its own box
+    // regardless, hence the small negative marginTop nudge.
+    backRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 },
+    backChevron: { fontSize: 24, fontWeight: '700', color: colors.text, lineHeight: 24, marginTop: -2 },
+    headerTitle: { ...typography.body, fontSize: 15.5, fontWeight: '700', color: colors.text, lineHeight: 24 },
     body: { marginTop: spacing.md },
     iconCamera: {
       width: 46,

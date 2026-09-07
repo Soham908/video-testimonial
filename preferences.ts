@@ -17,3 +17,25 @@ export async function getReadQuestionAloudPref(): Promise<boolean> {
 export function setReadQuestionAloudPref(value: boolean): void {
   SecureStore.setItemAsync(READ_QUESTION_ALOUD_KEY, value ? 'true' : 'false').catch(() => {});
 }
+
+// Local-only language override (API_CONTRACT.md's GET /distributors/me/
+// questions ?language=en|hi|mr) - the backend has no write-back for
+// language_pref yet, so this only ever affects this device's own calls,
+// never the distributor's stored record. Explicit codes only ('en'/'hi'/
+// 'mr') - anything else (unset, or a value written before this preference
+// existed) is treated as "no override," which is meaningfully different
+// from defaulting to 'en': omitting the query param lets the backend fall
+// through to the distributor's own stored language_pref instead of every
+// distributor silently getting English regardless of their real
+// preference (see questions.ts's fetchQuestions).
+export type LanguageCode = 'en' | 'hi' | 'mr';
+const LANGUAGE_KEY = 'pref_language';
+
+export async function getLanguagePref(): Promise<LanguageCode | null> {
+  const stored = await SecureStore.getItemAsync(LANGUAGE_KEY);
+  return stored === 'en' || stored === 'hi' || stored === 'mr' ? stored : null;
+}
+
+export function setLanguagePref(value: LanguageCode): void {
+  SecureStore.setItemAsync(LANGUAGE_KEY, value).catch(() => {});
+}

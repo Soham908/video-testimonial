@@ -5,6 +5,7 @@ import type { NoiseCheckStatus } from './useAmbientNoiseCheck';
 import { useTheme } from './theme/ThemeContext';
 import type { Spacing } from './theme/spacing';
 import { ChecklistRow, type CheckStatus } from './components/ui/ChecklistRow';
+import { useStrings } from './i18n/useStrings';
 
 interface Props {
   visible: boolean;
@@ -36,6 +37,7 @@ export function AlignmentStatusStrip({
 }: Props) {
   const { spacing } = useTheme();
   const styles = useMemo(() => makeStyles(spacing), [spacing]);
+  const { t } = useStrings();
 
   const [revealed, setRevealed] = useState({ framing: false, distance: false, sound: false });
 
@@ -66,13 +68,13 @@ export function AlignmentStatusStrip({
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.rows}>
-        <ChecklistRow label="Framing" status={framingStatus} />
-        <ChecklistRow label="Distance" status={distanceStatus} />
-        <ChecklistRow label="Sound" status={soundStatus} />
+        <ChecklistRow label={t('alignmentGuide.checklistFraming')} status={framingStatus} />
+        <ChecklistRow label={t('alignmentGuide.checklistDistance')} status={distanceStatus} />
+        <ChecklistRow label={t('alignmentGuide.checklistSound')} status={soundStatus} />
       </View>
       {showSkip && (
         <Pressable style={styles.skipRow} onPress={onOverrideNoise} hitSlop={8}>
-          <Text style={styles.skipText}>Skip anyway</Text>
+          <Text style={styles.skipText}>{t('alignmentGuide.skipNoiseCheckButton')}</Text>
         </Pressable>
       )}
     </View>

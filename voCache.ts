@@ -17,18 +17,29 @@ function getVoDirectory(): Directory {
   return dir;
 }
 
-function getVoFile(questionId: string): File {
-  // Keyed by question id, not index/position - same reasoning as the old
-  // bundled-mp3 map this replaced (CLAUDE.md): id is stable across
-  // reorders/edits, index isn't.
-  return new File(getVoDirectory(), `${questionId}.mp3`);
+// `language` is whatever AppFlow.tsx resolved the request against - either
+// a real code ('en'/'hi'/'mr') once the distributor has explicitly picked
+// one, or the literal string 'default' beforehand (never a guessed real
+// code) while the backend's own stored language_pref is still what's in
+// effect. Keeping "no explicit pick yet" as its own distinct lane, rather
+// than assuming 'en', matters here specifically: guessing wrong would
+// silently mislabel a non-English file as 'en', and a later real 'en'
+// pick would then wrongly treat that mislabeled file as already
+// up-to-date instead of downloading the actual English audio.
+function getVoFile(questionId: string, language: string): File {
+  // Keyed by question id + language, not id alone - a distributor
+  // switching languages must never keep hearing/playing whichever
+  // language happened to get cached first (same file name, different
+  // audio bytes, both matching the same `updated_at` server-side since
+  // that field isn't per-language).
+  return new File(getVoDirectory(), `${questionId}-${language}.mp3`);
 }
 
-// null when this question's audio hasn't been downloaded yet (or never
-// will be, if the download failed) - callers fall back to the question's
-// own vo_playback_url in that case.
-export function getLocalVoUri(questionId: string): string | null {
-  const file = getVoFile(questionId);
+// null when this question's audio hasn't been downloaded yet for this
+// language (or never will be, if the download failed) - callers fall back
+// to the question's own vo_playback_url in that case.
+export function getLocalVoUri(questionId: string, language: string): string | null {
+  const file = getVoFile(questionId, language);
   return file.exists ? file.uri : null;
 }
 
@@ -72,17 +83,18 @@ function writeSyncCache(cache: SyncCache): void {
 // that question's "Read to me"/countdown VO just falls back to the
 // (possibly-expired-by-then) remote URL, same as before this cache
 // existed.
-export async function cacheQuestionAudio(questions: QuestionDto[]): Promise<void> {
+export async function cacheQuestionAudio(questions: QuestionDto[], language: string): Promise<void> {
   const cache = readSyncCache();
   await Promise.all(
     questions.map(async (question) => {
-      const file = getVoFile(question.id);
-      if (file.exists && cache[question.id] === question.updated_at) return;
+      const file = getVoFile(question.id, language);
+      const cacheKey = `${question.id}:${language}`;
+      if (file.exists && cache[cacheKey] === question.updated_at) return;
       try {
         await File.downloadFileAsync(question.vo_playback_url, file, { idempotent: true });
-        cache[question.id] = question.updated_at;
+        cache[cacheKey] = question.updated_at;
       } catch (error) {
-        console.error(`[voCache] failed to download VO for question ${question.id}`, error);
+        console.error(`[voCache] failed to download VO for question ${question.id} (${language})`, error);
       }
     }),
   );

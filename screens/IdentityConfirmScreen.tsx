@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useStrings } from '../i18n/useStrings';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -20,6 +21,9 @@ interface Props {
   onConfirm: () => void;
 }
 
+// Mock identity data (not translatable UI copy - a stand-in for what a
+// real invite token will provide later), same convention as the rest of
+// this file's placeholder data per i18n/strings.en.json's own _meta note.
 const DEFAULT_IDENTITY: Identity = {
   name: 'Mahesh Agrawal',
   business: 'Agrawal Traders',
@@ -28,35 +32,35 @@ const DEFAULT_IDENTITY: Identity = {
 };
 
 const FIELD_ORDER: (keyof Identity)[] = ['name', 'business', 'city', 'phone'];
-const FIELD_LABELS: Record<keyof Identity, string> = {
-  name: 'Your name',
-  business: 'Business name',
-  city: 'City',
-  phone: 'Phone number',
-};
 
 // A check, not a form - everything arrives filled in and read-only until
 // something needs fixing. Each line corrects on its own (design screen 12).
 export function IdentityConfirmScreen({ identity = DEFAULT_IDENTITY, onConfirm }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   const [values, setValues] = useState(identity);
   const [editingField, setEditingField] = useState<keyof Identity | null>(null);
 
+  const fieldLabels: Record<keyof Identity, string> = {
+    name: t('identityConfirm.fieldLabelName'),
+    business: t('identityConfirm.fieldLabelBusiness'),
+    city: t('identityConfirm.fieldLabelCity'),
+    phone: t('identityConfirm.fieldLabelPhone'),
+  };
+
   return (
     <Pressable style={styles.container} onPress={Keyboard.dismiss}>
       <View>
-        <Text style={styles.eyebrow}>Is this you?</Text>
-        <Text style={styles.title}>Confirm your details</Text>
-        <Text style={styles.subtitle}>
-          These appear on your finished videos. Tap any line to fix it.
-        </Text>
+        <Text style={styles.eyebrow}>{t('identityConfirm.eyebrow')}</Text>
+        <Text style={styles.title}>{t('identityConfirm.title')}</Text>
+        <Text style={styles.subtitle}>{t('identityConfirm.subtitle')}</Text>
 
         <View style={styles.fieldsGroup}>
           {FIELD_ORDER.map((field) => (
             <View key={field} style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>{FIELD_LABELS[field]}</Text>
+              <Text style={styles.fieldLabel}>{fieldLabels[field]}</Text>
               {editingField === field ? (
                 <TextInput
                   style={styles.fieldInput}
@@ -67,14 +71,14 @@ export function IdentityConfirmScreen({ identity = DEFAULT_IDENTITY, onConfirm }
                 />
               ) : (
                 <Text style={styles.fieldValue} onPress={() => setEditingField(field)}>
-                  {values[field]} <Text style={styles.editHint}>· Edit</Text>
+                  {values[field]} <Text style={styles.editHint}>· {t('identityConfirm.editHint')}</Text>
                 </Text>
               )}
             </View>
           ))}
         </View>
 
-        <Button label="This is me" onPress={onConfirm} style={{ marginTop: spacing.xl }} />
+        <Button label={t('identityConfirm.confirmButton')} onPress={onConfirm} style={{ marginTop: spacing.xl }} />
       </View>
     </Pressable>
   );

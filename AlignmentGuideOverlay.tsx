@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import { GUIDE_TOP_OFFSET, GUIDE_WIDTH, GUIDE_HEIGHT, type AlignmentSignals } from './alignment';
 import { useTheme } from './theme/ThemeContext';
 import type { PaletteDarkColors } from './theme/palettes';
+import { useStrings, type UseStringsResult } from './i18n/useStrings';
 
 interface Props {
   // Guide is shown while this is true, and fades out (not a hard cut) when
@@ -13,12 +14,12 @@ interface Props {
   requiredFrames: number;
 }
 
-function guidanceMessage(signals: AlignmentSignals | null): string {
-  if (signals == null) return 'Position your face in the frame';
-  if (!signals.distanceOk) return 'Adjust your distance from the camera';
-  if (!signals.centered) return 'Center your face in the guide';
-  if (!signals.headroomOk) return 'Adjust your framing';
-  return 'Hold still…';
+function guidanceMessage(signals: AlignmentSignals | null, t: UseStringsResult['t']): string {
+  if (signals == null) return t('alignmentGuide.guidancePositionFace');
+  if (!signals.distanceOk) return t('alignmentGuide.guidanceAdjustDistance');
+  if (!signals.centered) return t('alignmentGuide.guidanceCenterFace');
+  if (!signals.headroomOk) return t('alignmentGuide.guidanceAdjustFraming');
+  return t('alignmentGuide.guidanceHoldStill');
 }
 
 // Renders inside CameraCheckScreen's dark full-bleed layout, in the space
@@ -29,6 +30,7 @@ export function AlignmentGuideOverlay({ visible, signals, goodFrameStreak, requi
   const { themeDark: dark } = useTheme();
   const styles = useMemo(() => makeStyles(dark), [dark]);
   const opacity = useRef(new Animated.Value(1)).current;
+  const { t } = useStrings();
 
   useEffect(() => {
     Animated.timing(opacity, {
@@ -42,7 +44,7 @@ export function AlignmentGuideOverlay({ visible, signals, goodFrameStreak, requi
 
   return (
     <Animated.View pointerEvents="none" style={[styles.overlay, { opacity }]}>
-      <Text style={styles.message}>{guidanceMessage(signals)}</Text>
+      <Text style={styles.message}>{guidanceMessage(signals, t)}</Text>
       <View style={[styles.guideOutline, allGood && { borderColor: dark.accent }]} />
     </Animated.View>
   );

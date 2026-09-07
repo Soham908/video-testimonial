@@ -1,0 +1,405 @@
+{
+  "_meta": {
+    "note": "Hindi translation of strings.en.json - see that file's own _meta block for editing rules (keys, {{placeholders}}, arrays, what's excluded). Same structure/keys, same scope. Register: natural spoken Hindi (WhatsApp/PhonePe style), not formal/literary Hindi - common tech words (camera, video, upload, settings) are kept as widely-used Hindi loanwords in Devanagari rather than forced pure-Hindi equivalents. This is a translation-READY export, not wired up yet - see strings.en.json."
+  },
+
+  "languageNames": {
+    "en": "English",
+    "hi": "हिन्दी",
+    "mr": "मराठी"
+  },
+
+  "splash": {
+    "appName": "Insight Scoop",
+    "companyName": "Zeist Interactive"
+  },
+
+  "whatsAppInvite": {
+    "invitedByEyebrow": "आपको आमंत्रित किया है",
+    "inviterNameDefault": "राजेश",
+    "companyNameDefault": "Vardaan Paints",
+    "factHowManyLabel": "कितने",
+    "factHowManyValue": "5 छोटे सवाल",
+    "factHowLongLabel": "कितना समय",
+    "factHowLongValue": "लगभग 10 मिनट",
+    "factWhatYouGetLabel": "आपको क्या मिलेगा",
+    "factWhatYouGetValue": "अपने खुद के ब्रांडेड वीडियो, रखने और शेयर करने के लिए",
+    "continueButton": "आगे बढ़ें"
+  },
+
+  "identityConfirm": {
+    "eyebrow": "क्या यह आप हैं?",
+    "title": "अपनी जानकारी की पुष्टि करें",
+    "subtitle": "ये आपकी फ़ाइनल वीडियो में दिखेंगे। बदलने के लिए किसी भी लाइन पर टैप करें।",
+    "fieldLabelName": "आपका नाम",
+    "fieldLabelBusiness": "बिज़नेस का नाम",
+    "fieldLabelCity": "शहर",
+    "fieldLabelPhone": "फ़ोन नंबर",
+    "editHint": "बदलें",
+    "confirmButton": "हां, यह मैं हूं"
+  },
+
+  "onboarding": {
+    "skipButton": "स्किप करें",
+    "step1Eyebrow": "आपको क्या करना है",
+    "step1Title": "कैमरे पर 5 छोटे सवालों के जवाब दें",
+    "step1Body": "ऐप आपको हर स्टेप में गाइड करेगा — अच्छी रोशनी, सही फ्रेमिंग, शांत माहौल। शुरू से अंत तक करीब 10 मिनट।",
+    "step2Eyebrow": "आपको क्या मिलेगा",
+    "step2Title": "आपको 5 फ़ाइनल वीडियो मिलेंगे",
+    "step2Body": "हम इसमें फ्रेम, आपका नाम और आपकी दुकान जोड़ते हैं। ये वीडियो आपके पास वापस आएंगे, रखने के लिए और जिसे चाहें भेजने के लिए।",
+    "step3Eyebrow": "वीडियो शेयर करना",
+    "step3Title": "अपनी रील जैसे चाहें शेयर करें",
+    "step3Body": "WhatsApp सबसे तेज़ तरीका है, और फ़ैसला हमेशा आपका ही होगा — जब तक आप सेंड नहीं दबाते, कुछ नहीं भेजा जाएगा।",
+    "rewardBadge": "आपकी वीडियो",
+    "backButton": "पीछे",
+    "nextButton": "आगे",
+    "getStartedButton": "शुरू करें"
+  },
+
+  "consent": {
+    "eyebrow": "शुरू करने से पहले",
+    "title": "कृपया इसे पढ़ें — यह ज़रूरी है",
+    "point1": "आप अपने काम के बारे में 5 सवालों के जवाब देते हुए अपनी वीडियो रिकॉर्ड करेंगे।",
+    "point2": "आपकी कंपनी यह वीडियो अपनी वेबसाइट पर और दूसरे डिस्ट्रीब्यूटर्स को दिखा सकती है।",
+    "point3": "जब तक आप पूरा करके सेंड नहीं दबाते, कुछ भी शेयर नहीं होगा। आप कभी भी रोक सकते हैं।",
+    "readFullTermsLink": "पूरी शर्तें पढ़ें",
+    "checkboxLabel": "मैं समझता/समझती हूं, और रिकॉर्ड होने के लिए सहमत हूं।",
+    "agreeButton": "सहमत हूं और आगे बढ़ें",
+    "hint": "आगे बढ़ने के लिए ऊपर दिए बॉक्स पर टिक करें"
+  },
+
+  "permissions": {
+    "backButton": "वापस जाएं",
+    "deniedBadge": "कैमरा बंद है",
+    "deniedTitle": "आपके फ़ोन को कैमरा इस्तेमाल करने की परमिशन देनी होगी",
+    "deniedSubtitle": "पहले इसे मना कर दिया गया था, इसलिए फ़ोन दोबारा नहीं पूछेगा। आप कुछ टैप में इसे वापस ऑन कर सकते हैं।",
+    "deniedStep1": "इस ऐप की सेटिंग्स खोलें",
+    "deniedStep2": "कैमरा और माइक्रोफ़ोन ऑन करें",
+    "deniedStep3": "यहां वापस आएं और आगे बढ़ें",
+    "deniedReassurance": "आपने जो भी पहले से रिकॉर्ड किया है, वह सुरक्षित है। रुकने से कुछ भी नहीं खोएगा।",
+    "deniedOpenSettingsButton": "फ़ोन सेटिंग्स खोलें",
+    "deniedBackButton": "सवाल पर वापस जाएं",
+    "deniedHelpHint": "समझ नहीं आ रहा? मदद सेक्शन में एक छोटा वीडियो है जो बताता है कि कहां देखना है।",
+    "grantedTitle": "दो चीज़ों की परमिशन देनी है",
+    "grantedSubtitle": "आगे आपका फ़ोन पूछेगा। यहां बताया गया है कि हर एक किसलिए है।",
+    "cameraCardTitle": "कैमरा",
+    "cameraCardBody": "ताकि बोलते समय आप खुद को देख सकें, और वीडियो आपके फ़ोन में सेव हो सके।",
+    "microphoneCardTitle": "माइक्रोफ़ोन",
+    "microphoneCardBody": "ताकि तस्वीर के साथ आपकी आवाज़ भी रिकॉर्ड हो सके। इसके बिना वीडियो में आवाज़ नहीं आएगी।",
+    "promise1": "जब तक आप रिकॉर्ड बटन नहीं दबाते, कुछ भी रिकॉर्ड नहीं होगा।",
+    "promise2": "जब तक आप भेजना नहीं चुनते, कुछ भी आपके फ़ोन से बाहर नहीं जाएगा।",
+    "allowButton": "कैमरा और माइक्रोफ़ोन को अनुमति दें",
+    "notNowButton": "अभी नहीं"
+  },
+
+  "login": {
+    "logoPlaceholder": "LOGO",
+    "title": "साइन इन करें",
+    "subtitle": "शुरू करने के लिए वह अकाउंट इस्तेमाल करें जो आपकी कंपनी ने दिया है।",
+    "usernameLabel": "यूज़रनेम",
+    "passwordLabel": "पासवर्ड",
+    "genericError": "कुछ गड़बड़ हो गई।",
+    "signInButton": "साइन इन करें"
+  },
+
+  "selfRegister": {
+    "backLink": "‹ साइन इन पर वापस जाएं",
+    "registerTitle": "आपका नाम क्या है?",
+    "signInTitle": "फ़ोन नंबर से साइन इन करें",
+    "registerSubtitle": "यह आपकी फ़ाइनल वीडियो में दिखेगा - बाद में बदल सकते हैं।",
+    "signInSubtitle": "वही फ़ोन नंबर और पासवर्ड इस्तेमाल करें जिससे रजिस्टर किया था।",
+    "nameLabel": "आपका नाम",
+    "phoneLabel": "फ़ोन नंबर",
+    "passwordLabel": "पासवर्ड",
+    "registerButton": "शुरू करें",
+    "switchToSignInLink": "पहले से रजिस्टर है? साइन इन करें",
+    "switchToRegisterLink": "यहां पहली बार आए हैं? रजिस्टर करें"
+  },
+
+  "home": {
+    "greetingFirstTime": "स्वागत है, {{name}}",
+    "greetingReturning": "फिर से स्वागत है, {{name}}",
+    "subGreeting": "{{businessName}} · {{city}}",
+    "readyBannerText": "{{label}} शेयर करने के लिए तैयार है",
+    "readyBannerShareButton": "शेयर करें",
+    "allRenderedEyebrow": "सभी पांचों तैयार हैं",
+    "allRenderedTitle": "आपके ब्रांडेड वीडियो तैयार हैं",
+    "allRenderedBody": "देखने और शेयर करने के लिए 'मेरे वीडियो' पर जाएं।",
+    "allRenderedButton": "मेरे वीडियो पर जाएं",
+    "submittedEyebrow": "भेज दिया, बन रहा है",
+    "submittedTitle": "हम आपके जवाबों को ब्रांडेड वीडियो में बदल रहे हैं",
+    "submittedBody": "ऐप को इंस्टॉल रहने दें — तैयार होते ही हम आपको बता देंगे।",
+    "allRecordedEyebrow": "सभी पांचों सवालों के जवाब दे दिए",
+    "allRecordedTitle": "हमें भेजें, हम आपकी वीडियो बना देंगे",
+    "allRecordedBody": "अभी ये सिर्फ़ आपके फ़ोन में हैं।",
+    "allRecordedButton": "सभी पांचों भेजें",
+    "nextQuestionEyebrow": "सवाल {{index}} / {{total}}",
+    "nextQuestionButtonFirst": "अपना पहला सवाल शुरू करें",
+    "nextQuestionButtonLater": "यह सवाल शुरू करें",
+    "emptyVideosHint": "सभी पांचों के जवाब देकर भेजने के बाद आपकी फ़ाइनल वीडियो यहां दिखेंगी।",
+    "howToSectionTitle": "अच्छी रिकॉर्डिंग कैसे करें",
+    "howToVideo1Title": "अच्छी रोशनी के लिए कहां खड़े हों",
+    "howToVideo2Title": "बिना स्क्रिप्ट के बोलना",
+    "statLine": "{{count}} डिस्ट्रीब्यूटर पहले ही सभी पांचों सवाल पूरे कर चुके हैं",
+    "sampleVideosSectionTitle": "सैंपल वीडियो",
+    "sampleVideosSectionSubtitle": "कंपनी द्वारा बनाए गए, यह दिखाने के लिए कि एक अच्छा जवाब कैसा होता है",
+    "sampleVideo1Title": "एक अच्छा जवाब",
+    "sampleVideo2Title": "जवाब छोटा रखना",
+    "sampleVideo3Title": "सीधी और सरल बात",
+    "exampleTag": "उदाहरण",
+    "seeAll": "सभी देखें"
+  },
+
+  "questionBrief": {
+    "backButton": "वापस जाएं",
+    "readToMeIdle": "मुझे पढ़कर सुनाएं",
+    "readToMeActive": "पढ़ रहे हैं…",
+    "questionNumberLabel": "सवाल {{number}}",
+    "talkingPointsSectionTitle": "एक अच्छे जवाब में आमतौर पर ये बातें होती हैं",
+    "addPromptRow": "+ अपने खुद के पॉइंट जोड़ें",
+    "sampleAnswerTitle": "सुनें {{name}} ने कैसे जवाब दिया",
+    "beforeYouStartTitle": "शुरू करने से पहले",
+    "beforeYouStartSubtitle": "रोशनी · शांति · 45–60 सेकंड",
+    "beforeYouStartBody": "खिड़की या लैंप की तरफ़ मुंह करें, कोई शांत पल चुनें, और अपना जवाब करीब 45-60 सेकंड का रखें - इतना काफ़ी है कुछ असली कहने के लिए, और इतना छोटा कि ध्यान बना रहे।",
+    "nervousTitle": "कैमरे पर घबराहट हो रही है?",
+    "nervousSubtitle": "मदद करने वाली 3 बातें",
+    "nervousBody": "कैमरे से किसी दोस्त की तरह बात करें, दर्शकों की तरह नहीं। शुरू करने से पहले एक सांस लें। अगर अटक जाएं, तो बस बोलते रहें - जो नैचुरल लगे, वही अच्छा जवाब है।",
+    "startRecordingButton": "रिकॉर्डिंग शुरू करें",
+    "rehearseButton": "एक बार अभ्यास करें — कुछ सेव नहीं होगा"
+  },
+
+  "rehearse": {
+    "topBanner": "अभ्यास — कुछ भी सेव नहीं हो रहा",
+    "finishButton": "अभ्यास खत्म करें",
+    "popupTitle": "असली वाला रिकॉर्ड करने के लिए तैयार हैं?",
+    "popupBody": "वह सिर्फ़ अभ्यास था - उसमें से कुछ भी सेव नहीं हुआ।",
+    "popupRecordForRealButton": "असली रिकॉर्डिंग करें",
+    "popupBackToBriefButton": "जानकारी पर वापस जाएं"
+  },
+
+  "cameraCheck": {
+    "title": "आइए कैमरा चेक करें",
+    "subtitle": "सवाल {{questionNumber}} / {{totalQuestions}}",
+    "autoStartLabel": "ऑटो स्टार्ट",
+    "readQuestionAloudLabel": "सवाल पढ़कर सुनाएं",
+    "countdownLabel": "रिकॉर्डिंग {{seconds}} में शुरू होगी…",
+    "startRecordingButton": "रिकॉर्डिंग शुरू करें",
+    "waitingForChecksButton": "चेक हो रहा है…"
+  },
+
+  "alignmentGuide": {
+    "guidancePositionFace": "अपना चेहरा फ्रेम में लाएं",
+    "guidanceAdjustDistance": "कैमरे से दूरी ठीक करें",
+    "guidanceCenterFace": "अपना चेहरा गाइड के बीच में रखें",
+    "guidanceAdjustFraming": "अपनी फ्रेमिंग ठीक करें",
+    "guidanceHoldStill": "हिलें मत…",
+    "checklistFraming": "फ्रेमिंग",
+    "checklistDistance": "दूरी",
+    "checklistSound": "आवाज़",
+    "checklistChecking": "चेक हो रहा है",
+    "skipNoiseCheckButton": "फिर भी आगे बढ़ें"
+  },
+
+  "cameraAlignment": {
+    "permissionNeeded": "आगे बढ़ने के लिए कैमरा और माइक्रोफ़ोन की अनुमति चाहिए।",
+    "permissionDeniedPermanently": "कैमरा और माइक्रोफ़ोन की अनुमति बंद कर दी गई है, और फ़ोन यहां दोबारा नहीं पूछेगा।",
+    "tryAgainButton": "फिर से कोशिश करें",
+    "openSettingsButton": "फ़ोन सेटिंग्स खोलें",
+    "noCameraDevice": "कोई कैमरा नहीं मिला"
+  },
+
+  "recording": {
+    "lengthNudge": "अच्छी लंबाई है — अब खत्म करना शुरू करें",
+    "finishAnswerButton": "मेरा जवाब पूरा हुआ"
+  },
+
+  "reviewTrim": {
+    "title": "एक नज़र डालें",
+    "takeSubtitle": "टेक {{number}} · {{duration}}",
+    "usingBadge": "इस्तेमाल हो रहा है",
+    "savedTag": "सेव है",
+    "takeLabel": "टेक {{number}}",
+    "pickHint": "इन {{total}} में से {{max}} रखें — देखने के लिए टेक पर टैप करें, रखने या हटाने के लिए टिक पर टैप करें।",
+    "dropNote": "टेक {{number}} आपके फ़ोन से हट जाएगा।",
+    "removeLastTwoSecondsLabel": "आख़िरी 2 सेकंड हटाएं",
+    "removeLastTwoSecondsReason": "अगर आख़िर में गड़बड़ हो गई हो तो काम आएगा",
+    "keepButton": "यह टेक रखें",
+    "keepBothTakesButton": "दोनों टेक रखें",
+    "keepTheseButton": "ये {{count}} रखें",
+    "selectToKeepButton": "{{count}} चुनें ({{kept}} / {{count}})",
+    "recordAnotherButton": "एक और रिकॉर्ड करें"
+  },
+
+  "retakeConfirm": {
+    "retakeTitle": "सवाल {{questionNumber}} फिर से रिकॉर्ड करें?",
+    "retakeBody": "आपको बाद में चुनना होगा कि कौन सा टेक रखना है - तब तक कुछ भी बदला नहीं जाता।",
+    "retakeConfirmButton": "हां, फिर से रिकॉर्ड करें",
+    "firstRecordTitle": "सवाल {{questionNumber}} रिकॉर्ड करने के लिए तैयार हैं?",
+    "firstRecordBody": "पहले हम आपका कैमरा और रोशनी चेक करेंगे, फिर आपको जवाब रिकॉर्ड करने में मदद करेंगे।",
+    "firstRecordConfirmButton": "रिकॉर्डिंग शुरू करें",
+    "cancelButton": "रद्द करें"
+  },
+
+  "uploading": {
+    "backLink": "‹ मेरे वीडियो पर वापस जाएं",
+    "title": "आपके जवाब भेजे जा रहे हैं",
+    "subtitleSingular": "{{count}} सवाल, एक साथ भेजा जा रहा है।",
+    "subtitlePlural": "{{count}} सवाल, एक साथ भेजे जा रहे हैं।",
+    "hint": "दोबारा देखने के लिए वीडियो पर टैप करें।",
+    "takeLabelDefault": "टेक 1",
+    "sizeNote": "✓ कुल मिलाकर लगभग {{duration}} की वीडियो। आपकी वीडियो आपके फ़ोन में भी रहेंगी।",
+    "sendAllButton": "सभी भेजें",
+    "notNowButton": "अभी नहीं",
+    "confirmPopupTitle": "सभी {{count}} हमें भेज दें?",
+    "confirmPopupBody": "आपने चुने हुए टेक के साथ, सभी {{count}} जवाब एक साथ भेजे जाएंगे। भेजने के बाद इन्हें बदला नहीं जा सकता।",
+    "confirmPopupReassurance1": "✓ आपकी वीडियो आपके फ़ोन में भी रहेंगी",
+    "confirmPopupReassurance2": "✓ इसके बाद आपकी ब्रांडेड वीडियो वापस आएंगी",
+    "confirmPopupConfirmButton": "हां, अपलोड करें",
+    "confirmPopupBackButton": "वापस जाएं",
+    "errorTitle": "भेजना बीच में रुक गया",
+    "errorTryAgainButton": "फिर से कोशिश करें",
+    "errorSendLaterButton": "बाद में भेजें",
+    "genericUploadError": "अपलोड नहीं हो पाया।"
+  },
+
+  "confirmation": {
+    "titleSending": "आपके जवाब भेजे जा रहे हैं",
+    "titleDone": "आपके जवाब भेजे जा चुके हैं",
+    "subtitleSending": "{{percent}}% भेजा गया - धीमे नेटवर्क पर इसमें कुछ मिनट लग सकते हैं।",
+    "subtitleDoneReelsEnabled": "आपकी ब्रांडेड वीडियो तैयार होते ही हम आपको बता देंगे।",
+    "subtitleDoneReelsDisabled": "रिकॉर्डिंग के लिए धन्यवाद - आपके जवाब मिल गए हैं।",
+    "reassuranceSending": "इंटरनेट ऑन रखें और ऐप बंद न करें - यह अपने आप पूरा हो जाएगा।",
+    "reassuranceDone1": "✓ अपलोड पूरा हुआ - आपके सभी जवाब मिल गए",
+    "reassuranceDone2": "✓ वीडियो तैयार होने पर हम आपको मैसेज करेंगे",
+    "backToHomeButton": "होम पर वापस जाएं"
+  },
+
+  "myVideos": {
+    "errorTitle": "आपकी वीडियो लोड नहीं हो पाईं",
+    "tryAgainButton": "फिर से कोशिश करें",
+    "answersSectionTitle": "आपके जवाब",
+    "notRecordedYet": "अभी रिकॉर्ड नहीं हुआ",
+    "recordButton": "रिकॉर्ड करें",
+    "metaUploaded": "· भेज दिया गया",
+    "metaTakesSaved": "· {{count}} टेक सेव हैं",
+    "metaRecorded": "· रिकॉर्ड हो गया",
+    "uploadedNote": "यह जवाब पहले ही भेजा जा चुका है और यहां बदला नहीं जा सकता।",
+    "chooseTakeLabel": "कौन सा टेक भेजना है, चुनें",
+    "editTakesLink": "टेक बदलें",
+    "editTakeLink": "टेक बदलें",
+    "recordAnotherTakeLink": "एक और टेक रिकॉर्ड करें",
+    "retakeLink": "फिर से रिकॉर्ड करें",
+    "brandedSectionTitle": "आपकी ब्रांडेड वीडियो",
+    "emptyBrandedText": "जब सभी जवाब भेजकर बना दिए जाएंगे, तो आपकी ब्रांडेड वीडियो यहां दिखेंगी।",
+    "statusProcessing": "प्रोसेस हो रहा है",
+    "statusReady": "तैयार",
+    "statusFailed": "फेल हो गया",
+    "title": "मेरे वीडियो",
+    "headerSubtitle": "अपलोड शुरू करने के लिए सभी वीडियो रिकॉर्ड करें",
+    "uploadButton": "वीडियो अपलोड करें"
+  },
+
+  "videoPlayer": {
+    "closeButton": "बंद करें",
+    "congratulations": "बधाई हो!",
+    "congratsSubtitle": "{{label}} तैयार है",
+    "shareButton": "WhatsApp पर शेयर करें",
+    "saveButtonIdle": "फ़ोन में सेव करें",
+    "saveButtonSaving": "सेव हो रहा है…",
+    "saveButtonSaved": "सेव हो गया"
+  },
+
+  "profile": {
+    "title": "प्रोफ़ाइल",
+    "reelCardLabel": "आपकी वीडियो में क्या दिखेगा",
+    "distributorForYears": "{{years}} साल से डिस्ट्रीब्यूटर",
+    "editDetailsLink": "यह जानकारी बदलें",
+    "accountSectionLabel": "अकाउंट",
+    "phoneRowLabel": "फ़ोन",
+    "distributorIdRowLabel": "डिस्ट्रीब्यूटर आईडी",
+    "distributorForRowLabel": "डिस्ट्रीब्यूटर, इतने साल से",
+    "settingsSectionLabel": "सेटिंग्स",
+    "notifyRowLabel": "वीडियो तैयार होने पर मुझे बताएं",
+    "wifiOnlyRowLabel": "सिर्फ़ Wi-Fi पर अपलोड करें",
+    "languageRowLabel": "भाषा",
+    "languagePickerTitle": "भाषा",
+    "languagePickerSubtitle": "इससे सिर्फ़ इसी फ़ोन पर सवाल और आवाज़ में पढ़कर सुनाने की भाषा बदलेगी।",
+    "consentRowLabel": "सहमति और प्राइवेसी",
+    "logoutLink": "लॉग आउट करें",
+    "versionLabel": "v{{version}}",
+    "editPopupTitle": "यह जानकारी बदलें",
+    "editPopupSubtitle": "यहां की हर चीज़ आपकी फ़ाइनल वीडियो में दिखेगी - और कुछ नहीं।",
+    "editPopupNameLabel": "नाम",
+    "editPopupBusinessLabel": "बिज़नेस",
+    "editPopupShowYearsLabel": "\"X साल से डिस्ट्रीब्यूटर\" दिखाएं",
+    "editPopupYearsLabel": "साल",
+    "editPopupSaveButton": "सेव करें"
+  },
+
+  "help": {
+    "title": "मदद",
+    "subtitle": "छोटे जवाब और छोटी वीडियो",
+    "quickTipLightLabel": "खिड़की की तरफ़ मुंह करें",
+    "quickTipLightReason": "चेहरे पर रोशनी (पीछे नहीं) - यह सबसे बड़ा फ़र्क़ बनाती है।",
+    "quickTipQuietLabel": "शांत जगह ढूंढें",
+    "quickTipQuietReason": "बंद दरवाज़ा या शांत कमरा - आपकी आवाज़ साफ़ सुनाई देगी।",
+    "quickTipPhoneLabel": "फ़ोन को टिकाकर रखें",
+    "quickTipPhoneReason": "फ़ोन को हाथ में पकड़ने के बजाय किसी टिकाऊ चीज़ पर टिकाकर रखें।",
+    "howToSectionTitle": "कैसे करें — वीडियो",
+    "howToSeeAll": "सभी देखें",
+    "howToVideo1Title": "अच्छी रोशनी के लिए कहां खड़े हों",
+    "howToVideo2Title": "बिना स्क्रिप्ट के बोलना",
+    "howToVideo3Title": "शांत जगह चुनना",
+    "howToVideo4Title": "खुद को सही फ्रेम में रखना",
+    "howToVideo5Title": "45 सेकंड का जवाब कैसा लगता है",
+    "howToVideo6Title": "घबराई हुई शुरुआत को ठीक करना",
+    "contactCardTitle": "किसी से बात करें",
+    "contactCardSubtitle": "WhatsApp करें, या कॉल बैक मांगें",
+    "sampleVideosSectionTitle": "सैंपल वीडियो",
+    "sampleVideosSectionSubtitle": "कंपनी द्वारा बनाए गए, यह दिखाने के लिए कि एक अच्छा जवाब कैसा होता है",
+    "sampleVideo1Title": "एक अच्छा जवाब",
+    "sampleVideo2Title": "जवाब छोटा रखना",
+    "sampleVideo3Title": "सीधी और सरल बात",
+    "exampleTag": "उदाहरण",
+    "faqsSectionTitle": "अक्सर पूछे जाने वाले सवाल",
+    "faq1Question": "क्या मैं जवाब दोबारा दे सकता/सकती हूं?",
+    "faq1Answer": "हां - सब कुछ भेजने से पहले आप कोई भी जवाब देख और दोबारा रिकॉर्ड कर सकते हैं, और बाद में 'मेरे वीडियो' से बदल भी सकते हैं।",
+    "faq2Question": "मेरी वीडियो कौन देखता है?",
+    "faq2Answer": "सिर्फ़ आपकी कंपनी। किसी और डिस्ट्रीब्यूटर के साथ कुछ शेयर नहीं किया जाता।",
+    "faq3Question": "अगर जवाब देते समय गलती हो जाए तो?",
+    "faq3Answer": "बोलते रहें - भेजने से पहले आप इसे देखकर तय कर सकते हैं कि रखना है या नहीं।",
+    "contactPopupTitle": "किसी से बात करें",
+    "contactPopupSubtitle": "सोमवार–शुक्रवार, सुबह 9 – शाम 7",
+    "contactPopupWhatsAppButton": "WhatsApp पर मैसेज करें",
+    "contactPopupCallBackButton": "कॉल बैक मांगें"
+  },
+
+  "bottomTabBar": {
+    "home": "होम",
+    "myVideos": "मेरे वीडियो",
+    "help": "मदद",
+    "profile": "प्रोफ़ाइल"
+  },
+
+  "appFlow": {
+    "questionsLoadErrorTitle": "आपके सवाल लोड नहीं हो पाए",
+    "questionsLoadErrorTryAgainButton": "फिर से कोशिश करें",
+    "questionsLoadErrorFallback": "आपके सवाल लोड नहीं हो पाए।",
+    "myVideosLoadErrorFallback": "आपकी वीडियो लोड नहीं हो पाईं।",
+    "postKeepPopupTitle": "आपके फ़ोन में सेव हो गया",
+    "postKeepPopupBody": "सवाल {{questionNumber}} तैयार है। अभी कुछ भेजा नहीं गया है — सभी पांचों रिकॉर्ड होने के बाद सारी वीडियो एक साथ भेजी जाएंगी।",
+    "postKeepPopupNextQuestionButton": "अगला सवाल",
+    "postKeepPopupMyVideosButton": "मेरे वीडियो",
+    "postKeepPopupHomeButton": "होम",
+    "exitConfirmPopupTitle": "रोककर वापस जाएं?",
+    "exitConfirmPopupBodyDefault": "आप सवाल पर वापस चले जाएंगे।",
+    "exitConfirmPopupBodyRecording": "यह टेक सेव नहीं होगा। आप सवाल पर वापस चले जाएंगे।",
+    "exitConfirmPopupStopButton": "रोककर वापस जाएं",
+    "exitConfirmPopupKeepGoingButton": "जारी रखें"
+  },
+
+  "upload": {
+    "storageUploadFailed": "स्टोरेज में अपलोड नहीं हो पाया (स्टेटस {{status}})।",
+    "questionSetChanged": "पोज़िशन {{position}} के लिए कोई सवाल नहीं मिला — हो सकता है रिकॉर्ड करने के बाद सवालों की लिस्ट बदल गई हो।"
+  }
+}

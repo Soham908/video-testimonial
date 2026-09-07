@@ -6,12 +6,13 @@
     "pluralization": "A few strings have separate Singular/Plural variants (e.g. subtitleSingular / subtitlePlural) because English changes the sentence depending on a count. Translate each variant to whatever your language's equivalent grammatical form is.",
     "arrays": "Some entries are numbered lists (point1/point2/point3, or step1/step2/step3, or a list of Q&A pairs) - these render in that exact order on screen. Translate the text; don't reorder, add, or remove entries without checking with engineering first.",
     "excluded": "Two things were deliberately left out of this file: (1) the interview question text and talking points shown during recording - those already live in the database in English/Hindi/Marathi and are managed separately, not in app code; (2) developer-only debug UI (a theme switcher and a dev navigation menu) that real distributors never see, plus a handful of placeholder/mock values standing in for data that will come from the backend later (e.g. a sample phone number, a sample distributor ID) - those aren't translatable copy, they're temporary test data.",
-    "notesOnProperNouns": "A few entries are names/brand names used in mocked-up screens (e.g. \"Vardaan Paints\", \"Rajesh\") rather than general copy - usually fine to leave as-is or transliterate, not translate."
+    "notesOnProperNouns": "A few entries are names/brand names used in mocked-up screens (e.g. \"Vardaan Paints\", \"Rajesh\") rather than general copy - usually fine to leave as-is or transliterate, not translate.",
+    "languageNames": "The languageNames block is a special case: each language's name for ITSELF (an endonym). Keep identical across strings.en/hi/mr.json - same convention every app's language picker uses (a Hindi speaker looking for Hindi in an English-language picker still needs to see \"हिन्दी\", not a translated word for it). Do not translate these three values differently per file."
   },
 
   "splash": {
-    "appName": "Distributor Voices",
-    "companyName": "Vardaan Paints"
+    "appName": "Insight Scoop",
+    "companyName": "Zeist Interactive"
   },
 
   "whatsAppInvite": {
@@ -69,7 +70,7 @@
   },
 
   "permissions": {
-    "headerTitle": "Question {{questionNumber}} of {{totalQuestions}}",
+    "backButton": "Go back",
     "deniedBadge": "Camera is switched off",
     "deniedTitle": "Your phone needs to let us use the camera",
     "deniedSubtitle": "It was turned down earlier, so your phone will not ask again. You can switch it back on in a few taps.",
@@ -100,6 +101,20 @@
     "passwordLabel": "Password",
     "genericError": "Something went wrong.",
     "signInButton": "Sign in"
+  },
+
+  "selfRegister": {
+    "backLink": "‹ Back to sign in",
+    "registerTitle": "What's your name?",
+    "signInTitle": "Sign in with phone",
+    "registerSubtitle": "This appears on your finished videos - you can change it later.",
+    "signInSubtitle": "Use the phone number and password you registered with.",
+    "nameLabel": "Your name",
+    "phoneLabel": "Phone number",
+    "passwordLabel": "Password",
+    "registerButton": "Get started",
+    "switchToSignInLink": "Already registered? Sign in",
+    "switchToRegisterLink": "New here? Register instead"
   },
 
   "home": {
@@ -137,7 +152,7 @@
   },
 
   "questionBrief": {
-    "eyebrow": "Getting ready",
+    "backButton": "Go back",
     "readToMeIdle": "Read to me",
     "readToMeActive": "Reading…",
     "questionNumberLabel": "Question {{number}}",
@@ -203,17 +218,26 @@
     "title": "Have a look",
     "takeSubtitle": "Take {{number}} · {{duration}}",
     "usingBadge": "Using",
+    "savedTag": "Saved",
     "takeLabel": "Take {{number}}",
+    "pickHint": "Keep {{max}} of these {{total}} — tap a take to preview it, tap the checkmark to keep or drop it.",
+    "dropNote": "Take {{number}} will be deleted from your phone.",
     "removeLastTwoSecondsLabel": "Remove the last 2 seconds",
     "removeLastTwoSecondsReason": "Useful if you fumbled the sign-off",
     "keepButton": "Keep this take",
+    "keepBothTakesButton": "Keep both takes",
+    "keepTheseButton": "Keep these {{count}}",
+    "selectToKeepButton": "Select {{count}} to keep ({{kept}} of {{count}})",
     "recordAnotherButton": "Record another"
   },
 
   "retakeConfirm": {
-    "title": "Record again for Question {{questionNumber}}?",
-    "body": "Your current answer will be replaced.",
-    "confirmButton": "Yes, record again",
+    "retakeTitle": "Record again for Question {{questionNumber}}?",
+    "retakeBody": "You'll get to choose which take to keep afterward - nothing is replaced until then.",
+    "retakeConfirmButton": "Yes, record again",
+    "firstRecordTitle": "Ready to record Question {{questionNumber}}?",
+    "firstRecordBody": "We'll check your camera and lighting first, then walk you through recording your answer.",
+    "firstRecordConfirmButton": "Start recording",
     "cancelButton": "Cancel"
   },
 
@@ -255,10 +279,17 @@
     "errorTitle": "Couldn't load your videos",
     "tryAgainButton": "Try again",
     "answersSectionTitle": "Your answers",
-    "questionRowRecorded": "Question {{number}}",
-    "questionRowNotRecorded": "Question {{number}} · not recorded yet",
-    "changeLink": "Change",
+    "notRecordedYet": "Not recorded yet",
     "recordButton": "Record",
+    "metaUploaded": "· Uploaded",
+    "metaTakesSaved": "· {{count}} takes saved",
+    "metaRecorded": "· Recorded",
+    "uploadedNote": "This answer has already been sent and can't be changed here.",
+    "chooseTakeLabel": "Choose which take to send",
+    "editTakesLink": "Edit takes",
+    "editTakeLink": "Edit take",
+    "recordAnotherTakeLink": "Record another take",
+    "retakeLink": "Retake",
     "brandedSectionTitle": "Your branded videos",
     "emptyBrandedText": "Your branded videos will appear here once every answer has been sent and made.",
     "statusProcessing": "Processing",
@@ -279,6 +310,12 @@
     "saveButtonSaved": "Saved"
   },
 
+  "languageNames": {
+    "en": "English",
+    "hi": "हिन्दी",
+    "mr": "मराठी"
+  },
+
   "profile": {
     "title": "Profile",
     "reelCardLabel": "What appears on your videos",
@@ -292,7 +329,8 @@
     "notifyRowLabel": "Notify me when videos are ready",
     "wifiOnlyRowLabel": "Upload on Wi-Fi only",
     "languageRowLabel": "Language",
-    "languageValueEnglish": "English",
+    "languagePickerTitle": "Language",
+    "languagePickerSubtitle": "Changes the questions and the read-aloud voice on this phone only.",
     "consentRowLabel": "Consent and privacy",
     "logoutLink": "Log out",
     "versionLabel": "v{{version}}",

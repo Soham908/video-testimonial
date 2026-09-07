@@ -21,13 +21,27 @@ import { NavigationBar as NavigationBarControls } from 'expo-navigation-bar';
 // Rendered once, alongside PaletteSwitcher. iOS has no equivalent concept
 // (the home-indicator area is just safe-area padding, not a colored system
 // chrome bar - see App.tsx's SafeAreaProvider), so this is a no-op there.
+const NAV_BAR_STYLE = 'dark';
+
 export function NavigationBarSync() {
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    NavigationBar.setStyle('dark');
+    NavigationBar.setStyle(NAV_BAR_STYLE);
   }, []);
 
   return null;
+}
+
+// Re-applies the app's standing nav bar icon style. RN's <Modal>
+// (PopupSheet) opens a separate native Dialog window on Android that
+// doesn't inherit the Activity window's nav bar style, so the system
+// quietly resets the icon contrast to its own default (and the bar's own
+// translucent scrim can look like it "changed color") for as long as a
+// modal is showing. Call this whenever a Modal-based popup becomes
+// visible to correct that - see PopupSheet's own use of it.
+export function reapplyNavigationBarStyle(): void {
+  if (Platform.OS !== 'android') return;
+  NavigationBar.setStyle(NAV_BAR_STYLE);
 }
 
 // setStyle() only controls icon contrast, not the bar's own fill (see this

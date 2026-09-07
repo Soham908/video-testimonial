@@ -8,6 +8,7 @@ import type { Typography } from '../theme/typography';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   questionNumber: number;
@@ -58,6 +59,7 @@ export function CameraCheckScreen({
 }: Props) {
   const { spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(spacing, radius, typography), [spacing, radius, typography]);
+  const { t } = useStrings();
 
   // null (not just undefined) while there's nothing to play - useVideoPlayer
   // accepts a null source and stays inert, same fallback QuestionBriefScreen's
@@ -140,9 +142,9 @@ export function CameraCheckScreen({
         ) : (
           <>
             <View>
-              <Text style={styles.title}>Let's check your camera</Text>
+              <Text style={styles.title}>{t('cameraCheck.title')}</Text>
               <Text style={styles.subtitle}>
-                Question {questionNumber} of {totalQuestions}
+                {t('cameraCheck.subtitle', { questionNumber, totalQuestions })}
               </Text>
             </View>
             {/* Its own row below the title, not squeezed into the title's
@@ -152,11 +154,11 @@ export function CameraCheckScreen({
                 a real touch target that isn't right at the screen edge. */}
             <View style={styles.togglePillRow}>
               <View style={styles.togglePill}>
-                <Text style={styles.toggleLabel}>Auto start</Text>
+                <Text style={styles.toggleLabel}>{t('cameraCheck.autoStartLabel')}</Text>
                 <Toggle value={autoStart} onValueChange={onToggleAutoStart} onDark />
               </View>
               <View style={styles.togglePill}>
-                <Text style={styles.toggleLabel}>Read question aloud</Text>
+                <Text style={styles.toggleLabel}>{t('cameraCheck.readQuestionAloudLabel')}</Text>
                 <Toggle value={readQuestionAloud} onValueChange={onToggleReadQuestionAloud} onDark />
               </View>
             </View>
@@ -170,11 +172,13 @@ export function CameraCheckScreen({
             <View style={styles.countdownCircle}>
               <Text style={styles.countdownNumber}>{Math.max(countdownSeconds, 1)}</Text>
             </View>
-            <Text style={styles.countdownLabel}>Recording starts in {Math.max(countdownSeconds, 1)}…</Text>
+            <Text style={styles.countdownLabel}>
+              {t('cameraCheck.countdownLabel', { seconds: Math.max(countdownSeconds, 1) })}
+            </Text>
           </View>
         ) : (
           <Button
-            label={checksReady ? 'Start recording' : 'Waiting for checks…'}
+            label={checksReady ? t('cameraCheck.startRecordingButton') : t('cameraCheck.waitingForChecksButton')}
             onPress={onStartRecording}
             disabled={!checksReady}
           />

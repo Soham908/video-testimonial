@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useStrings } from '../i18n/useStrings';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -23,6 +24,7 @@ interface Props {
 export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   const [username, setUsername] = useState('kumar');
   const [password, setPassword] = useState('kumar123');
@@ -36,7 +38,7 @@ export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
       await login(username, password);
       onLoggedIn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      setError(err instanceof Error ? err.message : t('login.genericError'));
       setSubmitting(false);
     }
   }
@@ -45,14 +47,12 @@ export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
     <Pressable style={styles.container} onPress={Keyboard.dismiss}>
       <View>
         <View style={styles.logoPlaceholder}>
-          <Text style={styles.logoPlaceholderText}>LOGO</Text>
+          <Text style={styles.logoPlaceholderText}>{t('login.logoPlaceholder')}</Text>
         </View>
-        <Text style={styles.title}>Sign in</Text>
-        <Text style={styles.subtitle}>
-          Use the account your company gave you to get started.
-        </Text>
+        <Text style={styles.title}>{t('login.title')}</Text>
+        <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
 
-        <Text style={styles.label}>Username</Text>
+        <Text style={styles.label}>{t('login.usernameLabel')}</Text>
         <TextInput
           style={styles.input}
           value={username}
@@ -63,7 +63,7 @@ export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
           placeholderTextColor={colors.textDisabled}
         />
 
-        <Text style={styles.label}>Password</Text>
+        <Text style={styles.label}>{t('login.passwordLabel')}</Text>
         <TextInput
           style={styles.input}
           value={password}
@@ -85,11 +85,16 @@ export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
           {submitting ? (
             <ActivityIndicator color={colors.accentText} />
           ) : (
-            <Text style={styles.buttonText}>Sign in</Text>
+            <Text style={styles.buttonText}>{t('login.signInButton')}</Text>
           )}
         </Pressable>
 
         {onRegisterPress && (
+          // No matching i18n key yet - "New distributor? Register" is
+          // LoginScreen's own entry point into self-registration, distinct
+          // from selfRegister.switchToRegisterLink (that one is for
+          // switching modes inside SelfRegisterScreen itself). Left as a
+          // literal for now, flagged in this fork's report.
           <Text style={styles.registerLink} onPress={onRegisterPress}>
             New distributor? Register
           </Text>

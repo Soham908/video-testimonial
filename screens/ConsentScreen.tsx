@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useStrings } from '../i18n/useStrings';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -17,41 +18,42 @@ interface Props {
 // a plain pre-recording explainer shown before every session). Final
 // wording needs a compliance review before shipping, this is a v1 UI
 // scaffold only.
-const CONSENT_POINTS = [
-  'You will record a video of yourself answering 5 questions about your work.',
-  'Your company may show this video on its website and to other distributors.',
-  'Nothing is shared until you finish and press send. You can stop at any time.',
-];
-
 export function ConsentScreen({ onAgree }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
   const [agreed, setAgreed] = useState(false);
+
+  const consentPoints = [
+    t('consent.point1'),
+    t('consent.point2'),
+    t('consent.point3'),
+  ];
 
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.eyebrow}>Before you begin</Text>
-        <Text style={styles.title}>Please read this — it's important</Text>
+        <Text style={styles.eyebrow}>{t('consent.eyebrow')}</Text>
+        <Text style={styles.title}>{t('consent.title')}</Text>
         <View style={styles.pointsGroup}>
-          {CONSENT_POINTS.map((point) => (
-            <View key={point} style={styles.pointRow}>
+          {consentPoints.map((point, i) => (
+            <View key={i} style={styles.pointRow}>
               <View style={styles.bullet} />
               <Text style={styles.pointText}>{point}</Text>
             </View>
           ))}
         </View>
-        <Text style={styles.link}>Read the full terms</Text>
+        <Text style={styles.link}>{t('consent.readFullTermsLink')}</Text>
 
         <Pressable style={styles.checkboxRow} onPress={() => setAgreed((v) => !v)}>
           <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
             {agreed && <Text style={styles.checkmark}>✓</Text>}
           </View>
-          <Text style={styles.checkboxLabel}>I understand, and I agree to be recorded.</Text>
+          <Text style={styles.checkboxLabel}>{t('consent.checkboxLabel')}</Text>
         </Pressable>
 
-        <Button label="Agree & continue" onPress={onAgree} disabled={!agreed} />
-        <Text style={styles.hint}>Tick the box above to continue</Text>
+        <Button label={t('consent.agreeButton')} onPress={onAgree} disabled={!agreed} />
+        <Text style={styles.hint}>{t('consent.hint')}</Text>
       </ScrollView>
     </View>
   );
