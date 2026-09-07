@@ -1053,6 +1053,23 @@ export function AppFlow() {
       });
       setKeptTakeIds([]);
     }
+    // Backing out of a direct "Edit take(s)" entry (handleEditTakes) -
+    // identified by reviewTrim + retakeQuestionIndex set + nothing was
+    // actually recorded this session (takesByQuestion empty for this
+    // question, which a genuine retake reaching reviewTrim never has,
+    // since handleRecordingFinished always populates it first). Exiting
+    // should return to My Videos, not drop into Question Brief for a
+    // recording attempt that was never started.
+    if (
+      phase === 'reviewTrim' &&
+      retakeQuestionIndex !== null &&
+      (takesByQuestion[questionIndex] ?? []).length === 0
+    ) {
+      setRetakeQuestionIndex(null);
+      setMainTab('myVideos');
+      setScreen('main');
+      return;
+    }
     setChecksReady(false);
     setTakeAttempt(0);
     setPhase('brief');
@@ -1116,6 +1133,30 @@ export function AppFlow() {
     setChecksReady(false);
     setTakeAttempt(0);
     setPhase('brief');
+    setScreen('question');
+  }
+
+  // Entered from My Videos' "Edit take(s)" link - jumps straight into
+  // Review & Trim for a question's already-saved takes, skipping the
+  // camera flow entirely (no re-recording needed just to adjust trim or
+  // switch which take is primary). Works because ReviewTrimScreen is a
+  // fully self-contained render branch (see the `phase === 'reviewTrim'`
+  // block below) that only reads `videos`/`takesByQuestion` - it never
+  // depends on CameraAlignment being mounted, so no camera/mic permission
+  // or session state is touched by entering this way. Reuses
+  // `retakeQuestionIndex` as the "return to My Videos after Keep" signal,
+  // exactly like a real retake does once its own recording reaches
+  // Review & Trim - handleKeepTake doesn't need to know which path got it
+  // there. Only reachable pre-upload (MyVideosScreen.tsx gates the link on
+  // `!answer.uploaded`) - there's nothing to edit once a segment is
+  // already confirmed server-side.
+  function handleEditTakes(qIndex: number) {
+    setQuestionIndex(qIndex);
+    setRetakeQuestionIndex(qIndex);
+    const questionVideos = videos.filter((v) => v.questionIndex === qIndex);
+    const primary = questionVideos.find((v) => v.isPrimary !== false) ?? questionVideos[0];
+    setSelectedTakeId(primary?.id ?? '');
+    setPhase('reviewTrim');
     setScreen('question');
   }
 
@@ -1302,6 +1343,7 @@ export function AppFlow() {
             onPressAnswer={(row) => setPlayingVideo(row.play)}
             onPressBranded={(row) => row.play && setPlayingVideo({ ...row.play, celebratory: true })}
             onRetake={(qIndex) => setPendingRetake(qIndex)}
+            onEditTakes={handleEditTakes}
             onSwitchPrimary={handleSwitchPrimary}
             onUploadAll={() => {
               setUploadConfirmed(false);

@@ -59,6 +59,11 @@ interface Props {
   // answered) and "record another take" (already answered, from the
   // expanded panel).
   onRetake: (questionIndex: number) => void;
+  // Jumps straight into Review & Trim for this question's already-saved
+  // takes - no camera, no re-recording. Only offered pre-upload (see the
+  // `!answer.uploaded` gate below) - there's nothing left to edit once a
+  // segment is already confirmed server-side.
+  onEditTakes: (questionIndex: number) => void;
   // Purely local - switches which of a question's up to 2 kept takes is
   // primary (no camera, no network). Only meaningful while a row has more
   // than one entry in `takes`.
@@ -90,6 +95,7 @@ export function MyVideosScreen({
   onPressAnswer,
   onPressBranded,
   onRetake,
+  onEditTakes,
   onSwitchPrimary,
   onUploadAll,
 }: Props) {
@@ -116,7 +122,6 @@ export function MyVideosScreen({
   }
 
   const hasAnyReady = reelRenderingEnabled && branded.some((b) => b.status === 'ready');
-  const totalQuestions = questionTexts.length;
 
   const answersSection = (
     <View style={styles.section}>
@@ -124,18 +129,17 @@ export function MyVideosScreen({
       <View style={styles.rowsCard}>
         {questionTexts.map((questionText, questionIndex) => {
           const answer = answers.find((a) => a.questionIndex === questionIndex);
-          const isLast = questionIndex === totalQuestions - 1;
           return (
             <AnswerRowCard
               key={questionIndex}
               questionIndex={questionIndex}
               questionText={questionText}
               answer={answer}
-              isLast={isLast}
               expanded={expandedIndex === questionIndex}
               onToggleExpand={() => setExpandedIndex((prev) => (prev === questionIndex ? null : questionIndex))}
               onPressAnswer={onPressAnswer}
               onRetake={onRetake}
+              onEditTakes={onEditTakes}
               onSwitchPrimary={onSwitchPrimary}
               styles={styles}
               colors={colors}
@@ -234,11 +238,11 @@ function AnswerRowCard({
   questionIndex,
   questionText,
   answer,
-  isLast,
   expanded,
   onToggleExpand,
   onPressAnswer,
   onRetake,
+  onEditTakes,
   onSwitchPrimary,
   styles,
   colors,
@@ -246,11 +250,11 @@ function AnswerRowCard({
   questionIndex: number;
   questionText: string;
   answer: AnswerRow | undefined;
-  isLast: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
   onPressAnswer: (row: AnswerRow) => void;
   onRetake: (questionIndex: number) => void;
+  onEditTakes: (questionIndex: number) => void;
   onSwitchPrimary: (questionIndex: number, takeId: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: PaletteColors;
@@ -259,13 +263,13 @@ function AnswerRowCard({
 
   if (!answer) {
     return (
-      <View style={[styles.row, !isLast && styles.rowDivider]}>
+      <View style={styles.row}>
         <View style={styles.rowTop}>
           <View style={[styles.rowIndex, styles.rowIndexMuted]}>
             <Text style={[styles.rowIndexText, styles.rowIndexTextMuted]}>{questionIndex + 1}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.rowQuestionText, devanagariStyle]} numberOfLines={2}>
+            <Text style={[styles.rowQuestionText, devanagariStyle]} numberOfLines={1}>
               {questionText}
             </Text>
             <Text style={styles.rowMeta}>Not recorded yet</Text>
@@ -282,13 +286,13 @@ function AnswerRowCard({
   const hasTwoTakes = answer.takes.length > 1;
 
   return (
-    <View style={[styles.row, !isLast && styles.rowDivider]}>
+    <View style={styles.row}>
       <Pressable style={styles.rowTop} onPress={onToggleExpand}>
         <View style={styles.rowIndex}>
           <Text style={styles.rowIndexText}>{questionIndex + 1}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.rowQuestionText, devanagariStyle]} numberOfLines={expanded ? undefined : 2}>
+          <Text style={[styles.rowQuestionText, devanagariStyle]} numberOfLines={expanded ? undefined : 1}>
             {questionText}
           </Text>
           {!expanded && (
@@ -349,9 +353,14 @@ function AnswerRowCard({
                   </Carousel>
                 </>
               )}
-              <Text style={styles.retakeText} onPress={() => onRetake(questionIndex)}>
-                {hasTwoTakes ? 'Record another take' : 'Retake'}
-              </Text>
+              <View style={styles.actionLinkRow}>
+                <Text style={styles.retakeText} onPress={() => onEditTakes(questionIndex)}>
+                  {hasTwoTakes ? 'Edit takes' : 'Edit take'}
+                </Text>
+                <Text style={styles.retakeText} onPress={() => onRetake(questionIndex)}>
+                  {hasTwoTakes ? 'Record another take' : 'Retake'}
+                </Text>
+              </View>
             </>
           )}
         </View>
@@ -383,15 +392,19 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       color: colors.textFaint,
       fontWeight: '700',
     },
-    rowsCard: {
-      borderWidth: 1.5,
+    // Each question is its own bordered card now (row below), not one big
+    // bordered box with divider lines between entries - this is just the
+    // vertical gap holding that list of cards together.
+    rowsCard: { gap: spacing.sm },
+    row: {
+      borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.lg,
       backgroundColor: colors.surface,
       paddingHorizontal: spacing.md - 2,
+      paddingTop: spacing.sm + 4,
+      paddingBottom: spacing.xs,
     },
-    row: { paddingVertical: spacing.xs },
-    rowDivider: { borderBottomWidth: 1, borderBottomColor: colors.canvas },
     rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, minHeight: 56 },
     rowIndex: {
       width: 30,
@@ -482,7 +495,8 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       justifyContent: 'center',
     },
     takeCardCheckGlyph: { fontSize: 8, fontWeight: '700', color: colors.accentText },
-    retakeText: { fontSize: 13, fontWeight: '700', color: colors.accent, marginTop: 2 },
+    actionLinkRow: { flexDirection: 'row', gap: spacing.lg, marginTop: 2 },
+    retakeText: { fontSize: 13, fontWeight: '700', color: colors.accent },
     uploadedNote: { fontSize: 13, color: colors.textFaint, lineHeight: 18 },
     emptyBrandedCard: {
       borderWidth: 1.5,
