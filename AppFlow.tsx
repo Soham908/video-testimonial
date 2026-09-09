@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
+import * as Application from 'expo-application';
 import { useCameraPermission, useMicrophonePermission } from 'react-native-vision-camera';
 import { setActiveLanguage, useStrings } from './i18n/useStrings';
 import { LoginScreen } from './screens/LoginScreen';
@@ -22,6 +23,7 @@ import { RehearseScreen } from './screens/RehearseScreen';
 import { CameraCheckScreen } from './screens/CameraCheckScreen';
 import { RecordingScreen } from './screens/RecordingScreen';
 import { ReviewTrimScreen } from './screens/ReviewTrimScreen';
+import { UpdateRequiredScreen } from './screens/UpdateRequiredScreen';
 import { CameraAlignment, type CameraAlignmentHandle, type CaptureFormatInfo } from './CameraAlignment';
 import { RetakeConfirmOverlay } from './screens/RetakeConfirmOverlay';
 import { UploadingScreen } from './screens/UploadingScreen';
@@ -40,6 +42,7 @@ import { useTheme } from './theme/ThemeContext';
 import { useHideNavigationBarWhile } from './theme/NavigationBarSync';
 import { restoreSession, getCurrentAuth, logout } from './auth';
 import { fetchDistributorProfile, type DistributorProfile } from './distributorProfile';
+import { isVersionBelow } from './appVersion';
 import { uploadSegment } from './upload';
 import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
 import { getDeviceInfo } from './deviceInfo';
@@ -1264,6 +1267,24 @@ export function AppFlow() {
     }
     loadQuestions();
     setScreen('onboarding');
+  }
+
+  // Force-update gate - checked ahead of every other screen (including a
+  // still-open video player) since it's a hard block, not a normal
+  // navigation state. Only ever true once distributorProfile has actually
+  // loaded (null before that, so this can't false-trigger during
+  // sessionLoading/login) and min_app_version is genuinely newer than what
+  // Application.nativeApplicationVersion reports - see appVersion.ts.
+  // nativeApplicationVersion is null on web, where this gate is meaningless
+  // (no store to send anyone to) - defaulting a null reading to '0.0.0'
+  // would incorrectly trigger the gate, so it's skipped entirely instead.
+  const updateRequired =
+    !!distributorProfile?.min_app_version &&
+    !!Application.nativeApplicationVersion &&
+    isVersionBelow(Application.nativeApplicationVersion, distributorProfile.min_app_version);
+
+  if (updateRequired) {
+    return <UpdateRequiredScreen />;
   }
 
   if (playingVideo) {

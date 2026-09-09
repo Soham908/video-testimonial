@@ -92,6 +92,13 @@
     "notNowButton": "अभी नहीं"
   },
 
+  "updateRequired": {
+    "badge": "अपडेट ज़रूरी है",
+    "title": "जारी रखने के लिए ऐप को अपडेट करें",
+    "subtitle": "नए वर्शन में मौजूदा समस्याएं ठीक कर दी गई हैं। Play Store से अपडेट करें, फिर ऐप को दोबारा खोलें।",
+    "updateButton": "अभी अपडेट करें"
+  },
+
   "login": {
     "logoPlaceholder": "LOGO",
     "title": "साइन इन करें",

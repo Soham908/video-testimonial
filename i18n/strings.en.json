@@ -93,6 +93,13 @@
     "notNowButton": "Not now"
   },
 
+  "updateRequired": {
+    "badge": "Update needed",
+    "title": "Please update the app to continue",
+    "subtitle": "A newer version fixes issues from the current one. Update from the Play Store, then open the app again.",
+    "updateButton": "Update now"
+  },
+
   "login": {
     "logoPlaceholder": "LOGO",
     "title": "Sign in",
