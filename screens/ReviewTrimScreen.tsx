@@ -20,7 +20,6 @@ export interface Take {
   // already relies on.
   trimStartSeconds?: number;
   trimEndSeconds?: number;
-  removeLastTwoSeconds?: boolean;
   // True for a take that already existed before this session (a retake) -
   // shown with a "Saved" tag instead of counting as one of this
   // recording's live attempts, so it's clear which ones are new.
@@ -32,7 +31,6 @@ interface Props {
   takes: Take[];
   selectedTakeId: string;
   onSelectTake: (id: string) => void;
-  onToggleRemoveLastTwoSeconds: (next: boolean) => void;
   onChangeTrim: (start: number, end: number) => void;
   // Up to MAX_KEPT_TAKES take ids marked to keep. Only user-editable (via
   // onToggleKept) once takes.length exceeds MAX_KEPT_TAKES - below that,
@@ -50,6 +48,11 @@ function formatTime(totalSeconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const REMOVE_LAST_SECONDS = 2;
+// Handle drags land on fractional seconds - treat "close enough to
+// duration - 2" as on, rather than requiring exact float equality.
+const TRIM_END_EPSILON = 0.05;
+
 // New screen, no current equivalent - review/trim is mandatory after every
 // take now (DECISIONS.md), not a conditional "alignment broke" overlay.
 // The timeline is plain (no thumbnails/waveform - both need native
@@ -61,7 +64,6 @@ export function ReviewTrimScreen({
   takes,
   selectedTakeId,
   onSelectTake,
-  onToggleRemoveLastTwoSeconds,
   onChangeTrim,
   keptTakeIds,
   onToggleKept,
@@ -84,6 +86,21 @@ export function ReviewTrimScreen({
   const player = useVideoPlayer(selected?.filePath ?? null, (p) => {
     p.pause();
   });
+
+  // Derived, not stored: "on" means the end handle is currently sitting at
+  // duration - 2, nothing more. This can never drift out of sync with what
+  // actually gets trimmed (unlike a separate boolean, which used to track
+  // this and could silently disagree with the slider - see recordings.ts).
+  const selectedDuration = selected?.durationSeconds ?? 0;
+  const selectedEnd = selected?.trimEndSeconds ?? selectedDuration;
+  const removeLastTwoSecondsOn =
+    !!selected && Math.abs(selectedEnd - (selectedDuration - REMOVE_LAST_SECONDS)) < TRIM_END_EPSILON;
+
+  function handleToggleRemoveLastTwoSeconds(next: boolean) {
+    if (!selected) return;
+    const start = selected.trimStartSeconds ?? 0;
+    onChangeTrim(start, next ? Math.max(start, selectedDuration - REMOVE_LAST_SECONDS) : selectedDuration);
+  }
 
   // Picking is only required once there's more to choose from than the
   // take cap allows - below that, the caller already marks everything in
@@ -189,7 +206,7 @@ export function ReviewTrimScreen({
             <Text style={styles.toggleLabel}>{t('reviewTrim.removeLastTwoSecondsLabel')}</Text>
             <Text style={styles.toggleReason}>{t('reviewTrim.removeLastTwoSecondsReason')}</Text>
           </View>
-          <Toggle value={selected?.removeLastTwoSeconds ?? false} onValueChange={onToggleRemoveLastTwoSeconds} />
+          <Toggle value={removeLastTwoSecondsOn} onValueChange={handleToggleRemoveLastTwoSeconds} />
         </View>
 
         {selected && (

@@ -34,16 +34,18 @@ export interface RecordedVideo {
   // Trim metadata only - Review & Trim's timeline doesn't do any actual
   // media processing (no frame thumbnails/waveform, no bundled video/audio
   // decode dependency - see DECISIONS.md). These are just the chosen
-  // in/out points and toggle state, applied at upload/render time.
-  // undefined (not pre-seeded to 0..duration) until an actual drag happens
-  // - upload.ts's `!= null` check is what distinguishes "never touched"
-  // from "deliberately chose the full clip," no separate flag needed.
+  // in/out points, applied at upload/render time. The "remove last 2
+  // seconds" toggle isn't separate state of its own - it's derived from
+  // trimEndSeconds (ReviewTrimScreen.tsx), so it can never drift out of
+  // sync with what actually gets trimmed. undefined (not pre-seeded to
+  // 0..duration) until an actual drag/toggle happens - upload.ts's `!= null`
+  // check is what distinguishes "never touched" from "deliberately chose
+  // the full clip," no separate flag needed.
   // Per-take (not a single flow-level value) since up to 2 takes can now
   // be kept per question (AppFlow.tsx's take-keeping flow) and each needs
   // its own trim state to survive switching between them in Review & Trim.
   trimStartSeconds?: number;
   trimEndSeconds?: number;
-  removeLastTwoSeconds?: boolean;
   // True for whichever of up to 2 kept takes is the one that actually gets
   // uploaded (AppFlow.tsx's upload effect uploads primary-only) and shown
   // by default in My Videos. Exactly one take per questionIndex is primary

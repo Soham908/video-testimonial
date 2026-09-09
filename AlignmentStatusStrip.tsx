@@ -4,6 +4,7 @@ import type { AlignmentSignals } from './alignment';
 import type { NoiseCheckStatus } from './useAmbientNoiseCheck';
 import { useTheme } from './theme/ThemeContext';
 import type { Spacing } from './theme/spacing';
+import type { Radius } from './theme/radius';
 import { ChecklistRow, type CheckStatus } from './components/ui/ChecklistRow';
 import { useStrings } from './i18n/useStrings';
 
@@ -35,8 +36,8 @@ export function AlignmentStatusStrip({
   noiseOverridden,
   onOverrideNoise,
 }: Props) {
-  const { spacing } = useTheme();
-  const styles = useMemo(() => makeStyles(spacing), [spacing]);
+  const { spacing, radius } = useTheme();
+  const styles = useMemo(() => makeStyles(spacing, radius), [spacing, radius]);
   const { t } = useStrings();
 
   const [revealed, setRevealed] = useState({ framing: false, distance: false, sound: false });
@@ -74,14 +75,16 @@ export function AlignmentStatusStrip({
       </View>
       {showSkip && (
         <Pressable style={styles.skipRow} onPress={onOverrideNoise} hitSlop={8}>
-          <Text style={styles.skipText}>{t('alignmentGuide.skipNoiseCheckButton')}</Text>
+          <View style={styles.skipPill}>
+            <Text style={styles.skipText}>{t('alignmentGuide.skipNoiseCheckButton')}</Text>
+          </View>
         </Pressable>
       )}
     </View>
   );
 }
 
-function makeStyles(spacing: Spacing) {
+function makeStyles(spacing: Spacing, radius: Radius) {
   return StyleSheet.create({
     container: {
       position: 'absolute',
@@ -96,6 +99,17 @@ function makeStyles(spacing: Spacing) {
     },
     rows: { gap: spacing.xs },
     skipRow: { alignItems: 'center', marginTop: spacing.md },
-    skipText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
+    // A dark pill behind the text, not just brighter text on the bare
+    // camera feed - plain text (even at high opacity) still disappears
+    // against something bright directly behind it, e.g. a white shirt.
+    // The pill's own fixed dark fill reads reliably no matter what's in
+    // the feed.
+    skipPill: {
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    skipText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   });
 }

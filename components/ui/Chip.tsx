@@ -19,14 +19,23 @@ export function Chip({ label, onPress, selected, onDark, emphasis }: ChipProps) 
 
   const background = onDark
     ? emphasis
-      ? 'rgba(255,255,255,0.28)'
+      ? 'rgba(0,0,0,0.55)'
       : 'rgba(255,255,255,0.16)'
     : selected
       ? colors.accentSoft
       : colors.canvas;
   const textColor = onDark ? '#FFFFFF' : selected ? colors.accent : colors.textMuted;
 
-  const pillStyle = [styles.base, { backgroundColor: background, borderRadius: radius.pill }];
+  const pillStyle = [
+    styles.base,
+    { backgroundColor: background, borderRadius: radius.pill },
+    // A translucent-white fill (the plain onDark treatment) washes out
+    // against a bright/plain background in the live camera feed - these
+    // need to read reliably regardless of what's behind them, so pair the
+    // darker fill (matches questionBubble/recIndicator's own dark-backing
+    // treatment above) with a light border for definition on dark footage too.
+    onDark && emphasis && styles.emphasisBorder,
+  ];
   const content = (
     <Text
       style={[
@@ -57,4 +66,5 @@ const styles = StyleSheet.create({
   base: { paddingVertical: 10, paddingHorizontal: 15, alignSelf: 'flex-start' },
   label: { fontSize: 14.5, fontWeight: '600' },
   labelEmphasis: { fontWeight: '800' },
+  emphasisBorder: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
 });

@@ -630,7 +630,17 @@ export function AppFlow() {
       }
       if (screen === 'question') {
         if (phase === 'brief') {
-          setMainTab('home');
+          // Entered via a retake (My Videos' "Retake" or "Edit take(s)")
+          // rather than the normal question sequence - back should return
+          // to where that came from, same as every other exit point in this
+          // flow that checks retakeQuestionIndex (handleKeepTake,
+          // confirmExitQuestionFlow).
+          if (retakeQuestionIndex !== null) {
+            setRetakeQuestionIndex(null);
+            setMainTab('myVideos');
+          } else {
+            setMainTab('home');
+          }
           setScreen('main');
           return true;
         }
@@ -665,7 +675,7 @@ export function AppFlow() {
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', handler);
     return () => sub.remove();
-  }, [screen, phase, mainTab, playingVideo, uploadConfirmed]);
+  }, [screen, phase, mainTab, playingVideo, uploadConfirmed, retakeQuestionIndex]);
 
   // Uploads every recorded segment for this session, sequentially, once
   // confirmed - real presigned-URL upload + confirm per segment (see
@@ -995,8 +1005,8 @@ export function AppFlow() {
     return [...videos.filter((v) => v.questionIndex === qIndex), ...(takesByQuestion[qIndex] ?? [])];
   }
 
-  // Applies a patch (trim edits, removeLastTwoSeconds) to whichever pool
-  // member has this id, regardless of whether it's an already-saved take
+  // Applies a trim-edit patch to whichever pool member has this id,
+  // regardless of whether it's an already-saved take
   // (in `videos`) or one recorded this session (in `takesByQuestion`) -
   // callers don't need to know which. This is what lets each take carry
   // its own trim independently, and what makes switching the previewed
@@ -1561,7 +1571,14 @@ export function AppFlow() {
         onStartRecording={enterCameraCheck}
         onRehearse={() => setPhase('rehearse')}
         onBack={() => {
-          setMainTab('home');
+          // Same retakeQuestionIndex check as the hardware-back handler
+          // above - a retake entry must return to My Videos, not Home.
+          if (retakeQuestionIndex !== null) {
+            setRetakeQuestionIndex(null);
+            setMainTab('myVideos');
+          } else {
+            setMainTab('home');
+          }
           setScreen('main');
         }}
       />
@@ -1582,14 +1599,10 @@ export function AppFlow() {
             durationSeconds: t.durationSeconds,
             trimStartSeconds: t.trimStartSeconds,
             trimEndSeconds: t.trimEndSeconds,
-            removeLastTwoSeconds: t.removeLastTwoSeconds,
             saved: savedIds.has(t.id),
           }))}
           selectedTakeId={activeTakeId}
           onSelectTake={setSelectedTakeId}
-          onToggleRemoveLastTwoSeconds={(next) =>
-            updatePoolTake(questionIndex, activeTakeId, { removeLastTwoSeconds: next })
-          }
           onChangeTrim={(s, e) =>
             updatePoolTake(questionIndex, activeTakeId, { trimStartSeconds: s, trimEndSeconds: e })
           }

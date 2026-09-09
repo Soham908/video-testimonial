@@ -19,7 +19,10 @@ export function Toggle({ value, onValueChange, onDark, disabled }: ToggleProps) 
     ? colors.accent
     : onDark
       ? 'rgba(255,255,255,0.2)'
-      : colors.border;
+      // colors.border is a hairline-outline color (near-white on the light
+      // palettes), too faint to read as a filled track against a white/
+      // off-white card - needs its own fill, not a reused outline token.
+      : 'rgba(0,0,0,0.16)';
   const knobColor = onDark && !value ? 'rgba(255,255,255,0.7)' : onDark ? '#FFFFFF' : colors.surface;
 
   return (
