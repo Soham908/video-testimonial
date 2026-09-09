@@ -1,16 +1,5 @@
 # DECISIONS
 
-not handled states, permissions screen opened up, i clicked on 'Dont allow'
-need to handle that state, for both of the permissions
-
-also a side question, is it because im running on the development build the 'back' button does not work
-it just closes the app right now, it should handle this properly right
-
-
-
-
-
-
 Single source of truth for product and design decisions on the testimonial app.
 
 **How to use this file:** when something is decided, move it from OPEN to
@@ -21,7 +10,7 @@ they stop the same idea being re-litigated three sessions later.
 Keep reasons short. The reason is the point; without it a decision is just
 a preference nobody can evaluate later.
 
-Last updated: [date]
+Last updated: 2026-09-09
 
 ---
 
@@ -34,7 +23,7 @@ Last updated: [date]
 | One question per session, not one continuous flow | Continuous flow is all-or-nothing — dropping out at Q2 yields nothing usable. Per-question is resumable by construction. |
 | 5 questions for the first client | Scoped to first client; larger enterprise clients may use more. |
 | Every question produces a branded reel (this version) | The reel is the distributor's only incentive. Split into feedback-only questions is deferred, not rejected. |
-| English only for now | Pitch audience is English-speaking; also faster to evaluate UI in one language. |
+| English, Hindi, Marathi — local-only language picker | Backend has no write-back for `language_pref` yet, only a per-call `?language=` override; picker + VO re-fetch/re-cache on switch shipped (`ProfileScreen.tsx`, `voCache.ts` keyed by question+language). Superseded the original "English only for now." |
 | Uploads are manual and batched — nothing sent until the user submits | User (and boss) decision. Massively reduces orphaned-upload risk vs. auto-upload, and matches the one-question-at-a-time model. |
 | Per-question reels, not one merged video | Simplifies render triggering; eliminates stale-render-after-retake. |
 | Takes: enabled, capped at 3, oldest replaced | Retakes matter for quality; a cap keeps My Videos scannable and storage bounded. |
@@ -154,7 +143,6 @@ Help 8D · Profile 9C · Onboarding 14B
   without exposed insights.
 - **`brand_themes` table** — cheaper to add before theming spreads across RN,
   ffmpeg, AE, and reports.
-- **Hindi and other languages** — deferred, not rejected.
 
 ---
 
