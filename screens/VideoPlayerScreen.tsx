@@ -8,6 +8,7 @@ import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
+import { useStrings } from '../i18n/useStrings';
 
 // Only needs filePath + label, not a full RecordedVideo - lets this be
 // reused for both a local recording (file:// URI) and a remote branded/
@@ -31,6 +32,7 @@ export function VideoPlayerScreen({ video, onClose }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const { t } = useStrings();
 
   // filePath is either a full file:// URI (local recording, already
   // durable-storage-relative from recordings.ts) or a remote https:// URI
@@ -71,18 +73,22 @@ export function VideoPlayerScreen({ video, onClose }: Props) {
       <VideoView style={styles.video} player={player} contentFit="contain" nativeControls />
 
       <Pressable style={styles.closeButton} onPress={onClose}>
-        <Text style={styles.closeButtonText}>Close</Text>
+        <Text style={styles.closeButtonText}>{t('videoPlayer.closeButton')}</Text>
       </Pressable>
 
       {video.celebratory ? (
         <View style={styles.celebratoryFooter}>
-          <Text style={styles.congrats}>Congratulations!</Text>
-          <Text style={styles.congratsSubtitle}>{video.label} is ready</Text>
+          <Text style={styles.congrats}>{t('videoPlayer.congratulations')}</Text>
+          <Text style={styles.congratsSubtitle}>{t('videoPlayer.congratsSubtitle', { label: video.label })}</Text>
           <View style={styles.celebratoryActions}>
-            <Button label="Share on WhatsApp" onPress={handleShare} />
+            <Button label={t('videoPlayer.shareButton')} onPress={handleShare} />
             <Button
               label={
-                saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Save to phone'
+                saveState === 'saved'
+                  ? t('videoPlayer.saveButtonSaved')
+                  : saveState === 'saving'
+                    ? t('videoPlayer.saveButtonSaving')
+                    : t('videoPlayer.saveButtonIdle')
               }
               onPress={handleSave}
               variant="secondary"

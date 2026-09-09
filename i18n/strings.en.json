@@ -100,7 +100,8 @@
     "usernameLabel": "Username",
     "passwordLabel": "Password",
     "genericError": "Something went wrong.",
-    "signInButton": "Sign in"
+    "signInButton": "Sign in",
+    "registerLink": "New distributor? Register"
   },
 
   "selfRegister": {
@@ -318,12 +319,16 @@
 
   "profile": {
     "title": "Profile",
+    "addYourNameFallback": "Add your name",
     "reelCardLabel": "What appears on your videos",
+    "reelCardEmpty": "Nothing set yet - add your name and business below.",
     "distributorForYears": "Distributor for {{years}} years",
     "editDetailsLink": "Edit these details",
     "accountSectionLabel": "Account",
     "phoneRowLabel": "Phone",
+    "phoneNotAvailable": "Not available yet",
     "distributorIdRowLabel": "Distributor ID",
+    "distributorIdLoading": "Loading…",
     "distributorForRowLabel": "Distributor for",
     "settingsSectionLabel": "Settings",
     "notifyRowLabel": "Notify me when videos are ready",

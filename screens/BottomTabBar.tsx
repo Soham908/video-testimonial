@@ -5,6 +5,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Typography } from '../theme/typography';
+import { useStrings } from '../i18n/useStrings';
 
 export type MainTab = 'home' | 'myVideos' | 'help' | 'profile';
 
@@ -34,27 +35,38 @@ export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }:
     [colors, spacing, typography, insets.bottom],
   );
   const inactive = colors.textDisabled;
+  const { t } = useStrings();
 
   return (
     <View style={styles.container}>
-      <TabItem label="Home" active={activeTab === 'home'} onPress={() => onTabPress('home')} styles={styles}>
+      <TabItem label={t('bottomTabBar.home')} active={activeTab === 'home'} onPress={() => onTabPress('home')} styles={styles}>
         <View style={[styles.homeIconRoof, activeTab === 'home' && styles.iconActiveBg]} />
         <View style={[styles.homeIconBase, activeTab === 'home' && styles.iconActiveBg]} />
       </TabItem>
-      <TabItem label="My videos" active={activeTab === 'myVideos'} onPress={() => onTabPress('myVideos')} styles={styles}>
+      <TabItem
+        label={t('bottomTabBar.myVideos')}
+        active={activeTab === 'myVideos'}
+        onPress={() => onTabPress('myVideos')}
+        styles={styles}
+      >
         <View style={[styles.videosIconFrame, activeTab === 'myVideos' && styles.iconActiveBorder]}>
           <View style={[styles.videosIconTriangle, activeTab === 'myVideos' && styles.iconActiveTriangle]} />
         </View>
         {myVideosHasNotification && <View style={styles.notificationDot} />}
       </TabItem>
-      <TabItem label="Help" active={activeTab === 'help'} onPress={() => onTabPress('help')} styles={styles}>
+      <TabItem label={t('bottomTabBar.help')} active={activeTab === 'help'} onPress={() => onTabPress('help')} styles={styles}>
         {/* Basic placeholder glyph - real icon treatment lands with the
             Help screen's own build phase, matching the others' style. */}
         <View style={[styles.helpIconCircle, activeTab === 'help' && styles.iconActiveBorder]}>
           <Text style={[styles.helpIconGlyph, { color: activeTab === 'help' ? colors.accent : inactive }]}>?</Text>
         </View>
       </TabItem>
-      <TabItem label="Profile" active={activeTab === 'profile'} onPress={() => onTabPress('profile')} styles={styles}>
+      <TabItem
+        label={t('bottomTabBar.profile')}
+        active={activeTab === 'profile'}
+        onPress={() => onTabPress('profile')}
+        styles={styles}
+      >
         <View style={[styles.profileIconHead, activeTab === 'profile' && styles.iconActiveBorder]} />
         <View style={[styles.profileIconBody, activeTab === 'profile' && styles.iconActiveBorder]} />
       </TabItem>

@@ -9,14 +9,7 @@ import type { LanguageCode } from '../preferences';
 import { Button } from '../components/ui/Button';
 import { ListRow } from '../components/ui/ListRow';
 import { PopupSheet } from '../components/ui/Modal';
-
-// Display name shown in-script, per language - matches the CLAUDE.md-
-// agreed picker (English/हिन्दी/मराठी), not a translated "Language" label.
-const LANGUAGE_LABELS: Record<LanguageCode, string> = {
-  en: 'English',
-  hi: 'हिन्दी',
-  mr: 'मराठी',
-};
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   // Real distributor identity (auth.ts / distributorProfile.ts) - null/
@@ -70,6 +63,7 @@ export function ProfileScreen({
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   const [editing, setEditing] = useState(false);
   const [changingLanguage, setChangingLanguage] = useState(false);
@@ -104,47 +98,47 @@ export function ProfileScreen({
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Profile</Text>
+      <Text style={styles.title}>{t('profile.title')}</Text>
 
       <View style={styles.header}>
         <View style={styles.avatar}>
           {initials ? <Text style={styles.avatarText}>{initials}</Text> : <GenericAvatarGlyph />}
         </View>
         <View>
-          <Text style={styles.name}>{reelName || 'Add your name'}</Text>
+          <Text style={styles.name}>{reelName || t('profile.addYourNameFallback')}</Text>
           {reelBusiness.length > 0 && <Text style={styles.role}>{reelBusiness}</Text>}
         </View>
       </View>
 
       <View style={styles.reelCard}>
-        <Text style={styles.reelCardLabel}>What appears on your videos</Text>
+        <Text style={styles.reelCardLabel}>{t('profile.reelCardLabel')}</Text>
         {hasReelDetails ? (
           <>
             {reelName.length > 0 && <Text style={styles.reelCardValue}>{reelName}</Text>}
             {reelBusiness.length > 0 && <Text style={styles.reelCardValue}>{reelBusiness}</Text>}
             {showYears && years.length > 0 && (
-              <Text style={styles.reelCardValue}>Distributor for {years} years</Text>
+              <Text style={styles.reelCardValue}>{t('profile.distributorForYears', { years })}</Text>
             )}
           </>
         ) : (
-          <Text style={styles.reelCardEmpty}>Nothing set yet - add your name and business below.</Text>
+          <Text style={styles.reelCardEmpty}>{t('profile.reelCardEmpty')}</Text>
         )}
         <Text style={styles.editLink} onPress={() => setEditing(true)}>
-          Edit these details
+          {t('profile.editDetailsLink')}
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Account</Text>
+        <Text style={styles.sectionLabel}>{t('profile.accountSectionLabel')}</Text>
         <View style={{ gap: spacing.sm }}>
-          <ListRow title="Phone" subtitle={distributorPhone ?? 'Not available yet'} />
+          <ListRow title={t('profile.phoneRowLabel')} subtitle={distributorPhone ?? t('profile.phoneNotAvailable')} />
           <ListRow
-            title="Distributor ID"
-            subtitle={distributorId ? formatDistributorId(distributorId) : 'Loading…'}
+            title={t('profile.distributorIdRowLabel')}
+            subtitle={distributorId ? formatDistributorId(distributorId) : t('profile.distributorIdLoading')}
           />
           {reelBusiness.length > 0 && (
             <ListRow
-              title="Distributor for"
+              title={t('profile.distributorForRowLabel')}
               subtitle={years.length > 0 ? `${reelBusiness} · ${years} years` : reelBusiness}
             />
           )}
@@ -152,24 +146,24 @@ export function ProfileScreen({
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Settings</Text>
+        <Text style={styles.sectionLabel}>{t('profile.settingsSectionLabel')}</Text>
         <View style={{ gap: spacing.sm }}>
           <ListRow
-            title="Notify me when videos are ready"
+            title={t('profile.notifyRowLabel')}
             trailing={<Switch value={notifyOnReady} onValueChange={setNotifyOnReady} trackColor={{ true: colors.accent }} />}
           />
           <ListRow
-            title="Upload on Wi-Fi only"
+            title={t('profile.wifiOnlyRowLabel')}
             trailing={<Switch value={wifiOnly} onValueChange={setWifiOnly} trackColor={{ true: colors.accent }} />}
           />
           <ListRow
-            title="Language"
-            subtitle={LANGUAGE_LABELS[language ?? 'en']}
+            title={t('profile.languageRowLabel')}
+            subtitle={t(`languageNames.${language ?? 'en'}`)}
             onPress={() => setChangingLanguage(true)}
             trailing={<Text style={styles.rowChevron}>›</Text>}
           />
           <ListRow
-            title="Consent and privacy"
+            title={t('profile.consentRowLabel')}
             onPress={onOpenConsent}
             trailing={<Text style={styles.rowChevron}>›</Text>}
           />
@@ -178,46 +172,59 @@ export function ProfileScreen({
 
       {onLogout && (
         <Text style={styles.logoutLink} onPress={onLogout}>
-          Log out
+          {t('profile.logoutLink')}
         </Text>
       )}
 
-      <Text style={styles.version}>v1.0</Text>
+      <Text style={styles.version}>{t('profile.versionLabel', { version: '1.0' })}</Text>
 
       <PopupSheet visible={editing} onDismiss={() => setEditing(false)}>
         <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
-          Edit these details
+          {t('profile.editPopupTitle')}
         </Text>
         <Text style={{ fontSize: 13, color: colors.textFaint, marginBottom: 18, lineHeight: 18 }}>
-          Everything here shows on your finished video - nothing else does.
+          {t('profile.editPopupSubtitle')}
         </Text>
 
         <View style={{ gap: spacing.md }}>
-          <Field label="Name" value={reelName} onChangeText={setReelName} styles={styles} />
-          <Field label="Business" value={reelBusiness} onChangeText={setReelBusiness} styles={styles} />
+          <Field label={t('profile.editPopupNameLabel')} value={reelName} onChangeText={setReelName} styles={styles} />
+          <Field
+            label={t('profile.editPopupBusinessLabel')}
+            value={reelBusiness}
+            onChangeText={setReelBusiness}
+            styles={styles}
+          />
 
           <View style={styles.yearsRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.fieldLabel}>Show "Distributor for X years"</Text>
+              <Text style={styles.fieldLabel}>{t('profile.editPopupShowYearsLabel')}</Text>
             </View>
             <Switch value={showYears} onValueChange={setShowYears} trackColor={{ true: colors.accent }} />
           </View>
-          {showYears && <Field label="Years" value={years} onChangeText={setYears} styles={styles} keyboardType="number-pad" />}
+          {showYears && (
+            <Field
+              label={t('profile.editPopupYearsLabel')}
+              value={years}
+              onChangeText={setYears}
+              styles={styles}
+              keyboardType="number-pad"
+            />
+          )}
         </View>
 
-        <Button label="Save" onPress={() => setEditing(false)} style={{ marginTop: spacing.xl }} />
+        <Button label={t('profile.editPopupSaveButton')} onPress={() => setEditing(false)} style={{ marginTop: spacing.xl }} />
       </PopupSheet>
 
       <PopupSheet visible={changingLanguage} onDismiss={() => setChangingLanguage(false)}>
         <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
-          Language
+          {t('profile.languagePickerTitle')}
         </Text>
         <Text style={{ fontSize: 13, color: colors.textFaint, marginBottom: 18, lineHeight: 18 }}>
-          Changes the questions and the read-aloud voice on this phone only.
+          {t('profile.languagePickerSubtitle')}
         </Text>
 
         <View style={{ gap: spacing.sm }}>
-          {(Object.keys(LANGUAGE_LABELS) as LanguageCode[]).map((code) => {
+          {(['en', 'hi', 'mr'] as LanguageCode[]).map((code) => {
             const selected = (language ?? 'en') === code;
             return (
               <Pressable
@@ -228,7 +235,7 @@ export function ProfileScreen({
                   setChangingLanguage(false);
                 }}
               >
-                <Text style={styles.languageRowText}>{LANGUAGE_LABELS[code]}</Text>
+                <Text style={styles.languageRowText}>{t(`languageNames.${code}`)}</Text>
                 {selected && <Text style={styles.languageRowCheck}>✓</Text>}
               </Pressable>
             );

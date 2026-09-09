@@ -10,6 +10,7 @@ import { Carousel } from '../components/ui/Carousel';
 import { Dropdown } from '../components/ui/Dropdown';
 import { PopupSheet } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
+import { useStrings, type UseStringsResult } from '../i18n/useStrings';
 
 interface QuickTip {
   id: string;
@@ -22,32 +23,42 @@ interface HowToVideo {
   duration: string;
 }
 
-const QUICK_TIPS: QuickTip[] = [
-  { id: 'light', label: 'Face a window', reason: 'Light on your face (not behind you) is the single biggest quality difference.' },
-  { id: 'quiet', label: 'Find quiet', reason: 'A closed door or a quieter room makes your voice easy to hear clearly.' },
-  { id: 'phone', label: 'Prop your phone', reason: 'Resting your phone against something steady beats holding it.' },
-];
+// Durations are decorative mock data, not translatable copy - kept as
+// plain literals; only the titles come from t().
+function makeQuickTips(t: UseStringsResult['t']): QuickTip[] {
+  return [
+    { id: 'light', label: t('help.quickTipLightLabel'), reason: t('help.quickTipLightReason') },
+    { id: 'quiet', label: t('help.quickTipQuietLabel'), reason: t('help.quickTipQuietReason') },
+    { id: 'phone', label: t('help.quickTipPhoneLabel'), reason: t('help.quickTipPhoneReason') },
+  ];
+}
 
-const HOW_TO_VIDEOS: HowToVideo[] = [
-  { title: 'Where to stand for good light', duration: '1:10' },
-  { title: 'Speaking without a script', duration: '0:48' },
-  { title: 'Choosing a quiet spot', duration: '0:55' },
-  { title: 'Framing yourself well', duration: '0:42' },
-  { title: 'What a 45-second answer sounds like', duration: '0:45' },
-  { title: 'Fixing a shaky start', duration: '0:38' },
-];
+function makeHowToVideos(t: UseStringsResult['t']): HowToVideo[] {
+  return [
+    { title: t('help.howToVideo1Title'), duration: '1:10' },
+    { title: t('help.howToVideo2Title'), duration: '0:48' },
+    { title: t('help.howToVideo3Title'), duration: '0:55' },
+    { title: t('help.howToVideo4Title'), duration: '0:42' },
+    { title: t('help.howToVideo5Title'), duration: '0:45' },
+    { title: t('help.howToVideo6Title'), duration: '0:38' },
+  ];
+}
 
-const SAMPLE_VIDEOS = [
-  { title: 'A good answer', duration: '0:48' },
-  { title: 'Keeping it short', duration: '0:39' },
-  { title: 'Speaking plainly', duration: '0:52' },
-];
+function makeSampleVideos(t: UseStringsResult['t']) {
+  return [
+    { title: t('help.sampleVideo1Title'), duration: '0:48' },
+    { title: t('help.sampleVideo2Title'), duration: '0:39' },
+    { title: t('help.sampleVideo3Title'), duration: '0:52' },
+  ];
+}
 
-const FAQS = [
-  { q: 'Can I redo an answer?', a: 'Yes - you can review and re-record any answer before you send everything, and change one afterward from My Videos.' },
-  { q: 'Who sees my video?', a: 'Only your company. Nothing is shared with other distributors.' },
-  { q: 'What if I make a mistake mid-answer?', a: "Keep going - you'll get to watch it back and decide whether to keep it before anything is sent." },
-];
+function makeFaqs(t: UseStringsResult['t']) {
+  return [
+    { q: t('help.faq1Question'), a: t('help.faq1Answer') },
+    { q: t('help.faq2Question'), a: t('help.faq2Answer') },
+    { q: t('help.faq3Question'), a: t('help.faq3Answer') },
+  ];
+}
 
 // Design 8D + 8E/8F pop-ups - fully new, no current screen. Quick-tip chips
 // open a video pop-up, how-to videos show 2 with a "see all" expand,
@@ -56,27 +67,33 @@ const FAQS = [
 export function HelpScreen() {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   const [openTip, setOpenTip] = useState<QuickTip | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
   const [showAllVideos, setShowAllVideos] = useState(false);
 
-  const visibleVideos = showAllVideos ? HOW_TO_VIDEOS : HOW_TO_VIDEOS.slice(0, 2);
+  const quickTips = makeQuickTips(t);
+  const howToVideos = makeHowToVideos(t);
+  const sampleVideos = makeSampleVideos(t);
+  const faqs = makeFaqs(t);
+  const visibleVideos = showAllVideos ? howToVideos : howToVideos.slice(0, 2);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Help</Text>
-      <Text style={styles.subtitle}>Short answers and short videos</Text>
+      <Text style={styles.title}>{t('help.title')}</Text>
+      <Text style={styles.subtitle}>{t('help.subtitle')}</Text>
 
       <View style={styles.chipsRow}>
-        {QUICK_TIPS.map((tip) => (
+        {quickTips.map((tip) => (
           <Chip key={tip.id} label={tip.label} onPress={() => setOpenTip(tip)} />
         ))}
       </View>
 
       <SectionHeader
-        title="How-to videos"
+        title={t('help.howToSectionTitle')}
         onSeeAll={!showAllVideos ? () => setShowAllVideos(true) : undefined}
+        seeAllLabel={t('help.howToSeeAll')}
         styles={styles}
       />
       <View style={styles.videoGrid}>
@@ -93,26 +110,30 @@ export function HelpScreen() {
 
       <View style={styles.contactCard} onTouchEnd={() => setContactOpen(true)}>
         <View>
-          <Text style={styles.contactTitle}>Talk to someone</Text>
-          <Text style={styles.contactSubtitle}>WhatsApp, or ask for a call back</Text>
+          <Text style={styles.contactTitle}>{t('help.contactCardTitle')}</Text>
+          <Text style={styles.contactSubtitle}>{t('help.contactCardSubtitle')}</Text>
         </View>
         <Text style={styles.chevron}>›</Text>
       </View>
 
-      <SectionHeader title="Sample videos" subtitle="Made by the company to show what a good answer looks like" styles={styles} />
+      <SectionHeader
+        title={t('help.sampleVideosSectionTitle')}
+        subtitle={t('help.sampleVideosSectionSubtitle')}
+        styles={styles}
+      />
       <Carousel>
-        {SAMPLE_VIDEOS.map((v) => (
+        {sampleVideos.map((v) => (
           <View key={v.title} style={styles.sampleThumb}>
-            <Text style={styles.exampleTagText}>EXAMPLE</Text>
+            <Text style={styles.exampleTagText}>{t('help.exampleTag')}</Text>
             <Text style={styles.sampleTitle}>{v.title}</Text>
             <Text style={styles.sampleDuration}>{v.duration}</Text>
           </View>
         ))}
       </Carousel>
 
-      <SectionHeader title="FAQs" styles={styles} />
+      <SectionHeader title={t('help.faqsSectionTitle')} styles={styles} />
       <View style={{ gap: spacing.sm }}>
-        {FAQS.map((faq) => (
+        {faqs.map((faq) => (
           <Dropdown key={faq.q} title={faq.q}>
             <Text style={{ ...typography.caption, color: colors.textMuted, lineHeight: 20 }}>{faq.a}</Text>
           </Dropdown>
@@ -137,14 +158,21 @@ export function HelpScreen() {
 
       <PopupSheet visible={contactOpen} onDismiss={() => setContactOpen(false)}>
         <Text style={{ fontSize: 19, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
-          Talk to someone
+          {t('help.contactPopupTitle')}
         </Text>
         <Text style={{ fontSize: 13, color: colors.textFaint, marginBottom: 18 }}>
-          Weekdays, 9am - 7pm
+          {t('help.contactPopupSubtitle')}
         </Text>
         <View style={{ gap: 10 }}>
-          <Button label="Message on WhatsApp" onPress={() => Linking.openURL('https://wa.me/910000000000')} />
-          <Button label="Ask for a call back" variant="secondary" onPress={() => setContactOpen(false)} />
+          <Button
+            label={t('help.contactPopupWhatsAppButton')}
+            onPress={() => Linking.openURL('https://wa.me/910000000000')}
+          />
+          <Button
+            label={t('help.contactPopupCallBackButton')}
+            variant="secondary"
+            onPress={() => setContactOpen(false)}
+          />
         </View>
       </PopupSheet>
     </ScrollView>
@@ -163,11 +191,13 @@ function SectionHeader({
   title,
   subtitle,
   onSeeAll,
+  seeAllLabel,
   styles,
 }: {
   title: string;
   subtitle?: string;
   onSeeAll?: () => void;
+  seeAllLabel?: string;
   styles: ReturnType<typeof makeStyles>;
 }) {
   return (
@@ -176,7 +206,7 @@ function SectionHeader({
         <Text style={styles.sectionTitle}>{title}</Text>
         {onSeeAll && (
           <Text style={styles.sectionSeeAll} onPress={onSeeAll}>
-            See all
+            {seeAllLabel}
           </Text>
         )}
       </View>

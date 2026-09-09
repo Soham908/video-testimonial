@@ -99,7 +99,8 @@
     "usernameLabel": "युजरनेम",
     "passwordLabel": "पासवर्ड",
     "genericError": "काहीतरी चुकलं.",
-    "signInButton": "साइन इन करा"
+    "signInButton": "साइन इन करा",
+    "registerLink": "नवीन डिस्ट्रीब्युटर आहात? रजिस्टर करा"
   },
 
   "selfRegister": {
@@ -311,12 +312,16 @@
 
   "profile": {
     "title": "प्रोफाइल",
+    "addYourNameFallback": "तुमचं नाव जोडा",
     "reelCardLabel": "तुमच्या व्हिडिओंमध्ये काय दिसेल",
+    "reelCardEmpty": "अजून काही सेट नाही - खाली तुमचं नाव आणि बिझनेस जोडा.",
     "distributorForYears": "{{years}} वर्षांपासून डिस्ट्रीब्युटर",
     "editDetailsLink": "ही माहिती बदला",
     "accountSectionLabel": "अकाउंट",
     "phoneRowLabel": "फोन",
+    "phoneNotAvailable": "सध्या उपलब्ध नाही",
     "distributorIdRowLabel": "डिस्ट्रीब्युटर आयडी",
+    "distributorIdLoading": "लोड होत आहे…",
     "distributorForRowLabel": "डिस्ट्रीब्युटर, इतक्या वर्षांपासून",
     "settingsSectionLabel": "सेटिंग्ज",
     "notifyRowLabel": "व्हिडिओ तयार झाल्यावर मला सांगा",

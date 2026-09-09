@@ -5,6 +5,7 @@ import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   questionNumber: number;
@@ -23,33 +24,30 @@ interface Props {
 export function RetakeConfirmOverlay({ questionNumber, isRetake, onConfirm, onCancel }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   return (
     <Pressable style={styles.overlay} onPress={onCancel}>
       <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
         {isRetake ? (
           <>
-            <Text style={styles.title}>Record again for Question {questionNumber}?</Text>
-            <Text style={styles.body}>
-              You'll get to choose which take to keep afterward - nothing is replaced until then.
-            </Text>
+            <Text style={styles.title}>{t('retakeConfirm.retakeTitle', { questionNumber })}</Text>
+            <Text style={styles.body}>{t('retakeConfirm.retakeBody')}</Text>
             <Pressable style={styles.primaryButton} onPress={onConfirm}>
-              <Text style={styles.primaryButtonText}>Yes, record again</Text>
+              <Text style={styles.primaryButtonText}>{t('retakeConfirm.retakeConfirmButton')}</Text>
             </Pressable>
           </>
         ) : (
           <>
-            <Text style={styles.title}>Ready to record Question {questionNumber}?</Text>
-            <Text style={styles.body}>
-              We'll check your camera and lighting first, then walk you through recording your answer.
-            </Text>
+            <Text style={styles.title}>{t('retakeConfirm.firstRecordTitle', { questionNumber })}</Text>
+            <Text style={styles.body}>{t('retakeConfirm.firstRecordBody')}</Text>
             <Pressable style={styles.primaryButton} onPress={onConfirm}>
-              <Text style={styles.primaryButtonText}>Start recording</Text>
+              <Text style={styles.primaryButtonText}>{t('retakeConfirm.firstRecordConfirmButton')}</Text>
             </Pressable>
           </>
         )}
         <Pressable style={styles.secondaryButton} onPress={onCancel}>
-          <Text style={styles.secondaryButtonText}>Cancel</Text>
+          <Text style={styles.secondaryButtonText}>{t('retakeConfirm.cancelButton')}</Text>
         </Pressable>
       </Pressable>
     </Pressable>

@@ -7,6 +7,7 @@ import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { useStrings } from '../i18n/useStrings';
 
 interface Props {
   onDone: () => void;
@@ -38,6 +39,7 @@ interface Props {
 export function ConfirmationScreen({ onDone, uploading, progress, reelsEnabled }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+  const { t } = useStrings();
 
   return (
     <View style={styles.container}>
@@ -50,34 +52,30 @@ export function ConfirmationScreen({ onDone, uploading, progress, reelsEnabled }
           )}
         </View>
         <Text style={styles.title}>
-          {uploading ? 'Sending your answers' : 'Your answers are on their way'}
+          {uploading ? t('confirmation.titleSending') : t('confirmation.titleDone')}
         </Text>
         <Text style={styles.subtitle}>
           {uploading
-            ? `${Math.round(progress * 100)}% sent - this can take a few minutes on slower connections.`
+            ? t('confirmation.subtitleSending', { percent: Math.round(progress * 100) })
             : reelsEnabled
-              ? "We'll let you know the moment your branded videos are ready."
-              : 'Thanks for recording - your answers have been received.'}
+              ? t('confirmation.subtitleDoneReelsEnabled')
+              : t('confirmation.subtitleDoneReelsDisabled')}
         </Text>
         <View style={styles.reassuranceBox}>
           {uploading ? (
             <>
               <ProgressBar progress={progress} />
-              <Text style={styles.reassuranceRow}>
-                Keep your internet on and don't close the app - it finishes on its own.
-              </Text>
+              <Text style={styles.reassuranceRow}>{t('confirmation.reassuranceSending')}</Text>
             </>
           ) : (
             <>
-              <Text style={styles.reassuranceRow}>✓ Upload done - all your answers were received</Text>
-              {reelsEnabled && (
-                <Text style={styles.reassuranceRow}>✓ We'll message you when your videos are ready</Text>
-              )}
+              <Text style={styles.reassuranceRow}>{t('confirmation.reassuranceDone1')}</Text>
+              {reelsEnabled && <Text style={styles.reassuranceRow}>{t('confirmation.reassuranceDone2')}</Text>}
             </>
           )}
         </View>
       </View>
-      <Button label="Back to Home" onPress={onDone} />
+      <Button label={t('confirmation.backToHomeButton')} onPress={onDone} />
     </View>
   );
 }

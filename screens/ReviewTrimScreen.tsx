@@ -9,6 +9,7 @@ import type { Radius } from '../theme/radius';
 import { Button } from '../components/ui/Button';
 import { Toggle } from '../components/ui/Toggle';
 import { MAX_KEPT_TAKES } from '../recordings';
+import { useStrings } from '../i18n/useStrings';
 
 export interface Take {
   id: string;
@@ -68,6 +69,7 @@ export function ReviewTrimScreen({
   onKeep,
 }: Props) {
   const { colors, spacing, radius } = useTheme();
+  const { t } = useStrings();
   // The fixed action-button footer sits at the real bottom of the screen
   // now (not just after whatever content preceded it), so it needs the
   // same real per-device bottom inset BottomTabBar.tsx already accounts
@@ -78,7 +80,7 @@ export function ReviewTrimScreen({
     [colors, spacing, radius, insets.bottom],
   );
 
-  const selected = takes.find((t) => t.id === selectedTakeId) ?? takes[takes.length - 1];
+  const selected = takes.find((take) => take.id === selectedTakeId) ?? takes[takes.length - 1];
   const player = useVideoPlayer(selected?.filePath ?? null, (p) => {
     p.pause();
   });
@@ -90,15 +92,15 @@ export function ReviewTrimScreen({
   const mustPick = takes.length > MAX_KEPT_TAKES;
   const keepButtonLabel = !mustPick
     ? takes.length > 1
-      ? 'Keep both takes'
-      : 'Keep this take'
+      ? t('reviewTrim.keepBothTakesButton')
+      : t('reviewTrim.keepButton')
     : keptTakeIds.length === MAX_KEPT_TAKES
-      ? `Keep these ${MAX_KEPT_TAKES}`
-      : `Select ${MAX_KEPT_TAKES} to keep (${keptTakeIds.length} of ${MAX_KEPT_TAKES})`;
+      ? t('reviewTrim.keepTheseButton', { count: MAX_KEPT_TAKES })
+      : t('reviewTrim.selectToKeepButton', { count: MAX_KEPT_TAKES, kept: keptTakeIds.length });
   const keepDisabled = mustPick && keptTakeIds.length !== MAX_KEPT_TAKES;
   const droppedTake =
     mustPick && keptTakeIds.length === MAX_KEPT_TAKES
-      ? takes.find((t) => !keptTakeIds.includes(t.id))
+      ? takes.find((take) => !keptTakeIds.includes(take.id))
       : undefined;
 
   return (
@@ -119,15 +121,18 @@ export function ReviewTrimScreen({
           shows a scroll indicator at all. */}
       <ScrollView style={styles.sheet} contentContainerStyle={styles.sheetContent}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Have a look</Text>
+          <Text style={styles.title}>{t('reviewTrim.title')}</Text>
           <Text style={styles.subtitle}>
-            Take {takes.findIndex((t) => t.id === selected?.id) + 1} · {formatTime(selected?.durationSeconds ?? 0)}
+            {t('reviewTrim.takeSubtitle', {
+              number: takes.findIndex((take) => take.id === selected?.id) + 1,
+              duration: formatTime(selected?.durationSeconds ?? 0),
+            })}
           </Text>
         </View>
 
         {mustPick && (
           <Text style={styles.pickHint}>
-            Keep {MAX_KEPT_TAKES} of these {takes.length} — tap a take to preview it, tap the checkmark to keep or drop it.
+            {t('reviewTrim.pickHint', { max: MAX_KEPT_TAKES, total: takes.length })}
           </Text>
         )}
 
@@ -150,9 +155,10 @@ export function ReviewTrimScreen({
                     <View style={styles.rowThumbPlay} />
                   </View>
                   <Text style={styles.rowLabel} numberOfLines={1}>
-                    Take {i + 1} <Text style={styles.rowMeta}>· {formatTime(take.durationSeconds)}</Text>
-                    {isSelected && <Text style={styles.rowInlineTag}> · Using</Text>}
-                    {take.saved && <Text style={styles.rowInlineTag}> · Saved</Text>}
+                    {t('reviewTrim.takeLabel', { number: i + 1 })}{' '}
+                    <Text style={styles.rowMeta}>· {formatTime(take.durationSeconds)}</Text>
+                    {isSelected && <Text style={styles.rowInlineTag}> · {t('reviewTrim.usingBadge')}</Text>}
+                    {take.saved && <Text style={styles.rowInlineTag}> · {t('reviewTrim.savedTag')}</Text>}
                   </Text>
                   {mustPick && (
                     <Pressable
@@ -174,14 +180,14 @@ export function ReviewTrimScreen({
 
         {droppedTake && (
           <Text style={styles.dropNote}>
-            Take {takes.findIndex((t) => t.id === droppedTake.id) + 1} will be deleted from your phone.
+            {t('reviewTrim.dropNote', { number: takes.findIndex((take) => take.id === droppedTake.id) + 1 })}
           </Text>
         )}
 
         <View style={styles.toggleRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.toggleLabel}>Remove the last 2 seconds</Text>
-            <Text style={styles.toggleReason}>Useful if you fumbled the sign-off</Text>
+            <Text style={styles.toggleLabel}>{t('reviewTrim.removeLastTwoSecondsLabel')}</Text>
+            <Text style={styles.toggleReason}>{t('reviewTrim.removeLastTwoSecondsReason')}</Text>
           </View>
           <Toggle value={selected?.removeLastTwoSeconds ?? false} onValueChange={onToggleRemoveLastTwoSeconds} />
         </View>
@@ -210,7 +216,7 @@ export function ReviewTrimScreen({
           textStyle={styles.actionButtonText}
         />
         <Button
-          label="Record another"
+          label={t('reviewTrim.recordAnotherButton')}
           onPress={onRecordAnother}
           variant="secondary"
           style={styles.actionButton}

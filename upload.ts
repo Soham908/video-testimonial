@@ -2,6 +2,7 @@ import { File } from 'expo-file-system';
 import { ApiError, apiPost } from './api';
 import type { RecordedVideo } from './recordings';
 import type { QuestionDto } from './questions';
+import { t } from './i18n/useStrings';
 
 interface UploadUrlResponse {
   upload_url: string;
@@ -27,7 +28,7 @@ async function putVideoBytes(uploadUrl: string, filePath: string): Promise<void>
   const file = new File(filePath);
   const result = await file.upload(uploadUrl, { httpMethod: 'PUT' });
   if (result.status < 200 || result.status >= 300) {
-    throw new Error(`Upload to storage failed (status ${result.status}).`);
+    throw new Error(t('upload.storageUploadFailed', { status: result.status }));
   }
 }
 
@@ -52,7 +53,7 @@ export async function uploadSegment(
 ): Promise<void> {
   const question = questions[video.questionIndex];
   if (!question) {
-    throw new Error(`No question found for local position ${video.questionIndex} - question set may have changed since this was recorded.`);
+    throw new Error(t('upload.questionSetChanged', { position: video.questionIndex }));
   }
   const questionIndex = question.index;
 

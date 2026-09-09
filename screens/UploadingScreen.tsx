@@ -8,6 +8,7 @@ import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
 import { PopupSheet } from '../components/ui/Modal';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import { useStrings } from '../i18n/useStrings';
 
 export interface UploadItem {
   questionIndex: number;
@@ -54,17 +55,18 @@ export function UploadingScreen({
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const [confirming, setConfirming] = useState(false);
+  const { t } = useStrings();
 
   if (error) {
     return (
       <View style={styles.container}>
         <View style={{ flex: 1, justifyContent: 'center' }}>
-          <Text style={styles.title}>Sending stopped partway</Text>
+          <Text style={styles.title}>{t('uploading.errorTitle')}</Text>
           <Text style={styles.subtitle}>{error}</Text>
         </View>
         <View style={{ gap: spacing.sm }}>
-          <Button label="Try again" onPress={onRetry} />
-          <Button label="Send later" onPress={onSendLater} variant="secondary" />
+          <Button label={t('uploading.errorTryAgainButton')} onPress={onRetry} />
+          <Button label={t('uploading.errorSendLaterButton')} onPress={onSendLater} variant="secondary" />
         </View>
       </View>
     );
@@ -76,14 +78,14 @@ export function UploadingScreen({
     <View style={styles.container}>
       {onBack && (
         <Text style={styles.backLink} onPress={onBack}>
-          ‹ Back to My Videos
+          {t('uploading.backLink')}
         </Text>
       )}
-      <Text style={styles.title}>Sending your answers</Text>
+      <Text style={styles.title}>{t('uploading.title')}</Text>
       <Text style={styles.subtitle}>
-        {items.length} question{items.length === 1 ? '' : 's'}, going together.
+        {t(items.length === 1 ? 'uploading.subtitleSingular' : 'uploading.subtitlePlural', { count: items.length })}
       </Text>
-      <Text style={styles.hint}>Tap a video to review it again.</Text>
+      <Text style={styles.hint}>{t('uploading.hint')}</Text>
 
       <ScrollView style={styles.list} contentContainerStyle={{ gap: spacing.xs + 1 }}>
         {items.map((item) => {
@@ -103,7 +105,7 @@ export function UploadingScreen({
                   {item.questionIndex + 1} · {item.questionText ?? item.label}
                 </Text>
                 <Text style={styles.rowSubLabel}>
-                  {item.takeLabel ?? 'Take 1'}
+                  {item.takeLabel ?? t('uploading.takeLabelDefault')}
                   {item.durationSeconds != null ? ` · ${formatTime(item.durationSeconds)}` : ''}
                 </Text>
               </View>
@@ -125,40 +127,41 @@ export function UploadingScreen({
           );
         })}
         {totalSeconds > 0 && (
-          <Text style={styles.sizeNote}>
-            ✓ About {formatTime(totalSeconds)} of video in total. Your videos stay on your phone as well.
-          </Text>
+          <Text style={styles.sizeNote}>{t('uploading.sizeNote', { duration: formatTime(totalSeconds) })}</Text>
         )}
       </ScrollView>
 
       <View style={{ gap: spacing.sm }}>
-        <Button label="Send all" onPress={() => setConfirming(true)} />
+        <Button label={t('uploading.sendAllButton')} onPress={() => setConfirming(true)} />
         <Text style={styles.notNow} onPress={onSendLater}>
-          Not now
+          {t('uploading.notNowButton')}
         </Text>
       </View>
 
       <PopupSheet visible={confirming} onDismiss={() => setConfirming(false)}>
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-          Send all {items.length} to us?
+          {t('uploading.confirmPopupTitle', { count: items.length })}
         </Text>
         <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
-          All {items.length} answers go up together, using the takes you chose. After sending, they can't be
-          changed.
+          {t('uploading.confirmPopupBody', { count: items.length })}
         </Text>
         <View style={styles.confirmReassuranceBox}>
-          <Text style={styles.confirmReassuranceRow}>✓ Your videos stay on your phone too</Text>
-          <Text style={styles.confirmReassuranceRow}>✓ Your branded videos come back after this</Text>
+          <Text style={styles.confirmReassuranceRow}>{t('uploading.confirmPopupReassurance1')}</Text>
+          <Text style={styles.confirmReassuranceRow}>{t('uploading.confirmPopupReassurance2')}</Text>
         </View>
         <View style={{ gap: 10, marginTop: 16 }}>
           <Button
-            label="Yes, upload them"
+            label={t('uploading.confirmPopupConfirmButton')}
             onPress={() => {
               setConfirming(false);
               onConfirm();
             }}
           />
-          <Button label="Go back" variant="secondary" onPress={() => setConfirming(false)} />
+          <Button
+            label={t('uploading.confirmPopupBackButton')}
+            variant="secondary"
+            onPress={() => setConfirming(false)}
+          />
         </View>
       </PopupSheet>
     </View>

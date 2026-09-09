@@ -90,13 +90,8 @@ export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
         </Pressable>
 
         {onRegisterPress && (
-          // No matching i18n key yet - "New distributor? Register" is
-          // LoginScreen's own entry point into self-registration, distinct
-          // from selfRegister.switchToRegisterLink (that one is for
-          // switching modes inside SelfRegisterScreen itself). Left as a
-          // literal for now, flagged in this fork's report.
           <Text style={styles.registerLink} onPress={onRegisterPress}>
-            New distributor? Register
+            {t('login.registerLink')}
           </Text>
         )}
       </View>
