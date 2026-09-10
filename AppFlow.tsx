@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
 import * as Application from 'expo-application';
+import BackgroundService from 'react-native-background-actions';
 import { useCameraPermission, useMicrophonePermission } from 'react-native-vision-camera';
 import { setActiveLanguage, useStrings } from './i18n/useStrings';
 import { LoginScreen } from './screens/LoginScreen';
@@ -41,6 +42,7 @@ import {
 import { useTheme } from './theme/ThemeContext';
 import { useHideNavigationBarWhile } from './theme/NavigationBarSync';
 import { restoreSession, getCurrentAuth, logout } from './auth';
+import { setSessionExpiredHandler } from './api';
 import { fetchDistributorProfile, type DistributorProfile } from './distributorProfile';
 import { isVersionBelow } from './appVersion';
 import { uploadSegment } from './upload';
@@ -138,6 +140,25 @@ const COUNTDOWN_SECONDS = 5;
 // ~5.3s - it's tied to today's actual clip lengths, not a structural
 // guarantee.
 const COUNTDOWN_BUFFER_MS = 300;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// The Android foreground-service upload wrapper's task body (see the effect
+// near the real upload effect below) - deliberately does no work of its
+// own. `uploadSegment` calls still come entirely from the untouched upload
+// effect; this task's only job is to give react-native-background-actions
+// something to run so the service (and the process priority that comes
+// with it) stays alive. Loops on BackgroundService.isRunning() rather than
+// a promise that never resolves - the library's own README uses this exact
+// shape; stop() flips isRunning() false, which is what lets this loop (and
+// so the task) actually end.
+async function androidUploadKeepAliveTask(): Promise<void> {
+  while (BackgroundService.isRunning()) {
+    await sleep(1000);
+  }
+}
 
 // Questions (text, count, order, VO) are backend-configured per client now,
 // fetched via GET /distributors/me/questions (API_CONTRACT.md) - not
@@ -258,6 +279,12 @@ export function AppFlow() {
   // today - `business`/`city`/`years_as_distributor` also come back on this
   // same response but are internal-test-phase-only fields nothing reads yet.
   const [distributorProfile, setDistributorProfile] = useState<DistributorProfile | null>(null);
+  // True right after api.ts's session-expired handler forces a logout mid-
+  // flow (a token that died, not a fresh login attempt with wrong
+  // credentials - see setSessionExpiredHandler's registration below) - shows
+  // a one-time explanatory banner on the next Login render, cleared as soon
+  // as a login actually succeeds (handleAuthenticated).
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState(false);
 
   // Whether the Camera Check screen's toggle auto-starts the countdown once
   // checks pass, or waits for an explicit "Start recording" tap - no
@@ -331,6 +358,21 @@ export function AppFlow() {
   // that it deserves a real way out, just gated behind a confirmation
   // rather than exiting silently or being blocked outright.
   const [pendingExitConfirm, setPendingExitConfirm] = useState(false);
+  // Shown after a native recording failure (onRecordingError below) - a
+  // storage-full write error, encoder fault, or the mic getting taken by
+  // another app are exactly the kind of budget/mid-range-Android quirks
+  // CLAUDE.md and CameraAlignment.tsx's own comments call out as expected
+  // on this device range. Previously this callback only logged to console
+  // with no state change at all, which left the distributor frozen on the
+  // Recording screen indefinitely - the timer kept ticking (it's a plain
+  // setInterval unrelated to the actual native recorder state) with no
+  // signal anything was wrong and no automatic way forward
+  // (FRONTEND_AUDIT_2026-09-09.md §3, "most important finding"). The fix
+  // reuses the exact same recovery confirmExitQuestionFlow already does for
+  // a deliberate hardware-back exit during recording - cancel the broken
+  // recording, drop back to Brief - just triggered automatically instead of
+  // requiring the person to discover a hardware-back gesture on their own.
+  const [recordingFailedVisible, setRecordingFailedVisible] = useState(false);
 
   // Set right when startRecording() is called (not when 'recording' phase
   // is entered - those happen in the same tick anyway, but this is the
@@ -745,6 +787,50 @@ export function AppFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadConfirmed, uploadAttempt]);
 
+  // Android-only foreground-service wrapper around the upload effect above -
+  // a keep-alive, not a reimplementation. The real effect (uploadSegment
+  // calls, uploadedQuestionIndices, every bit of its React state) is
+  // completely untouched; this one only observes the same signals that
+  // effect already produces - uploadConfirmed/uploadAttempt for when a
+  // batch starts or retries, hasSubmittedBatch/uploadError for when it
+  // settles - and starts/stops a foreground service alongside it, so
+  // Android's Doze/App Standby battery management doesn't throttle or kill
+  // the in-flight PUT the moment the app is genuinely backgrounded (not
+  // just navigated away from within the app - that case already worked,
+  // since the real effect was never gated on `screen`). iOS needs none of
+  // this - expo-file-system's File.upload() already defaults to a
+  // background URLSession there (see putVideoBytes's own comment in
+  // upload.ts) - so this whole effect is a no-op on iOS.
+  //
+  // Must start right here, the instant a batch begins, not reactively off
+  // an AppState backgrounding event - Android 12+ blocks starting a
+  // foreground service from an already-backgrounded app, so the service has
+  // to already be running by the time backgrounding happens, not started in
+  // response to it. `t` is deliberately not a dependency - useStrings()
+  // returns a new function reference every render, which would re-run this
+  // effect (and its isRunning() checks) on every render for no reason; the
+  // notification text updating a render late after a language switch mid-
+  // upload is not worth that.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const batchInFlight = uploadConfirmed && !hasSubmittedBatch && !uploadError;
+
+    if (batchInFlight) {
+      if (!BackgroundService.isRunning()) {
+        BackgroundService.start(androidUploadKeepAliveTask, {
+          taskName: 'VideoUpload',
+          taskTitle: t('appFlow.uploadServiceNotificationTitle'),
+          taskDesc: t('appFlow.uploadServiceNotificationDesc'),
+          taskIcon: { name: 'ic_launcher', type: 'mipmap' },
+          foregroundServiceType: ['dataSync'],
+        }).catch((error) => console.error('[upload] failed to start foreground service', error));
+      }
+    } else if (BackgroundService.isRunning()) {
+      BackgroundService.stop().catch((error) => console.error('[upload] failed to stop foreground service', error));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadConfirmed, uploadAttempt, hasSubmittedBatch, uploadError]);
+
   // Mirrors uploadedQuestionIndices into the Uploading screen's 0-1
   // progress bar - a separate derived effect (rather than computed inline
   // in the loop above) so a session resumed mid-upload shows the correct
@@ -1155,6 +1241,23 @@ export function AppFlow() {
     setPhase('brief');
   }
 
+  // See recordingFailedVisible's own comment above - wired to
+  // CameraAlignment's onRecordingError below. Only ever fires while
+  // phase === 'recording' (that's the only time a native recorder is
+  // actually active), so there's no reviewTrim/retake branching to mirror
+  // from confirmExitQuestionFlow above - just cancel the broken recording
+  // and return to the same Brief screen a deliberate exit would.
+  function handleRecordingError(error: Error) {
+    console.error('[recording]', error);
+    cameraRef.current?.cancelRecording().catch((cancelError) =>
+      console.error('[recording] cancel after error failed', cancelError),
+    );
+    setChecksReady(false);
+    setTakeAttempt(0);
+    setPhase('brief');
+    setRecordingFailedVisible(true);
+  }
+
   function goToNextQuestion() {
     setShowPostKeepPrompt(false);
     setQuestionIndex((i) => i + 1);
@@ -1251,12 +1354,36 @@ export function AppFlow() {
     setScreen('login');
   }
 
+  // Registered once below (api.ts's setSessionExpiredHandler) - fires when
+  // any authenticated request comes back 401 with a token actually
+  // attached, meaning the token itself died mid-session (expired/revoked),
+  // not a bad-credentials rejection on a fresh login attempt. Same cleanup
+  // as a deliberate handleLogout, plus the one-time banner on the next
+  // Login render so this doesn't look like an unexplained upload/fetch
+  // failure - FRONTEND_AUDIT's §1 "Session/auth token expired mid-flow"
+  // finding was specifically that nothing distinguished this case before.
+  function handleSessionExpired() {
+    logout();
+    setDistributorId(null);
+    setDistributorProfile(null);
+    setMainTab('home');
+    setScreen('login');
+    setSessionExpiredNotice(true);
+  }
+
+  useEffect(() => {
+    setSessionExpiredHandler(handleSessionExpired);
+    return () => setSessionExpiredHandler(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Shared by a fresh login, self-registration, and phone+password sign-in
   // (auth.ts's register()/loginByPhone() both leave the app in an identical
   // state to login() - same token shape, immediately usable) - so all three
   // proceed exactly the same way from here on, not separate paths that
   // could drift out of sync with each other.
   function handleAuthenticated() {
+    setSessionExpiredNotice(false);
     getCurrentAuth().then((auth) => auth && setDistributorId(auth.distributorId));
     fetchDistributorProfile().then(setDistributorProfile).catch(() => {});
     // Cache-first: show cached questions immediately if any exist for this
@@ -1310,6 +1437,7 @@ export function AppFlow() {
         <LoginScreen
           onLoggedIn={handleAuthenticated}
           onRegisterPress={ENABLE_SELF_REGISTRATION ? () => setScreen('selfRegister') : undefined}
+          notice={sessionExpiredNotice ? t('login.sessionExpiredNotice') : undefined}
         />
         {__DEV__ && (
           <DevEntryMenu
@@ -1583,26 +1711,45 @@ export function AppFlow() {
 
   if (phase === 'brief') {
     return (
-      <QuestionBriefScreen
-        questionNumber={questionIndex + 1}
-        totalQuestions={questions.length}
-        voPlaybackUrl={voPlaybackUrl}
-        questionText={questionText}
-        talkingPoints={talkingPoints}
-        onStartRecording={enterCameraCheck}
-        onRehearse={() => setPhase('rehearse')}
-        onBack={() => {
-          // Same retakeQuestionIndex check as the hardware-back handler
-          // above - a retake entry must return to My Videos, not Home.
-          if (retakeQuestionIndex !== null) {
-            setRetakeQuestionIndex(null);
-            setMainTab('myVideos');
-          } else {
-            setMainTab('home');
-          }
-          setScreen('main');
-        }}
-      />
+      <View style={{ flex: 1 }}>
+        <QuestionBriefScreen
+          questionNumber={questionIndex + 1}
+          totalQuestions={questions.length}
+          voPlaybackUrl={voPlaybackUrl}
+          questionText={questionText}
+          talkingPoints={talkingPoints}
+          onStartRecording={enterCameraCheck}
+          onRehearse={() => setPhase('rehearse')}
+          onBack={() => {
+            // Same retakeQuestionIndex check as the hardware-back handler
+            // above - a retake entry must return to My Videos, not Home.
+            if (retakeQuestionIndex !== null) {
+              setRetakeQuestionIndex(null);
+              setMainTab('myVideos');
+            } else {
+              setMainTab('home');
+            }
+            setScreen('main');
+          }}
+        />
+
+        {/* handleRecordingError's own comment (near pendingExitConfirm)
+            explains why this exists - phase is already back on 'brief' by
+            the time this shows, so the person just needs to know why
+            before trying again, not a choice to make. */}
+        <PopupSheet
+          visible={recordingFailedVisible}
+          onDismiss={() => setRecordingFailedVisible(false)}
+        >
+          <Text style={{ fontSize: 21, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+            {t('appFlow.recordingFailedPopupTitle')}
+          </Text>
+          <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
+            {t('appFlow.recordingFailedPopupBody')}
+          </Text>
+          <Button label={t('appFlow.recordingFailedPopupButton')} onPress={() => setRecordingFailedVisible(false)} />
+        </PopupSheet>
+      </View>
     );
   }
 
@@ -1709,7 +1856,7 @@ export function AppFlow() {
         alignmentActive
         recordingActive={phase === 'recording'}
         onRecordingFinished={handleRecordingFinished}
-        onRecordingError={(error) => console.error('[recording]', error)}
+        onRecordingError={handleRecordingError}
         onPermissionBlocked={() => setScreen('permissions')}
       />
 

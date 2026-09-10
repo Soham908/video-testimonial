@@ -9,6 +9,12 @@
     "mr": "मराठी"
   },
 
+  "errorBoundary": {
+    "title": "कुछ गड़बड़ हो गई",
+    "subtitle": "माफ़ कीजिए। फिर से कोशिश करने के लिए नीचे टैप करें - आपने जो भी पहले से रिकॉर्ड या सेव किया है, वह सुरक्षित है।",
+    "retryButton": "फिर से कोशिश करें"
+  },
+
   "splash": {
     "appName": "Insight Scoop",
     "companyName": "Zeist Interactive"
@@ -103,6 +109,7 @@
     "logoPlaceholder": "LOGO",
     "title": "साइन इन करें",
     "subtitle": "शुरू करने के लिए वह अकाउंट इस्तेमाल करें जो आपकी कंपनी ने दिया है।",
+    "sessionExpiredNotice": "आपका सेशन खत्म हो गया, इसलिए आपको साइन आउट कर दिया गया। कृपया दोबारा साइन इन करें।",
     "usernameLabel": "यूज़रनेम",
     "passwordLabel": "पासवर्ड",
     "genericError": "कुछ गड़बड़ हो गई।",
@@ -403,6 +410,11 @@
     "postKeepPopupNextQuestionButton": "अगला सवाल",
     "postKeepPopupMyVideosButton": "मेरे वीडियो",
     "postKeepPopupHomeButton": "होम",
+    "recordingFailedPopupTitle": "रिकॉर्डिंग पूरी नहीं हो पाई",
+    "recordingFailedPopupBody": "रिकॉर्डिंग के बीच में कोई रुकावट आ गई। उस कोशिश से कुछ भी सेव नहीं हुआ - कृपया फिर से कोशिश करें।",
+    "recordingFailedPopupButton": "ठीक है, फिर कोशिश करें",
+    "uploadServiceNotificationTitle": "आपके वीडियो भेजे जा रहे हैं",
+    "uploadServiceNotificationDesc": "इसके पूरा होने तक इसे बैकग्राउंड में चलते रहने दें।",
     "exitConfirmPopupTitle": "रोककर वापस जाएं?",
     "exitConfirmPopupBodyDefault": "आप सवाल पर वापस चले जाएंगे।",
     "exitConfirmPopupBodyRecording": "यह टेक सेव नहीं होगा। आप सवाल पर वापस चले जाएंगे।",

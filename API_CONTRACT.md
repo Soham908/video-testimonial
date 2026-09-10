@@ -111,7 +111,19 @@ Every request after login must include:
 Authorization: Bearer <token>
 ```
 Missing or invalid token on any route below → `401`, no data returned,
-before any handler logic runs.
+before any handler logic runs. The `error` code distinguishes *why*:
+- `missing_token` — no `Authorization` header, or not in `Bearer <token>` form.
+- `token_expired` — the token was valid but its 30-day expiry has passed
+  (or, once a revocation mechanism exists, was revoked — same code, that
+  doesn't exist yet). This is the one case worth handling specially: it
+  means "the user needs to log in again," not "something is wrong with the
+  request" — a good trigger for a silent re-login redirect rather than a
+  generic error screen.
+- `invalid_token` — anything else (malformed, wrong signature, tampered).
+  Treat the same as `missing_token` for UI purposes; don't try to recover
+  from this one.
+
+Every 401 body is `{ "error": "missing_token" | "token_expired" | "invalid_token", "message": string }`.
 
 `GET /me` — optional, useful only as a "is my token working" diagnostic.
 - Success `200`: `{ "auth": { "distributor_id": string, "client_id": string } }`
@@ -197,7 +209,7 @@ the signed URL itself.
 
 `POST /segments/confirm`
 - Requires auth.
-- Body: `{ "question_index": number, "duration": number, "trim_start_ms"?: number|null, "trim_end_ms"?: number|null, "capture"?: object }`
+- Body: `{ "question_index": number, "duration": number, "idempotency_key"?: string, "trim_start_ms"?: number|null, "trim_end_ms"?: number|null, "capture"?: object }`
   — `duration` is the clip length in seconds (a plain number, not a
   string), must be > 0. `capture` is optional and stored as-is, not
   validated field-by-field: `{ "file_size_bytes": number, "width":
@@ -214,6 +226,20 @@ the signed URL itself.
   explicitly clears it to "full clip." Must be a non-negative number (or
   `null`/omitted); `trim_end_ms` must be greater than `trim_start_ms` when
   both are numbers.
+- **`idempotency_key`** (added 2026-09-09, superseded same day — see below)
+  — still fine to send, still fully ignored by the route, but no longer
+  needed for what it was written for. It was added to guard against a
+  duplicate segment record when a PUT lands in S3 but the confirm response
+  is lost to a network drop (FRONTEND_AUDIT_2026-09-09.md §5). That gap is
+  already closed a different way: **`confirm` upserts on
+  `(distributor_id, question_index)`** (see the retake bullet a few lines
+  down), and per the locked one-take-per-question architecture, a retried
+  confirm after a lost response and a genuine retake are the same case
+  server-side either way — both just mean "this is now the canonical take
+  for this question." A separate `idempotency_key` would only matter if a
+  *take-level* identity needed to survive independently of question_index,
+  which nothing in this flow requires. Don't build anything against this
+  field actually being read.
 - **`video_key` is no longer read from the request body** — the backend
   derives it itself from the token's `distributor_id`/`client_id` plus
   `question_index` (same value `upload-url` already returned you, just no
@@ -241,7 +267,7 @@ the signed URL itself.
 
 Both scoped to the logged-in distributor automatically (from the token) —
 no ID needs to be passed in.
-`
+
 `GET /distributors/me/segments`
 - Success `200`: `{ "segments": [ { "question_index", "status", "playback_url", "duration_seconds", "created_at", "updated_at" }, ... ] }`
 - **This is an object with a `segments` key, not a bare array.**
@@ -254,6 +280,18 @@ no ID needs to be passed in.
   `question_index` against what you last synced. Match → play the local
   file, no network fetch needed. Mismatch, or no local file → use
   `playback_url`.
+- **This is also the source of truth for "confirmed on the server" after a
+  reinstall or cleared local storage**, where local state can't be trusted
+  at all. A `question_index` present in this array means `POST
+  /segments/confirm` has succeeded for it server-side (segments only ever
+  appear here starting at `status: "uploaded"`, which only `confirm`
+  produces — nothing shows up from an upload that only completed the `PUT`
+  to S3). A `question_index` absent from this array means "not yet
+  confirmed" — safe to treat as if recording hasn't happened, whether that's
+  actually true or the confirm call just never landed. No separate endpoint
+  or field is needed for this; diff this response's `question_index` set
+  against `GET /distributors/me/questions`' full set to rebuild local
+  recording-flow state from scratch.
 
 `GET /distributors/me/rendered-videos`
 - Success `200`: `{ "rendered_videos": [ { "question_index", "status", "playback_url", "updated_at" }, ... ] }`

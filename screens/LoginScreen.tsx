@@ -15,13 +15,19 @@ interface Props {
   // it just shows the entry point when a handler exists and stays exactly
   // as it is today when it doesn't.
   onRegisterPress?: () => void;
+  // Set once by AppFlow.tsx right after api.ts's session-expired handler
+  // forces a logout mid-flow - a distinct, calmer message from this
+  // screen's own `error` state below (which is specifically "you just
+  // typed the wrong password"), so a token dying doesn't read as a failed
+  // login attempt.
+  notice?: string;
 }
 
 // Prefilled with a seeded test account - there's no self-serve account
 // creation, distributors are provisioned backend-side. Prefill is a
 // testing convenience while Soham is the only person signing in; revisit
 // before this goes to real distributors.
-export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
+export function LoginScreen({ onLoggedIn, onRegisterPress, notice }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
@@ -51,6 +57,12 @@ export function LoginScreen({ onLoggedIn, onRegisterPress }: Props) {
         </View>
         <Text style={styles.title}>{t('login.title')}</Text>
         <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
+
+        {notice && (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        )}
 
         <Text style={styles.label}>{t('login.usernameLabel')}</Text>
         <TextInput
@@ -135,6 +147,18 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       color: colors.textMuted,
       lineHeight: 24,
       marginBottom: spacing.xl,
+    },
+    noticeBox: {
+      backgroundColor: colors.warningSoft,
+      borderRadius: radius.md,
+      padding: spacing.md - 2,
+      marginBottom: spacing.lg,
+    },
+    noticeText: {
+      ...typography.body,
+      fontSize: 14,
+      color: colors.warning,
+      lineHeight: 20,
     },
     label: {
       ...typography.label,

@@ -28,6 +28,29 @@ export function setAuthToken(token: string | null): void {
   authToken = token;
 }
 
+// Fired once, from whichever call site's request happens to be the first to
+// hit one of these three codes (API_CONTRACT.md's documented 401 reasons for
+// any authenticated route - missing_token/token_expired/invalid_token all
+// mean the same thing from the user's side: log in again). Distinct from a
+// plain 401 check - a login/register/login-by-phone attempt itself 401ing on
+// bad credentials returns a different, unrelated error string
+// ("Invalid username or password" etc.), never one of these three codes, so
+// checking the code (not just the status) is what keeps this from
+// misfiring on a normal failed login attempt. AppFlow.tsx registers this
+// once on mount so a token dying mid-flow (e.g. mid-upload) forces a clean
+// logout + redirect to login instead of every call site individually having
+// to know what these codes mean (FRONTEND_AUDIT's §1 "Session/auth token
+// expired mid-flow" finding - previously this surfaced only as a raw error
+// string wherever the failing call happened to be caught, with no path back
+// to a working state short of manually finding Logout in Profile).
+const SESSION_EXPIRED_CODES = new Set(['token_expired', 'invalid_token', 'missing_token']);
+
+let onSessionExpired: (() => void) | null = null;
+
+export function setSessionExpiredHandler(handler: (() => void) | null): void {
+  onSessionExpired = handler;
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST';
   body?: unknown;
@@ -65,7 +88,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const data = text ? JSON.parse(text) : {};
 
   if (!response.ok) {
-    throw new ApiError(response.status, data.error ?? 'unknown_error', data.message ?? data.error ?? 'Something went wrong.');
+    const code = data.error ?? 'unknown_error';
+    // A real 403 (e.g. permission-denied) or any other error code must fall
+    // straight through to the normal ApiError path below, unhandled here -
+    // only these three specific codes mean "the session itself is dead."
+    if (SESSION_EXPIRED_CODES.has(code)) {
+      onSessionExpired?.();
+    }
+    throw new ApiError(response.status, code, data.message ?? data.error ?? 'Something went wrong.');
   }
 
   return data as T;

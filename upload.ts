@@ -67,6 +67,13 @@ export async function uploadSegment(
     await apiPost<ConfirmResponse>('/segments/confirm', {
       question_index: questionIndex,
       video_key,
+      // No idempotency_key here (removed 2026-09-09) - the duplicate-upload
+      // gap it was groundwork for (a PUT landing in S3 but the confirm
+      // response getting lost to a network drop) is now closed server-side:
+      // confirm upserts on (distributor_id, question_index), so a retried
+      // confirm after a lost response is indistinguishable from - and
+      // handled the same as - a genuine retake. See API_CONTRACT.md's own
+      // note on this for the full explanation.
       duration: video.durationSeconds,
       // Absolute offsets (ms) into the source clip, from Review & Trim -
       // explicitly null (not 0/full-duration) when the person never

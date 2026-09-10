@@ -24,6 +24,7 @@ import { AppFlow } from './AppFlow';
 import { ThemeProvider } from './theme/ThemeContext';
 import { PaletteSwitcher } from './theme/PaletteSwitcher';
 import { NavigationBarSync } from './theme/NavigationBarSync';
+import { ErrorBoundary } from './ErrorBoundary';
 
 export default function App() {
   // Both UI-chrome families load up front (not just the active one) so
@@ -54,13 +55,15 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <AppFlow />
-        <PaletteSwitcher />
-        <NavigationBarSync />
-        <StatusBar style="dark" />
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <AppFlow />
+          <PaletteSwitcher />
+          <NavigationBarSync />
+          <StatusBar style="dark" />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

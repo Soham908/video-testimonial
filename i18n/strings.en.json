@@ -10,6 +10,12 @@
     "languageNames": "The languageNames block is a special case: each language's name for ITSELF (an endonym). Keep identical across strings.en/hi/mr.json - same convention every app's language picker uses (a Hindi speaker looking for Hindi in an English-language picker still needs to see \"हिन्दी\", not a translated word for it). Do not translate these three values differently per file."
   },
 
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "subtitle": "Sorry about that. Tap below to try again — anything you already recorded or saved is safe.",
+    "retryButton": "Try again"
+  },
+
   "splash": {
     "appName": "Insight Scoop",
     "companyName": "Zeist Interactive"
@@ -104,6 +110,7 @@
     "logoPlaceholder": "LOGO",
     "title": "Sign in",
     "subtitle": "Use the account your company gave you to get started.",
+    "sessionExpiredNotice": "You were signed out because your session ended. Please sign in again.",
     "usernameLabel": "Username",
     "passwordLabel": "Password",
     "genericError": "Something went wrong.",
@@ -410,6 +417,11 @@
     "postKeepPopupNextQuestionButton": "Next question",
     "postKeepPopupMyVideosButton": "My Videos",
     "postKeepPopupHomeButton": "Home",
+    "recordingFailedPopupTitle": "Recording didn't go through",
+    "recordingFailedPopupBody": "Something interrupted the recording. Nothing was saved from that attempt — please try again.",
+    "recordingFailedPopupButton": "OK, try again",
+    "uploadServiceNotificationTitle": "Sending your videos",
+    "uploadServiceNotificationDesc": "Keep this running in the background until it finishes.",
     "exitConfirmPopupTitle": "Stop and go back?",
     "exitConfirmPopupBodyDefault": "You'll return to the question.",
     "exitConfirmPopupBodyRecording": "This take won't be saved. You'll return to the question.",

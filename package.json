@@ -20,6 +20,7 @@
     "expo-video": "~57.0.0",
     "react": "19.2.3",
     "react-native": "0.86.0",
+    "react-native-background-actions": "^4.1.0",
     "react-native-fast-tflite": "^3.0.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-vision-camera": "^5.1.0",

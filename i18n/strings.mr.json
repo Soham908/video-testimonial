@@ -9,6 +9,12 @@
     "mr": "मराठी"
   },
 
+  "errorBoundary": {
+    "title": "काहीतरी चुकलं",
+    "subtitle": "माफ करा. पुन्हा प्रयत्न करण्यासाठी खाली टॅप करा - तुम्ही आधीच रेकॉर्ड किंवा सेव्ह केलेलं सर्व सुरक्षित आहे.",
+    "retryButton": "पुन्हा प्रयत्न करा"
+  },
+
   "splash": {
     "appName": "Insight Scoop",
     "companyName": "Zeist Interactive"
@@ -103,6 +109,7 @@
     "logoPlaceholder": "LOGO",
     "title": "साइन इन करा",
     "subtitle": "सुरुवात करण्यासाठी तुमच्या कंपनीने दिलेलं अकाउंट वापरा.",
+    "sessionExpiredNotice": "तुमचं सेशन संपल्यामुळे तुम्हाला साइन आउट करण्यात आलं. कृपया पुन्हा साइन इन करा.",
     "usernameLabel": "युजरनेम",
     "passwordLabel": "पासवर्ड",
     "genericError": "काहीतरी चुकलं.",
@@ -403,6 +410,11 @@
     "postKeepPopupNextQuestionButton": "पुढचा प्रश्न",
     "postKeepPopupMyVideosButton": "माझे व्हिडिओ",
     "postKeepPopupHomeButton": "होम",
+    "recordingFailedPopupTitle": "रेकॉर्डिंग पूर्ण होऊ शकली नाही",
+    "recordingFailedPopupBody": "रेकॉर्डिंग सुरू असताना काहीतरी अडथळा आला. त्या प्रयत्नातून काहीही सेव्ह झालं नाही - कृपया पुन्हा प्रयत्न करा.",
+    "recordingFailedPopupButton": "ठीक आहे, पुन्हा प्रयत्न करा",
+    "uploadServiceNotificationTitle": "तुमचे व्हिडिओ पाठवले जात आहेत",
+    "uploadServiceNotificationDesc": "पूर्ण होईपर्यंत हे बॅकग्राउंडमध्ये सुरू राहू द्या.",
     "exitConfirmPopupTitle": "थांबून मागे जायचं?",
     "exitConfirmPopupBodyDefault": "तुम्ही प्रश्नाकडे परत जाल.",
     "exitConfirmPopupBodyRecording": "हा टेक सेव्ह होणार नाही. तुम्ही प्रश्नाकडे परत जाल.",
