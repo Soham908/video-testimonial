@@ -1555,6 +1555,17 @@ export function AppFlow() {
             onSendAll={() => {
               setUploadConfirmed(false);
               setUploadedQuestionIndices([]);
+              // Without this, a stale error from a previously abandoned
+              // attempt (Try again / Send later) survives into this fresh
+              // entry - uploadConfirmed is false here, so the render logic
+              // falls straight through to UploadingScreen's error branch
+              // (error is still set) instead of the normal confirm list,
+              // and "Try again" from there is a dead end: it only bumps
+              // uploadAttempt, which the real upload effect ignores while
+              // uploadConfirmed is false. Reported as "stuck, Try again
+              // does nothing, Send later -> Upload doesn't work either" -
+              // this is that exact loop.
+              setUploadError(null);
               setScreen('uploading');
             }}
             onOpenMyVideos={() => setMainTab('myVideos')}
@@ -1578,6 +1589,8 @@ export function AppFlow() {
             onUploadAll={() => {
               setUploadConfirmed(false);
               setUploadedQuestionIndices([]);
+              // Same reset as Home's onSendAll above - see its comment.
+              setUploadError(null);
               setScreen('uploading');
             }}
           />
