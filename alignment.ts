@@ -19,8 +19,7 @@ const MAX_HEADROOM_RATIO = 0.35;
 // the "centered" check always targets wherever the guide is actually
 // drawn, rather than assuming dead screen-center. `width, height` passed
 // into computeAlignmentSignals below are useWindowDimensions() (dp, same
-// coordinate space these are styled in) - not camera sensor pixels - so a
-// fixed dp offset/size is valid across device sizes.
+// coordinate space these are styled in) - not camera sensor pixels.
 //
 // GUIDE_TOP_OFFSET was 150 (guide vertical center ~315dp from the top),
 // which sat noticeably above true screen-center - holding the phone at a
@@ -28,10 +27,20 @@ const MAX_HEADROOM_RATIO = 0.35;
 // downward tilt to line up. Raised to 230 (~centered in the space actually
 // left over between CameraCheckScreen's top toggles and its bottom
 // start-recording bar/countdown, on a ~850dp-tall reference screen) so a
-// natural holding angle lines up correctly. Starting point only, like the
-// thresholds below - expect to tune against real on-device footage across
-// a range of screen sizes.
-export const GUIDE_TOP_OFFSET = 230;
+// natural holding angle lines up correctly - but a FIXED dp offset turned
+// out not to be device-independent after all: on a phone with a shorter
+// screen (a different dp height than the 850dp reference), the same
+// absolute 230dp lands noticeably higher relative to the visible camera
+// area, matching the "circle sits toward the top on some phones" report.
+// getGuideTopOffset() below reproduces the original 230/850 ratio instead
+// of the raw constant, so the guide stays proportionally in the same
+// place - "centered in the leftover space" - across screen heights. Same
+// starting-point caveat as the thresholds below - expect to tune against
+// real on-device footage across a range of screen sizes.
+const GUIDE_TOP_OFFSET_RATIO = 230 / 850;
+export function getGuideTopOffset(frameHeight: number): number {
+  return frameHeight * GUIDE_TOP_OFFSET_RATIO;
+}
 export const GUIDE_WIDTH = 246;
 export const GUIDE_HEIGHT = 330;
 
@@ -48,10 +57,11 @@ export function computeAlignmentSignals(
   frameWidth: number,
   frameHeight: number,
 ): AlignmentSignals {
+  const guideTopOffset = getGuideTopOffset(frameHeight);
   const guideLeft = (frameWidth - GUIDE_WIDTH) / 2 - GUIDE_WIDTH * CONTAINMENT_MARGIN_FRACTION;
   const guideRight = (frameWidth + GUIDE_WIDTH) / 2 + GUIDE_WIDTH * CONTAINMENT_MARGIN_FRACTION;
-  const guideTop = GUIDE_TOP_OFFSET - GUIDE_HEIGHT * CONTAINMENT_MARGIN_FRACTION;
-  const guideBottom = GUIDE_TOP_OFFSET + GUIDE_HEIGHT + GUIDE_HEIGHT * CONTAINMENT_MARGIN_FRACTION;
+  const guideTop = guideTopOffset - GUIDE_HEIGHT * CONTAINMENT_MARGIN_FRACTION;
+  const guideBottom = guideTopOffset + GUIDE_HEIGHT + GUIDE_HEIGHT * CONTAINMENT_MARGIN_FRACTION;
 
   // "centered" now means the whole face bounding box - including the chin
   // at bounds.y + bounds.height - sits inside the guide oval, not just

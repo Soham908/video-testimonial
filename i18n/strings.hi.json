@@ -106,7 +106,6 @@
   },
 
   "login": {
-    "logoPlaceholder": "LOGO",
     "title": "साइन इन करें",
     "subtitle": "शुरू करने के लिए वह अकाउंट इस्तेमाल करें जो आपकी कंपनी ने दिया है।",
     "sessionExpiredNotice": "आपका सेशन खत्म हो गया, इसलिए आपको साइन आउट कर दिया गया। कृपया दोबारा साइन इन करें।",
@@ -200,6 +199,12 @@
     "countdownLabel": "रिकॉर्डिंग {{seconds}} में शुरू होगी…",
     "startRecordingButton": "रिकॉर्डिंग शुरू करें",
     "waitingForChecksButton": "चेक हो रहा है…"
+  },
+
+  "cameraCheckTip": {
+    "title": "सुझाव",
+    "body": "अपना चेहरा गोले के अंदर रखें। हम इसे अपने आप पहचान लेंगे और तैयार होने पर बता देंगे।",
+    "gotItButton": "समझ गया"
   },
 
   "alignmentGuide": {

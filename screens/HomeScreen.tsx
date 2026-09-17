@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -42,6 +42,7 @@ interface Props {
   onSendAll: () => void;
   onOpenMyVideos: () => void;
   onShareReadyReel: () => void;
+  onOpenProfile: () => void;
 }
 
 const HOW_TO_VIDEO_DURATIONS = ['1:10', '0:48'];
@@ -68,6 +69,7 @@ export function HomeScreen({
   onSendAll,
   onOpenMyVideos,
   onShareReadyReel,
+  onOpenProfile,
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
@@ -113,9 +115,9 @@ export function HomeScreen({
           <Text style={styles.greeting}>{greeting}</Text>
           {subGreeting.length > 0 && <Text style={styles.subGreeting}>{subGreeting}</Text>}
         </View>
-        <View style={styles.avatar}>
+        <Pressable style={styles.avatar} onPress={onOpenProfile}>
           {initials ? <Text style={styles.avatarText}>{initials}</Text> : <GenericAvatarGlyph />}
-        </View>
+        </Pressable>
       </View>
 
       {readyReel && (

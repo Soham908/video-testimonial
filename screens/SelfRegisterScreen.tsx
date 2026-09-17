@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -81,6 +81,9 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
   return (
     <Pressable style={styles.container} onPress={Keyboard.dismiss}>
       <View>
+        <View style={styles.logoBadge}>
+          <Image source={require('../assets/Zeist-logo-white.png')} style={styles.logoMark} resizeMode="contain" />
+        </View>
         <Text style={styles.backLink} onPress={onBack}>
           {t('selfRegister.backLink')}
         </Text>
@@ -164,6 +167,20 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       paddingTop: spacing.xxl + spacing.topExtra,
       paddingBottom: spacing.xxl,
     },
+    // Same accent-fill badge treatment as LoginScreen.tsx - this is now
+    // the actual landing screen during internal testing (registration is
+    // the entry point, not login), so it needs the same top-of-screen
+    // brand mark Login has.
+    logoBadge: {
+      width: 64,
+      height: 64,
+      borderRadius: radius.lg,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.lg,
+    },
+    logoMark: { width: 34, height: 40 },
     backLink: {
       ...typography.body,
       fontSize: 15,

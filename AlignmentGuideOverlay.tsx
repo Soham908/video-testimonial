@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
-import { GUIDE_TOP_OFFSET, GUIDE_WIDTH, GUIDE_HEIGHT, type AlignmentSignals } from './alignment';
+import { Animated, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { getGuideTopOffset, GUIDE_WIDTH, GUIDE_HEIGHT, type AlignmentSignals } from './alignment';
 import { useTheme } from './theme/ThemeContext';
 import type { PaletteDarkColors } from './theme/palettes';
 import { useStrings, type UseStringsResult } from './i18n/useStrings';
@@ -28,7 +28,9 @@ function guidanceMessage(signals: AlignmentSignals | null, t: UseStringsResult['
 // dashed-guide treatment.
 export function AlignmentGuideOverlay({ visible, signals, goodFrameStreak, requiredFrames }: Props) {
   const { themeDark: dark } = useTheme();
-  const styles = useMemo(() => makeStyles(dark), [dark]);
+  const { height } = useWindowDimensions();
+  const guideTopOffset = getGuideTopOffset(height);
+  const styles = useMemo(() => makeStyles(dark, guideTopOffset), [dark, guideTopOffset]);
   const opacity = useRef(new Animated.Value(1)).current;
   const { t } = useStrings();
 
@@ -50,16 +52,16 @@ export function AlignmentGuideOverlay({ visible, signals, goodFrameStreak, requi
   );
 }
 
-// How far above the oval's own top (GUIDE_TOP_OFFSET) the guidance message
-// sits - independent of the message's own height (position: 'absolute'),
-// so a longer message wrapping to 2 lines never pushes into the oval
-// itself, and the oval's tuned vertical position (see alignment.ts) is
-// never affected by the message at all. Kept close to the oval (not up
-// near the top bar) so it reads as guidance about the circle right below
-// it, not a separate, disconnected instruction.
-const MESSAGE_TOP_OFFSET = GUIDE_TOP_OFFSET - 60;
+// How far above the oval's own top the guidance message sits -
+// independent of the message's own height (position: 'absolute'), so a
+// longer message wrapping to 2 lines never pushes into the oval itself,
+// and the oval's tuned vertical position (see alignment.ts) is never
+// affected by the message at all. Kept close to the oval (not up near the
+// top bar) so it reads as guidance about the circle right below it, not a
+// separate, disconnected instruction.
+const MESSAGE_TOP_OFFSET_DELTA = -60;
 
-function makeStyles(dark: PaletteDarkColors) {
+function makeStyles(dark: PaletteDarkColors, guideTopOffset: number) {
   return StyleSheet.create({
     overlay: {
       position: 'absolute',
@@ -68,7 +70,7 @@ function makeStyles(dark: PaletteDarkColors) {
       right: 0,
       bottom: 0,
       alignItems: 'center',
-      paddingTop: GUIDE_TOP_OFFSET,
+      paddingTop: guideTopOffset,
     },
     guideOutline: {
       width: GUIDE_WIDTH,
@@ -79,24 +81,38 @@ function makeStyles(dark: PaletteDarkColors) {
       borderTopRightRadius: 144,
       borderBottomLeftRadius: 108,
       borderBottomRightRadius: 108,
-      borderWidth: 1.5,
-      borderColor: 'rgba(255,255,255,0.18)',
+      // Was rgba(255,255,255,0.18) - effectively invisible against a
+      // bright/plain background (the exact complaint from real testers).
+      // There's no actual background-brightness detection feeding this
+      // (see DECISIONS.md - never built), so this can't adapt live; a
+      // stronger fixed stroke plus a soft dark shadow keeps it readable
+      // against both bright and dark scenes without needing that signal.
+      borderWidth: 3,
+      borderColor: 'rgba(255,255,255,0.85)',
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.5,
+      shadowRadius: 6,
+      elevation: 4,
     },
     // Above the oval now, not below it - once the oval was recentered
-    // lower on screen (GUIDE_TOP_OFFSET raised to 230), a message below it
-    // started overlapping AlignmentStatusStrip's checklist, which is
-    // anchored from the bottom edge independently.
+    // lower on screen, a message below it started overlapping
+    // AlignmentStatusStrip's checklist, which is anchored from the bottom
+    // edge independently.
     message: {
       position: 'absolute',
-      top: MESSAGE_TOP_OFFSET,
+      top: guideTopOffset + MESSAGE_TOP_OFFSET_DELTA,
       left: 0,
       right: 0,
       color: dark.text,
-      fontSize: 16.5,
-      fontWeight: '600',
+      fontSize: 18.5,
+      fontWeight: '700',
       textAlign: 'center',
-      lineHeight: 22,
+      lineHeight: 24,
       paddingHorizontal: 26,
+      textShadowColor: 'rgba(0,0,0,0.6)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 4,
     },
   });
 }

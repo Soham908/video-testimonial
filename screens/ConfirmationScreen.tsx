@@ -61,11 +61,11 @@ export function ConfirmationScreen({ onDone, uploading, progress, reelsEnabled }
               ? t('confirmation.subtitleDoneReelsEnabled')
               : t('confirmation.subtitleDoneReelsDisabled')}
         </Text>
-        <View style={styles.reassuranceBox}>
+        <View style={[styles.reassuranceBox, uploading && styles.reassuranceBoxWarning]}>
           {uploading ? (
             <>
               <ProgressBar progress={progress} />
-              <Text style={styles.reassuranceRow}>{t('confirmation.reassuranceSending')}</Text>
+              <Text style={styles.reassuranceRowWarning}>{t('confirmation.reassuranceSending')}</Text>
             </>
           ) : (
             <>
@@ -111,6 +111,24 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       borderRadius: radius.lg,
       padding: spacing.md,
     },
+    // Distinct warning treatment only while the batch is actually
+    // sending - this is the "don't close the app, you'll lose your
+    // recordings" moment, and the previous plain-caption styling read as
+    // routine/skippable copy rather than something worth actually reading
+    // (real tester feedback). Once uploading is done there's nothing left
+    // to lose by closing the app, so that state keeps the neutral box.
+    reassuranceBoxWarning: {
+      backgroundColor: colors.warningSoft,
+      borderWidth: 1,
+      borderColor: colors.warning,
+    },
     reassuranceRow: { ...typography.caption, fontSize: 14, color: colors.text, lineHeight: 20 },
+    reassuranceRowWarning: {
+      ...typography.caption,
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.warning,
+      lineHeight: 21,
+    },
   });
 }

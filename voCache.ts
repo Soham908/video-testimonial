@@ -93,6 +93,7 @@ export async function cacheQuestionAudio(questions: QuestionDto[], language: str
       try {
         await File.downloadFileAsync(question.vo_playback_url, file, { idempotent: true });
         cache[cacheKey] = question.updated_at;
+        console.log(`[voCache] downloaded VO for question ${question.id} (${language})`);
       } catch (error) {
         console.error(`[voCache] failed to download VO for question ${question.id} (${language})`, error);
       }

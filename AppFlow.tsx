@@ -43,6 +43,7 @@ import { useTheme } from './theme/ThemeContext';
 import { useHideNavigationBarWhile } from './theme/NavigationBarSync';
 import { restoreSession, getCurrentAuth, logout } from './auth';
 import { setSessionExpiredHandler } from './api';
+import { hasConsented, markConsented } from './consent';
 import { fetchDistributorProfile, type DistributorProfile } from './distributorProfile';
 import { isVersionBelow } from './appVersion';
 import { uploadSegment } from './upload';
@@ -80,11 +81,12 @@ import {
 type Screen =
   | 'sessionLoading'
   | 'login'
-  // Real entry point when ENABLE_SELF_REGISTRATION is on (config.ts) -
-  // reachable from Login's "New distributor? Register" link, unlike the
-  // dev-only entry-cluster screens below. Covers both register and
-  // phone+password sign-in (SelfRegisterScreen's own mode toggle) - either
-  // one proceeds exactly like a successful login (handleAuthenticated).
+  // The actual landing screen for an unauthenticated user during this
+  // internal-testing phase (see DEFAULT_UNAUTHENTICATED_SCREEN below), also
+  // reachable from Login's "New distributor? Register" link either way.
+  // Covers both register and phone+password sign-in (SelfRegisterScreen's
+  // own mode toggle) - either one proceeds exactly like a successful login
+  // (handleAuthenticated).
   | 'selfRegister'
   // Entry-cluster screens (splash / WhatsApp-invite open / identity
   // confirmation / onboarding) - reachable for now only via the
@@ -104,6 +106,14 @@ type Screen =
   // screen === 'uploading' render block) so the upload-resume/persistence
   // logic never needs to know which of those three is currently visible.
   | 'uploading';
+
+// Real entry point when ENABLE_SELF_REGISTRATION is on (config.ts) - this
+// build currently targets the internal testing group (self-registering
+// participants), not pre-provisioned distributor accounts, so landing on
+// Login first (with no account to type in yet) was the wrong default.
+// Falls back to 'login' when self-registration is off, e.g. a future build
+// actually distributed to pre-seeded distributor accounts.
+const DEFAULT_UNAUTHENTICATED_SCREEN: Screen = ENABLE_SELF_REGISTRATION ? 'selfRegister' : 'login';
 
 // Question Brief is shown before every question (not just question 1) and
 // always requires an explicit tap - Start recording or Rehearse - never
@@ -183,14 +193,6 @@ export function AppFlow() {
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [phase, setPhase] = useState<QuestionPhase>('brief');
-  // Android's own nav-bar contrast scrim isn't something an app can recolor
-  // (NavigationBarSync's comment) - hiding it outright is the only real way
-  // to get true full-bleed. CameraCheckScreen renders during both
-  // 'cameraCheck' (the alignment/lighting check) and 'countdown' - full-bleed
-  // for both, same as 'recording'.
-  useHideNavigationBarWhile(
-    phase === 'cameraCheck' || phase === 'countdown' || phase === 'recording',
-  );
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [countdownRemaining, setCountdownRemaining] = useState(COUNTDOWN_SECONDS);
   // Up to 2 entries per questionIndex now (the take-keeping flow below can
@@ -205,6 +207,18 @@ export function AppFlow() {
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
   const primaryVideos = videos.filter((v) => v.isPrimary !== false);
   const [playingVideo, setPlayingVideo] = useState<PlayableVideo | null>(null);
+  // Android's own nav-bar contrast scrim isn't something an app can recolor
+  // (NavigationBarSync's comment) - hiding it outright is the only real way
+  // to get true full-bleed. CameraCheckScreen renders during both
+  // 'cameraCheck' (the alignment/lighting check) and 'countdown' - full-bleed
+  // for both, same as 'recording'. VideoPlayerScreen (My Videos' playback,
+  // also full-bleed with nativeControls) is included too - without this,
+  // its bottom native control bar sat flush against the bottom edge with no
+  // safe-area clearance, so the system nav bar's own back/home buttons
+  // visually overlapped the player's own controls (real tester feedback).
+  useHideNavigationBarWhile(
+    phase === 'cameraCheck' || phase === 'countdown' || phase === 'recording' || !!playingVideo,
+  );
   // Non-null while retaking a single already-answered question from My
   // Videos - overrides lockMode to a full lock (this is a cold entry, not
   // a continuous session) and makes handleKeepTake replace that question's
@@ -468,7 +482,7 @@ export function AppFlow() {
     Promise.all([restoreSession(), getLanguagePref()]).then(([auth, lang]) => {
       setLanguageState(lang);
       if (!auth) {
-        setScreen('login');
+        setScreen(DEFAULT_UNAUTHENTICATED_SCREEN);
         setSessionRestored(true);
         return;
       }
@@ -489,7 +503,7 @@ export function AppFlow() {
 
       const stored = loadSession();
       if (!stored || !hasMeaningfulProgress(stored)) {
-        setScreen('onboarding');
+        setScreen(hasConsented(auth.distributorId) ? 'main' : 'onboarding');
         setSessionRestored(true);
         return;
       }
@@ -713,7 +727,7 @@ export function AppFlow() {
         screen === 'identityConfirm' ||
         screen === 'onboarding'
       ) {
-        setScreen('login');
+        setScreen(DEFAULT_UNAUTHENTICATED_SCREEN);
         return true;
       }
       return false;
@@ -1382,9 +1396,10 @@ export function AppFlow() {
   // state to login() - same token shape, immediately usable) - so all three
   // proceed exactly the same way from here on, not separate paths that
   // could drift out of sync with each other.
-  function handleAuthenticated() {
+  async function handleAuthenticated() {
     setSessionExpiredNotice(false);
-    getCurrentAuth().then((auth) => auth && setDistributorId(auth.distributorId));
+    const auth = await getCurrentAuth();
+    if (auth) setDistributorId(auth.distributorId);
     fetchDistributorProfile().then(setDistributorProfile).catch(() => {});
     // Cache-first: show cached questions immediately if any exist for this
     // device, then refresh in the background.
@@ -1393,7 +1408,13 @@ export function AppFlow() {
       setQuestions(cachedQuestions);
     }
     loadQuestions();
-    setScreen('onboarding');
+    // Already-consented distributor logging back in (e.g. after a logout)
+    // goes straight to main instead of repeating Onboarding+Consent - see
+    // consent.ts. auth can come back null here only if /me fails right
+    // after a token was just issued, which would also fail every other
+    // authenticated call about to fire above; falling back to onboarding
+    // in that edge case is the safe default (same as a first-ever login).
+    setScreen(auth && hasConsented(auth.distributorId) ? 'main' : 'onboarding');
   }
 
   // Force-update gate - checked ahead of every other screen (including a
@@ -1470,7 +1491,7 @@ export function AppFlow() {
   // simulates a returning-user cold start (splash -> login), reachable via
   // the dev entry menu above. See DECISIONS.md.
   if (screen === 'splash') {
-    return <SplashScreen onContinue={() => setScreen('login')} />;
+    return <SplashScreen onContinue={() => setScreen(DEFAULT_UNAUTHENTICATED_SCREEN)} />;
   }
 
   // The full new-user chain: invite -> identity confirmation -> onboarding
@@ -1489,7 +1510,14 @@ export function AppFlow() {
   }
 
   if (screen === 'consent') {
-    return <ConsentScreen onAgree={() => setScreen('main')} />;
+    return (
+      <ConsentScreen
+        onAgree={() => {
+          if (distributorId) markConsented(distributorId);
+          setScreen('main');
+        }}
+      />
+    );
   }
 
   if (screen === 'permissions') {
@@ -1545,6 +1573,7 @@ export function AppFlow() {
                 : null
             }
             readyReel={null}
+            onOpenProfile={() => setMainTab('profile')}
             onStartNextQuestion={() => {
               if (cameraPermission.hasPermission && microphonePermission.hasPermission) {
                 enterNextQuestion();

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useStrings } from '../i18n/useStrings';
 import type { PaletteColors } from '../theme/palettes';
@@ -52,8 +52,8 @@ export function LoginScreen({ onLoggedIn, onRegisterPress, notice }: Props) {
   return (
     <Pressable style={styles.container} onPress={Keyboard.dismiss}>
       <View>
-        <View style={styles.logoPlaceholder}>
-          <Text style={styles.logoPlaceholderText}>{t('login.logoPlaceholder')}</Text>
+        <View style={styles.logoBadge}>
+          <Image source={require('../assets/Zeist-logo-white.png')} style={styles.logoMark} resizeMode="contain" />
         </View>
         <Text style={styles.title}>{t('login.title')}</Text>
         <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
@@ -120,22 +120,21 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       paddingTop: spacing.xxl + spacing.topExtra,
       paddingBottom: spacing.xxl,
     },
-    logoPlaceholder: {
+    // Real logo now (was a bordered "LOGO" text placeholder) - accent-fill
+    // badge rather than the neutral canvas box the placeholder used, since
+    // the logo art itself is white-on-transparent and needs a solid,
+    // reasonably dark background (any client palette's accent works) to
+    // actually read, the same treatment SplashScreen already uses it with.
+    logoBadge: {
       width: 64,
       height: 64,
       borderRadius: radius.lg,
-      backgroundColor: colors.canvas,
-      borderWidth: 1,
-      borderColor: colors.border,
+      backgroundColor: colors.accent,
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: spacing.lg,
     },
-    logoPlaceholderText: {
-      ...typography.caption,
-      fontSize: 10,
-      color: colors.textDisabled,
-    },
+    logoMark: { width: 34, height: 40 },
     title: {
       ...typography.title,
       fontSize: 27,

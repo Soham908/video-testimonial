@@ -107,7 +107,6 @@
   },
 
   "login": {
-    "logoPlaceholder": "LOGO",
     "title": "Sign in",
     "subtitle": "Use the account your company gave you to get started.",
     "sessionExpiredNotice": "You were signed out because your session ended. Please sign in again.",
@@ -201,6 +200,12 @@
     "countdownLabel": "Recording starts in {{seconds}}…",
     "startRecordingButton": "Start recording",
     "waitingForChecksButton": "Waiting for checks…"
+  },
+
+  "cameraCheckTip": {
+    "title": "Tip",
+    "body": "Position your face inside the circle. We'll detect it automatically and let you know when you're ready.",
+    "gotItButton": "Got it"
   },
 
   "alignmentGuide": {

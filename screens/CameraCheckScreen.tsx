@@ -2,13 +2,16 @@ import { useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer } from 'expo-video';
 import { useTheme } from '../theme/ThemeContext';
+import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
+import { PopupSheet } from '../components/ui/Modal';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 import { useStrings } from '../i18n/useStrings';
+import { useFirstRunTip } from '../useFirstRunTip';
 
 interface Props {
   questionNumber: number;
@@ -57,9 +60,16 @@ export function CameraCheckScreen({
   readQuestionAloud,
   onToggleReadQuestionAloud,
 }: Props) {
-  const { spacing, radius, typography } = useTheme();
-  const styles = useMemo(() => makeStyles(spacing, radius, typography), [spacing, radius, typography]);
+  const { colors, spacing, radius, typography } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
+
+  // First-time-only pointer explaining the alignment circle - real tester
+  // feedback was that it wasn't obvious what to do with it. Only eligible
+  // while the checks screen itself is up (not during the countdown, which
+  // reuses this same component) so it can't pop up moments before
+  // recording starts.
+  const cameraCheckTip = useFirstRunTip('cameraCheckAlignment', !countingDown);
 
   // null (not just undefined) while there's nothing to play - useVideoPlayer
   // accepts a null source and stays inert, same fallback QuestionBriefScreen's
@@ -184,13 +194,21 @@ export function CameraCheckScreen({
           />
         )}
       </View>
+
+      <PopupSheet visible={cameraCheckTip.visible} onDismiss={cameraCheckTip.dismiss}>
+        <Text style={styles.tipTitle}>{t('cameraCheckTip.title')}</Text>
+        <Text style={styles.tipBody}>{t('cameraCheckTip.body')}</Text>
+        <Button label={t('cameraCheckTip.gotItButton')} onPress={cameraCheckTip.dismiss} />
+      </PopupSheet>
     </View>
   );
 }
 
-function makeStyles(spacing: Spacing, radius: Radius, typography: Typography) {
+function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+    tipTitle: { ...typography.title, fontSize: 19, color: colors.text, marginBottom: spacing.sm },
+    tipBody: { ...typography.body, color: colors.textMuted, lineHeight: 22, marginBottom: spacing.lg },
     topBar: {
       position: 'absolute',
       top: 16,

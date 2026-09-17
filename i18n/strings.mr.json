@@ -106,7 +106,6 @@
   },
 
   "login": {
-    "logoPlaceholder": "LOGO",
     "title": "साइन इन करा",
     "subtitle": "सुरुवात करण्यासाठी तुमच्या कंपनीने दिलेलं अकाउंट वापरा.",
     "sessionExpiredNotice": "तुमचं सेशन संपल्यामुळे तुम्हाला साइन आउट करण्यात आलं. कृपया पुन्हा साइन इन करा.",
@@ -200,6 +199,12 @@
     "countdownLabel": "रेकॉर्डिंग {{seconds}} मध्ये सुरू होईल…",
     "startRecordingButton": "रेकॉर्डिंग सुरू करा",
     "waitingForChecksButton": "चेक होत आहे…"
+  },
+
+  "cameraCheckTip": {
+    "title": "टीप",
+    "body": "तुमचा चेहरा वर्तुळाच्या आत ठेवा. आम्ही ते आपोआप ओळखू आणि तयार झाल्यावर कळवू.",
+    "gotItButton": "समजले"
   },
 
   "alignmentGuide": {
