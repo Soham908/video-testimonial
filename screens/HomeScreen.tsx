@@ -9,6 +9,9 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Carousel } from '../components/ui/Carousel';
 import { useStrings } from '../i18n/useStrings';
+import { TooltipTarget } from '../tooltips/TooltipTarget';
+import { HelpButton } from '../tooltips/HelpButton';
+import { HOME_TOOLTIP_IDS } from '../tooltips/tooltipRegistry';
 
 interface NextQuestion {
   index: number;
@@ -115,9 +118,14 @@ export function HomeScreen({
           <Text style={styles.greeting}>{greeting}</Text>
           {subGreeting.length > 0 && <Text style={styles.subGreeting}>{subGreeting}</Text>}
         </View>
-        <Pressable style={styles.avatar} onPress={onOpenProfile}>
-          {initials ? <Text style={styles.avatarText}>{initials}</Text> : <GenericAvatarGlyph />}
-        </Pressable>
+        <View style={styles.headerRightGroup}>
+          <HelpButton tooltipIds={HOME_TOOLTIP_IDS} />
+          <TooltipTarget id="home.profileAvatar">
+            <Pressable style={styles.avatar} onPress={onOpenProfile}>
+              {initials ? <Text style={styles.avatarText}>{initials}</Text> : <GenericAvatarGlyph />}
+            </Pressable>
+          </TooltipTarget>
+        </View>
       </View>
 
       {readyReel && (
@@ -330,6 +338,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
     greeting: { ...typography.title, fontSize: 22, color: colors.text },
     subGreeting: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+    headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     avatar: {
       width: 40,
       height: 40,

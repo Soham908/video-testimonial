@@ -6,6 +6,7 @@ import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Typography } from '../theme/typography';
 import { useStrings } from '../i18n/useStrings';
+import { TooltipTarget } from '../tooltips/TooltipTarget';
 
 export type MainTab = 'home' | 'myVideos' | 'help' | 'profile';
 
@@ -43,17 +44,19 @@ export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }:
         <View style={[styles.homeIconRoof, activeTab === 'home' && styles.iconActiveBg]} />
         <View style={[styles.homeIconBase, activeTab === 'home' && styles.iconActiveBg]} />
       </TabItem>
-      <TabItem
-        label={t('bottomTabBar.myVideos')}
-        active={activeTab === 'myVideos'}
-        onPress={() => onTabPress('myVideos')}
-        styles={styles}
-      >
-        <View style={[styles.videosIconFrame, activeTab === 'myVideos' && styles.iconActiveBorder]}>
-          <View style={[styles.videosIconTriangle, activeTab === 'myVideos' && styles.iconActiveTriangle]} />
-        </View>
-        {myVideosHasNotification && <View style={styles.notificationDot} />}
-      </TabItem>
+      <TooltipTarget id="bottomTabBar.myVideosTab" style={styles.tooltipTargetFlex}>
+        <TabItem
+          label={t('bottomTabBar.myVideos')}
+          active={activeTab === 'myVideos'}
+          onPress={() => onTabPress('myVideos')}
+          styles={styles}
+        >
+          <View style={[styles.videosIconFrame, activeTab === 'myVideos' && styles.iconActiveBorder]}>
+            <View style={[styles.videosIconTriangle, activeTab === 'myVideos' && styles.iconActiveTriangle]} />
+          </View>
+          {myVideosHasNotification && <View style={styles.notificationDot} />}
+        </TabItem>
+      </TooltipTarget>
       <TabItem label={t('bottomTabBar.help')} active={activeTab === 'help'} onPress={() => onTabPress('help')} styles={styles}>
         {/* Basic placeholder glyph - real icon treatment lands with the
             Help screen's own build phase, matching the others' style. */}
@@ -110,6 +113,10 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typogra
       backgroundColor: colors.background,
     },
     item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs + 1 },
+    // Matches `item`'s own flex so wrapping the My Videos TabItem in a
+    // TooltipTarget (an extra View in between) doesn't change this tab's
+    // width share in the row - see the tooltip target below.
+    tooltipTargetFlex: { flex: 1 },
     iconSlot: { alignItems: 'center', justifyContent: 'center', height: 18, position: 'relative' },
     notificationDot: {
       position: 'absolute',

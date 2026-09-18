@@ -21,3 +21,12 @@ export const ENABLE_REEL_RENDERING = process.env.EXPO_PUBLIC_ENABLE_REEL_RENDERI
 // dead-end button, and flipping only the backend one would leave the real
 // endpoint reachable with no in-app way to find it.
 export const ENABLE_SELF_REGISTRATION = process.env.EXPO_PUBLIC_ENABLE_SELF_REGISTRATION === 'true';
+
+// Anchored tooltips (tooltips/) - a UX experiment for internal testing, not
+// a backend-coordinated flag like the two above, so it's a plain local
+// constant rather than an env var. Flip this to false to pull the whole
+// system out of the running app in one place - every TooltipTarget falls
+// back to rendering its children with no wrapper/measuring overhead and
+// every HelpButton renders nothing - without touching any of the screens
+// that reference them.
+export const ENABLE_ANCHORED_TOOLTIPS = true;

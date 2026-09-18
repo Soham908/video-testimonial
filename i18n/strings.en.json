@@ -437,5 +437,17 @@
   "upload": {
     "storageUploadFailed": "Upload to storage failed (status {{status}}).",
     "questionSetChanged": "No question found for local position {{position}} - question set may have changed since this was recorded."
+  },
+
+  "tooltips": {
+    "gotItButton": "Got it",
+    "homeProfileAvatar": {
+      "title": "Your profile",
+      "body": "Tap here anytime to view your profile, change language, or sign out."
+    },
+    "bottomTabBarMyVideos": {
+      "title": "My Videos",
+      "body": "All your recorded answers live here - review, retake, or send them from this tab."
+    }
   }
 }

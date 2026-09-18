@@ -25,6 +25,8 @@ import { ThemeProvider } from './theme/ThemeContext';
 import { PaletteSwitcher } from './theme/PaletteSwitcher';
 import { NavigationBarSync } from './theme/NavigationBarSync';
 import { ErrorBoundary } from './ErrorBoundary';
+import { TooltipProvider } from './tooltips/TooltipContext';
+import { AnchoredTooltipOverlay } from './tooltips/AnchoredTooltipOverlay';
 
 export default function App() {
   // Both UI-chrome families load up front (not just the active one) so
@@ -58,7 +60,10 @@ export default function App() {
     <ErrorBoundary>
       <SafeAreaProvider>
         <ThemeProvider>
-          <AppFlow />
+          <TooltipProvider>
+            <AppFlow />
+            <AnchoredTooltipOverlay />
+          </TooltipProvider>
           <PaletteSwitcher />
           <NavigationBarSync />
           <StatusBar style="dark" />
