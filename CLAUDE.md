@@ -1,5 +1,15 @@
 # Project context — AI-guided video testimonial app
 
+## Laptop handover / current implementation
+
+Read [HANDOFF.md](HANDOFF.md) before continuing work on a migrated checkout. It
+records the 2026-10-26 handover, active branch, native setup, current features,
+documentation drift, and unresolved audit findings. The architecture below
+includes intended v1 behavior; use the handover and current code to distinguish
+what is already implemented from what is still required. See
+[AUDIT_REPORT.md](AUDIT_REPORT.md) and [AUDIT_FIX_PROMPTS.md](AUDIT_FIX_PROMPTS.md)
+for the carried-forward audit and scoped High-priority fix prompts.
+
 ## What this is
 An app that guides distributors (large Indian distributor/franchise networks — IFB, Aditya Birla scale) through recording their own testimonial videos, using on-device computer vision for real-time framing/lighting coaching instead of a professional shoot. Videos get auto-processed into branded reels, plus a transcription-driven analytics layer (sentiment, themes, aggregated insights) for the client.
 
