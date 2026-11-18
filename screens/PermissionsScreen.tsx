@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useCameraPermission, useMicrophonePermission } from 'react-native-vision-camera';
 import { useTheme } from '../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -31,6 +32,7 @@ interface Props {
 // instead of a dead end.
 export function PermissionsScreen({ onContinue, onBack }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
 
@@ -54,7 +56,7 @@ export function PermissionsScreen({ onContinue, onBack }: Props) {
 
   if (denied) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: insets.bottom + spacing.edgeGap + spacing.footerGap }]}>
         {header}
         <View style={styles.body}>
           <View style={styles.deniedBadgeRow}>

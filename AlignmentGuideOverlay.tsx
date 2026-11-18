@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Animated, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { getGuideTopOffset, GUIDE_WIDTH, GUIDE_HEIGHT, type AlignmentSignals } from './alignment';
+import { Animated, StyleSheet, Text, View } from 'react-native';
+import type { AlignmentGeometry, AlignmentSignals } from './alignment';
 import { useTheme } from './theme/ThemeContext';
 import type { PaletteDarkColors } from './theme/palettes';
 import { useStrings, type UseStringsResult } from './i18n/useStrings';
@@ -9,6 +9,7 @@ interface Props {
   // Guide is shown while this is true, and fades out (not a hard cut) when
   // it flips false - per CLAUDE.md, full guide only during setup/lock phase.
   visible: boolean;
+  geometry: AlignmentGeometry;
   signals: AlignmentSignals | null;
   goodFrameStreak: number;
   requiredFrames: number;
@@ -26,11 +27,9 @@ function guidanceMessage(signals: AlignmentSignals | null, t: UseStringsResult['
 // left below its title bar - a subtle outline plus one line of guidance,
 // matching the Camera Check mockup rather than the old heavier
 // dashed-guide treatment.
-export function AlignmentGuideOverlay({ visible, signals, goodFrameStreak, requiredFrames }: Props) {
+export function AlignmentGuideOverlay({ visible, geometry, signals, goodFrameStreak, requiredFrames }: Props) {
   const { themeDark: dark } = useTheme();
-  const { height } = useWindowDimensions();
-  const guideTopOffset = getGuideTopOffset(height);
-  const styles = useMemo(() => makeStyles(dark, guideTopOffset), [dark, guideTopOffset]);
+  const styles = useMemo(() => makeStyles(dark, geometry), [dark, geometry]);
   const opacity = useRef(new Animated.Value(1)).current;
   const { t } = useStrings();
 
@@ -61,7 +60,7 @@ export function AlignmentGuideOverlay({ visible, signals, goodFrameStreak, requi
 // separate, disconnected instruction.
 const MESSAGE_TOP_OFFSET_DELTA = -60;
 
-function makeStyles(dark: PaletteDarkColors, guideTopOffset: number) {
+function makeStyles(dark: PaletteDarkColors, geometry: AlignmentGeometry) {
   return StyleSheet.create({
     overlay: {
       position: 'absolute',
@@ -69,18 +68,19 @@ function makeStyles(dark: PaletteDarkColors, guideTopOffset: number) {
       left: 0,
       right: 0,
       bottom: 0,
-      alignItems: 'center',
-      paddingTop: guideTopOffset,
     },
     guideOutline: {
-      width: GUIDE_WIDTH,
-      height: GUIDE_HEIGHT,
+      position: 'absolute',
+      left: geometry.left,
+      top: geometry.top,
+      width: geometry.width,
+      height: geometry.height,
       // Radii scaled from the original 218-wide oval's 128/96 proportions
       // so the shape stays the same as GUIDE_WIDTH changes.
-      borderTopLeftRadius: 144,
-      borderTopRightRadius: 144,
-      borderBottomLeftRadius: 108,
-      borderBottomRightRadius: 108,
+      borderTopLeftRadius: 144 * geometry.scale,
+      borderTopRightRadius: 144 * geometry.scale,
+      borderBottomLeftRadius: 108 * geometry.scale,
+      borderBottomRightRadius: 108 * geometry.scale,
       // Was rgba(255,255,255,0.18) - effectively invisible against a
       // bright/plain background (the exact complaint from real testers).
       // There's no actual background-brightness detection feeding this
@@ -101,7 +101,7 @@ function makeStyles(dark: PaletteDarkColors, guideTopOffset: number) {
     // edge independently.
     message: {
       position: 'absolute',
-      top: guideTopOffset + MESSAGE_TOP_OFFSET_DELTA,
+      top: geometry.top + MESSAGE_TOP_OFFSET_DELTA,
       left: 0,
       right: 0,
       color: dark.text,

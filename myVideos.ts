@@ -1,16 +1,32 @@
+import { accountFile, currentAccount } from './accountStorage';
 import { File, Paths } from 'expo-file-system';
 import { apiGet } from './api';
 
 export interface SegmentDto {
+  segment_id?: string;
+  question_id?: string | null;
+  question_updated_at?: string | null;
+  question_text?: string | null;
+  language?: 'en' | 'hi' | 'mr' | null;
+  integrity_status?: 'verified_v2' | 'legacy_unverified';
+  receipt_id?: string | null;
+  source_sha256?: string | null;
+  source_size_bytes?: number | null;
+  trim_start_ms?: number | null;
+  trim_end_ms?: number | null;
+  source_duration_ms?: number | null;
+  playback_status?: 'pending' | 'ready' | 'failed' | 'unavailable' | 'legacy_unverified';
   question_index: number;
   status: 'uploaded' | 'transcribing' | 'transcribed' | 'failed';
-  playback_url: string;
+  playback_url: string | null;
   duration_seconds: number;
   created_at: string;
   updated_at: string;
 }
 
 export interface RenderedVideoDto {
+  segment_id?: string;
+  question_id?: string | null;
   question_index: number;
   status: 'rendering' | 'rendered' | 'failed';
   playback_url: string | null;
@@ -29,14 +45,9 @@ export async function fetchRenderedVideos(): Promise<RenderedVideoDto[]> {
   return rendered_videos;
 }
 
-// A segment appearing in the list at all means it's already durably
-// uploaded - `failed` on a segment is about the (invisible-to-the-user)
-// transcription pipeline downstream of that, not the video itself. Per
-// product decision, the distributor never needs to know about
-// transcription/subtitle-baking status - their own recorded answer is
-// either there or it isn't, so this always reads as ready once listed.
-// Only the branded/rendered video has a meaningful status distinction
-// worth surfacing (processing / ready / failed) - see renderedUserStatus.
+// Acceptance and playback readiness are separate. A received revision may
+// still be preparing its selected clip; the UI withholds default playback
+// until playback_status is ready and a selected-content URL is available.
 export type UserFacingStatus = 'processing' | 'ready' | 'failed';
 
 export function renderedUserStatus(status: RenderedVideoDto['status']): UserFacingStatus {
@@ -45,20 +56,16 @@ export function renderedUserStatus(status: RenderedVideoDto['status']): UserFaci
   return 'processing';
 }
 
-// --- Basic local-first cache ---------------------------------------------
-// Deliberately minimal, per product decision ("a super basic basic one"):
-// a single JSON file mapping question_index -> the segment updated_at we
-// last synced against. No versioning, no per-field diffing - just enough
-// to tell "has the server's copy of this segment changed since we last
-// looked" before deciding whether the local file is still safe to play
-// instead of the network playback_url.
+// Optional account-scoped observations keyed by stable question + revision.
+// This cache never authorizes local playback: that requires a verified receipt
+// matching the server segment, exact source SHA/size and selected interval.
 const CACHE_FILE_NAME = 'my-videos-sync-cache.json';
 
 function getCacheFile(): File {
-  return new File(Paths.document, CACHE_FILE_NAME);
+  return accountFile(CACHE_FILE_NAME);
 }
 
-type SyncCache = Record<number, string>;
+type SyncCache = Record<string, string>;
 
 function readCache(): SyncCache {
   const file = getCacheFile();
@@ -76,15 +83,13 @@ function writeCache(cache: SyncCache): void {
   file.write(JSON.stringify(cache));
 }
 
-// Returns true if `updatedAt` matches what's cached for this question -
-// i.e. nothing has changed server-side since last sync, so a local file
-// (if one exists) is still safe to play instead of fetching playback_url.
-// Always refreshes the cache to the latest `updatedAt` as a side effect,
-// so the next check reflects whatever the server just reported.
-export function checkAndSyncCache(questionIndex: number, updatedAt: string): boolean {
+// Legacy positional/updated_at entries use different keys and cannot match a
+// v2 observation. Revision identity includes source and selected interval.
+export function checkAndSyncCache(questionId: string, revisionIdentity: string): boolean {
   const cache = readCache();
-  const matches = cache[questionIndex] === updatedAt;
-  cache[questionIndex] = updatedAt;
+  const key = `v2:${questionId}`;
+  const matches = cache[key] === revisionIdentity;
+  cache[key] = revisionIdentity;
   writeCache(cache);
   return matches;
 }

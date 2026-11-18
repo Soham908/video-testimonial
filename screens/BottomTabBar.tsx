@@ -7,6 +7,7 @@ import type { Spacing } from '../theme/spacing';
 import type { Typography } from '../theme/typography';
 import { useStrings } from '../i18n/useStrings';
 import { TooltipTarget } from '../tooltips/TooltipTarget';
+import { SYSTEM_BAR_BACKGROUND, SYSTEM_BAR_TEXT, SYSTEM_BAR_TEXT_MUTED } from '../theme/SystemBarFrame';
 
 export type MainTab = 'home' | 'myVideos' | 'help' | 'profile';
 
@@ -21,21 +22,14 @@ interface Props {
 // lightweight screen-state pattern - no navigation library added.
 export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }: Props) {
   const { colors, spacing, typography } = useTheme();
-  // Real per-device inset (Android 3-button/gesture nav, iOS home indicator)
-  // - was previously unaccounted for entirely, so the tab bar's own content
-  // sat right under/behind the system nav instead of clearing it. Added as
-  // extra height, not swapped in for the base height - the icon/label row
-  // keeps its usual size, insets.bottom is blank space (background-colored)
-  // below it, same visual result as apps where the bar sits above the
-  // system buttons. The system nav bar itself (the OS's own gray, outside
-  // this component entirely) is handled separately - see
-  // theme/NavigationBarSync.tsx.
+  // Keep the tab controls above the real device inset. SystemBarFrame
+  // paints the same forest green behind Android buttons / iOS home indicator.
   const insets = useSafeAreaInsets();
   const styles = useMemo(
     () => makeStyles(colors, spacing, typography, insets.bottom),
     [colors, spacing, typography, insets.bottom],
   );
-  const inactive = colors.textDisabled;
+  const inactive = SYSTEM_BAR_TEXT_MUTED;
   const { t } = useStrings();
 
   return (
@@ -44,7 +38,7 @@ export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }:
         <View style={[styles.homeIconRoof, activeTab === 'home' && styles.iconActiveBg]} />
         <View style={[styles.homeIconBase, activeTab === 'home' && styles.iconActiveBg]} />
       </TabItem>
-      <TooltipTarget id="bottomTabBar.myVideosTab" style={styles.tooltipTargetFlex}>
+      <TooltipTarget id="bottomTabBar.myVideosTab" active={activeTab === 'home'} style={styles.tooltipTargetFlex}>
         <TabItem
           label={t('bottomTabBar.myVideos')}
           active={activeTab === 'myVideos'}
@@ -61,7 +55,7 @@ export function BottomTabBar({ activeTab, onTabPress, myVideosHasNotification }:
         {/* Basic placeholder glyph - real icon treatment lands with the
             Help screen's own build phase, matching the others' style. */}
         <View style={[styles.helpIconCircle, activeTab === 'help' && styles.iconActiveBorder]}>
-          <Text style={[styles.helpIconGlyph, { color: activeTab === 'help' ? colors.accent : inactive }]}>?</Text>
+          <Text style={[styles.helpIconGlyph, { color: activeTab === 'help' ? SYSTEM_BAR_TEXT : inactive }]}>?</Text>
         </View>
       </TabItem>
       <TabItem
@@ -91,7 +85,7 @@ function TabItem({
   styles: ReturnType<typeof makeStyles>;
 }) {
   return (
-    <Pressable style={styles.item} onPress={onPress}>
+    <Pressable accessibilityRole="tab" accessibilityState={{ selected: active }} style={[styles.item, active && styles.itemActive]} onPress={onPress}>
       <View style={styles.iconSlot}>{children}</View>
       <Text style={[styles.label, active && styles.labelActive]}>{label}</Text>
     </Pressable>
@@ -99,20 +93,19 @@ function TabItem({
 }
 
 function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typography, bottomInset: number) {
-  const inactive = colors.textDisabled;
+  const inactive = SYSTEM_BAR_TEXT_MUTED;
   return StyleSheet.create({
     container: {
       height: 60 + bottomInset,
       paddingBottom: bottomInset,
+      marginTop: spacing.edgeGap,
       flexDirection: 'row',
       borderTopWidth: 1,
-      borderTopColor: colors.borderStrong,
-      // Matches the page background, not `colors.surface` (that's for
-      // elevated cards/rows, which is why it read as a visibly different
-      // white bar against the rest of the screen's warmer background).
-      backgroundColor: colors.background,
+      borderTopColor: '#345A48',
+      backgroundColor: SYSTEM_BAR_BACKGROUND,
     },
     item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs + 1 },
+    itemActive: { backgroundColor: 'rgba(255,255,255,0.08)' },
     // Matches `item`'s own flex so wrapping the My Videos TabItem in a
     // TooltipTarget (an extra View in between) doesn't change this tab's
     // width share in the row - see the tooltip target below.
@@ -130,7 +123,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typogra
       borderColor: colors.surface,
     },
     label: { ...typography.caption, fontSize: 12, fontWeight: '600', color: inactive },
-    labelActive: { fontWeight: '700', color: colors.accent },
+    labelActive: { fontWeight: '700', color: SYSTEM_BAR_TEXT },
     homeIconRoof: {
       width: 12,
       height: 12,
@@ -140,7 +133,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typogra
       marginBottom: -6,
     },
     homeIconBase: { width: 15, height: 10, backgroundColor: inactive, borderRadius: 2 },
-    iconActiveBg: { backgroundColor: colors.accent },
+    iconActiveBg: { backgroundColor: SYSTEM_BAR_TEXT },
     videosIconFrame: {
       width: 24,
       height: 17,
@@ -161,8 +154,8 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, typography: Typogra
       borderLeftColor: inactive,
       marginLeft: 2,
     },
-    iconActiveTriangle: { borderLeftColor: colors.accent },
-    iconActiveBorder: { borderColor: colors.accent },
+    iconActiveTriangle: { borderLeftColor: SYSTEM_BAR_TEXT },
+    iconActiveBorder: { borderColor: SYSTEM_BAR_TEXT },
     helpIconCircle: {
       width: 18,
       height: 18,

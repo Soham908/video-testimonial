@@ -1,49 +1,114 @@
-import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { AppState, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useTheme } from '../theme/ThemeContext';
-import type { Spacing } from '../theme/spacing';
-import type { Radius } from '../theme/radius';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../components/ui/Button';
 import { PopupSheet } from '../components/ui/Modal';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 import { useStrings } from '../i18n/useStrings';
+import { playQuestionAudio } from '../playQuestionAudio';
 
 interface Props {
   questionText: string;
+  voPlaybackUrl?: string;
+  readQuestionAloud: boolean;
   onRecordForReal: () => void;
   onBackToBrief: () => void;
 }
 
-// Chrome-only overlay - rendered as a SIBLING of <CameraAlignment/>, not a
-// wrapper (see CameraCheckScreen's comment for why: CameraAlignment must
-// not remount when swapping between rehearse/check/recording chrome).
-// Mirrors the real recording screen (per DECISIONS.md) - full-sentence
-// prompt instead of terse keywords, and deliberately non-gating: nothing
-// here is a checklist to pass, since the whole point is zero-stakes
-// practice. Structurally never persists anything - this screen never calls
-// CameraAlignment's imperative startRecording()/stopRecording(), so there
-// is no code path here that could ever save a rehearsal as a take (not
-// just a UI label saying so).
-export function RehearseScreen({ questionText, onRecordForReal, onBackToBrief }: Props) {
+// Rehearsal uses the shared camera as a preview. Playback completion only
+// changes the guidance on this screen.
+export function RehearseScreen({ questionText, voPlaybackUrl, readQuestionAloud, onRecordForReal, onBackToBrief }: Props) {
   const { colors, spacing, radius } = useTheme();
-  const styles = useMemo(() => makeStyles(spacing, radius), [spacing, radius]);
+  const insets = useSafeAreaInsets();
   const [finishing, setFinishing] = useState(false);
+  const [audioRequest, setAudioRequest] = useState<'play' | 'retry' | null>(
+    readQuestionAloud && voPlaybackUrl ? 'play' : null,
+  );
+  const [audioFailed, setAudioFailed] = useState(false);
+  const player = useAudioPlayer(voPlaybackUrl ?? null, { keepAudioSessionActive: true });
   const { t } = useStrings();
 
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') setAudioRequest(null);
+    });
+    return () => listener.remove();
+  }, []);
+
+  useEffect(() => {
+    const source = voPlaybackUrl;
+    if (!audioRequest || !source) return;
+    if (AppState.currentState && AppState.currentState !== 'active') {
+      setAudioRequest(null);
+      return;
+    }
+    const controller = new AbortController();
+    async function play(questionAudioUrl: string) {
+      try {
+        await setAudioModeAsync({ playsInSilentMode: true });
+        if (controller.signal.aborted) return;
+        if (audioRequest === 'retry') player.replace(questionAudioUrl);
+        await playQuestionAudio(player, controller.signal);
+      } catch {
+        if (!controller.signal.aborted) setAudioFailed(true);
+      } finally {
+        if (!controller.signal.aborted) setAudioRequest(null);
+      }
+    }
+    void play(source);
+    return () => controller.abort();
+  }, [audioRequest, player, voPlaybackUrl]);
+
+  function toggleQuestionAudio() {
+    if (audioRequest) {
+      setAudioRequest(null);
+      return;
+    }
+    setAudioFailed(false);
+    setAudioRequest(audioFailed ? 'retry' : 'play');
+  }
+
   return (
-    <View style={styles.container} pointerEvents="box-none">
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top + spacing.edgeGap + spacing.md,
+          paddingBottom: insets.bottom + spacing.footerGap,
+          paddingLeft: insets.left + spacing.md,
+          paddingRight: insets.right + spacing.md,
+          gap: spacing.md,
+        },
+      ]}
+      pointerEvents="box-none"
+    >
       <View style={styles.topBanner} pointerEvents="none">
         <Text style={styles.topBannerText}>{t('rehearse.topBanner')}</Text>
       </View>
 
-      <View style={styles.promptBox} pointerEvents="none">
-        <Text style={[styles.promptText, containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('600') }]}>
-          {questionText}
+      <View style={[styles.panel, { gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg }]}>
+        <ScrollView style={styles.promptScroll}>
+          <Text style={[styles.promptText, containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('600') }]}>
+            {questionText}
+          </Text>
+        </ScrollView>
+        <Text style={styles.hint} accessibilityLiveRegion="polite">
+          {t(audioRequest ? 'rehearse.listenHint' : audioFailed || !voPlaybackUrl ? 'rehearse.audioUnavailable' : 'rehearse.practiceHint')}
         </Text>
-      </View>
-
-      <View style={styles.bottomBar}>
-        <Button label={t('rehearse.finishButton')} onPress={() => setFinishing(true)} />
+        {voPlaybackUrl && (
+          <Button
+            label={t(audioRequest ? 'rehearse.stopAudio' : 'rehearse.playQuestion')}
+            onPress={toggleQuestionAudio}
+            variant="quiet"
+            textStyle={styles.audioButton}
+          />
+        )}
+        <Button label={t('rehearse.finishButton')} onPress={() => {
+          setAudioRequest(null);
+          setFinishing(true);
+        }} />
       </View>
 
       <PopupSheet visible={finishing} onDismiss={() => setFinishing(false)}>
@@ -75,39 +140,23 @@ export function RehearseScreen({ questionText, onRecordForReal, onBackToBrief }:
   );
 }
 
-function makeStyles(spacing: Spacing, radius: Radius) {
-  return StyleSheet.create({
-    container: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-    topBanner: {
-      position: 'absolute',
-      top: 16,
-      left: spacing.lg,
-      right: spacing.lg,
-      alignItems: 'center',
-    },
-    topBannerText: {
-      color: '#FFFFFF',
-      fontSize: 12.5,
-      fontWeight: '700',
-      backgroundColor: 'rgba(0,0,0,0.45)',
-      borderRadius: 999,
-      paddingVertical: 6,
-      paddingHorizontal: 14,
-      overflow: 'hidden',
-    },
-    promptBox: {
-      position: 'absolute',
-      left: spacing.lg,
-      right: spacing.lg,
-      bottom: 120,
-    },
-    promptText: {
-      color: '#FFFFFF',
-      fontSize: 19,
-      fontWeight: '600',
-      textAlign: 'center',
-      lineHeight: 26,
-    },
-    bottomBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: 30 },
-  });
-}
+const styles = StyleSheet.create({
+  container: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, justifyContent: 'space-between' },
+  topBanner: { alignItems: 'center' },
+  topBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    overflow: 'hidden',
+    textAlign: 'center',
+  },
+  panel: { alignSelf: 'center', width: '100%', maxWidth: 560, flexShrink: 1, backgroundColor: 'rgba(0,0,0,0.75)' },
+  promptScroll: { flexGrow: 0, flexShrink: 1 },
+  promptText: { color: '#FFFFFF', fontSize: 17, fontWeight: '600', textAlign: 'center', lineHeight: 24 },
+  hint: { color: '#E0E0E0', fontSize: 13, textAlign: 'center' },
+  audioButton: { color: '#FFFFFF' },
+});

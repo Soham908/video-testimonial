@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { LegalLinks } from '../components/LegalDocumentViewer';
+import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useStrings } from '../i18n/useStrings';
@@ -6,10 +7,13 @@ import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
-import { login } from '../auth';
+import { loginByPhone } from '../auth';
+import { AuthFormLayout } from '../components/ui/AuthFormLayout';
+import { PhoneNumberField } from '../components/ui/PhoneNumberField';
+import { validPhone, type PhoneCountryCode } from '../phoneNumbers';
 
 interface Props {
-  onLoggedIn: () => void;
+  onLoggedIn: () => void | Promise<void>;
   // Only passed when ENABLE_SELF_REGISTRATION is on (see AppFlow.tsx/
   // config.ts) - this screen doesn't need to know about the flag itself,
   // it just shows the entry point when a handler exists and stays exactly
@@ -21,28 +25,38 @@ interface Props {
   // typed the wrong password"), so a token dying doesn't read as a failed
   // login attempt.
   notice?: string;
+  authenticate?: typeof loginByPhone;
+  heading?: string;
+  description?: string;
+  signInLabel?: string;
+  onRetryRecovery?: () => void;
+  onUseAnotherAccount?: () => void;
+  recoveryBusy?: boolean;
 }
 
-// Prefilled with a seeded test account - there's no self-serve account
-// creation, distributors are provisioned backend-side. Prefill is a
-// testing convenience while Soham is the only person signing in; revisit
-// before this goes to real distributors.
-export function LoginScreen({ onLoggedIn, onRegisterPress, notice }: Props) {
+// Release login starts empty. Reviewer credentials belong in store review notes.
+export function LoginScreen({ onLoggedIn, onRegisterPress, notice, authenticate = loginByPhone, heading, description, signInLabel, onRetryRecovery, onUseAnotherAccount, recoveryBusy = false }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
 
-  const [username, setUsername] = useState('kumar');
-  const [password, setPassword] = useState('kumar123');
+  const [username, setUsername] = useState('');
+  const [country, setCountry] = useState<PhoneCountryCode>('IN');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const passwordInput = useRef<TextInput>(null);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const canSubmit = validPhone(username, country) && password.length > 0 && !recoveryBusy;
 
   async function handleSubmit() {
+    if (submitting || !canSubmit) return;
+    Keyboard.dismiss();
     setSubmitting(true);
     setError(null);
     try {
-      await login(username, password);
-      onLoggedIn();
+      await authenticate(username, password, country);
+      await onLoggedIn();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('login.genericError'));
       setSubmitting(false);
@@ -50,13 +64,13 @@ export function LoginScreen({ onLoggedIn, onRegisterPress, notice }: Props) {
   }
 
   return (
-    <Pressable style={styles.container} onPress={Keyboard.dismiss}>
+    <AuthFormLayout contentStyle={styles.container}>
       <View>
         <View style={styles.logoBadge}>
           <Image source={require('../assets/Zeist-logo-white.png')} style={styles.logoMark} resizeMode="contain" />
         </View>
-        <Text style={styles.title}>{t('login.title')}</Text>
-        <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
+        <Text style={styles.title}>{heading ?? t('login.title')}</Text>
+        <Text style={styles.subtitle}>{description ?? t('login.subtitle')}</Text>
 
         {notice && (
           <View style={styles.noticeBox}>
@@ -64,57 +78,58 @@ export function LoginScreen({ onLoggedIn, onRegisterPress, notice }: Props) {
           </View>
         )}
 
-        <Text style={styles.label}>{t('login.usernameLabel')}</Text>
-        <TextInput
-          style={styles.input}
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!submitting}
-          placeholderTextColor={colors.textDisabled}
-        />
+        <PhoneNumberField label={t('login.usernameLabel')} value={username} country={country} onChangeText={setUsername} onCountryChange={setCountry} disabled={submitting || recoveryBusy} onNext={() => passwordInput.current?.focus()} />
 
         <Text style={styles.label}>{t('login.passwordLabel')}</Text>
         <TextInput
-          style={styles.input}
+          ref={passwordInput}
+          style={[styles.input, focusedField === 'password' && styles.inputFocused]}
+          accessibilityLabel={t('login.passwordLabel')}
           value={password}
           onChangeText={setPassword}
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
-          editable={!submitting}
+          editable={!submitting && !recoveryBusy}
+          returnKeyType="done"
+          onSubmitEditing={handleSubmit}
+          onFocus={() => setFocusedField('password')}
+          onBlur={() => setFocusedField(null)}
           placeholderTextColor={colors.textDisabled}
         />
 
         {error && <Text style={styles.error}>{error}</Text>}
 
         <Pressable
-          style={[styles.button, submitting && styles.buttonDisabled]}
+          accessibilityRole="button"
+          style={[styles.button, (submitting || !canSubmit) && styles.buttonDisabled]}
           onPress={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || !canSubmit}
         >
           {submitting ? (
             <ActivityIndicator color={colors.accentText} />
           ) : (
-            <Text style={styles.buttonText}>{t('login.signInButton')}</Text>
+            <Text style={styles.buttonText}>{signInLabel ?? t('login.signInButton')}</Text>
           )}
         </Pressable>
+        {onRetryRecovery && <Pressable accessibilityRole="button" onPress={onRetryRecovery} disabled={recoveryBusy || submitting} style={styles.registerLink}><Text style={styles.noticeText}>{recoveryBusy ? t('deletion.cleaning') : t('deletion.retry')}</Text></Pressable>}
+        {onUseAnotherAccount && <Pressable accessibilityRole="button" onPress={onUseAnotherAccount} style={styles.registerLink}><Text style={styles.noticeText}>{t('deletion.useAnotherAccount')}</Text></Pressable>}
 
         {onRegisterPress && (
           <Text style={styles.registerLink} onPress={onRegisterPress}>
             {t('login.registerLink')}
           </Text>
         )}
+        <LegalLinks />
       </View>
-    </Pressable>
+    </AuthFormLayout>
   );
 }
 
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: {
-      flex: 1,
+      flexGrow: 1,
       backgroundColor: colors.background,
       padding: spacing.xl,
       paddingTop: spacing.xxl + spacing.topExtra,
@@ -175,6 +190,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       color: colors.text,
       marginBottom: spacing.md,
     },
+    inputFocused: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
     error: {
       ...typography.body,
       fontSize: 14,

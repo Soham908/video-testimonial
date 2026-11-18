@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LEGAL_RELEASE } from '../legalDocuments';
+import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
@@ -20,11 +21,10 @@ interface QuickTip {
 
 interface HowToVideo {
   title: string;
-  duration: string;
 }
 
-// Durations are decorative mock data, not translatable copy - kept as
-// plain literals; only the titles come from t().
+// Video slots are visible in release builds and labelled Coming soon until
+// real content is available; no invented playback durations are shown.
 function makeQuickTips(t: UseStringsResult['t']): QuickTip[] {
   return [
     { id: 'light', label: t('help.quickTipLightLabel'), reason: t('help.quickTipLightReason') },
@@ -35,20 +35,20 @@ function makeQuickTips(t: UseStringsResult['t']): QuickTip[] {
 
 function makeHowToVideos(t: UseStringsResult['t']): HowToVideo[] {
   return [
-    { title: t('help.howToVideo1Title'), duration: '1:10' },
-    { title: t('help.howToVideo2Title'), duration: '0:48' },
-    { title: t('help.howToVideo3Title'), duration: '0:55' },
-    { title: t('help.howToVideo4Title'), duration: '0:42' },
-    { title: t('help.howToVideo5Title'), duration: '0:45' },
-    { title: t('help.howToVideo6Title'), duration: '0:38' },
+    { title: t('help.howToVideo1Title') },
+    { title: t('help.howToVideo2Title') },
+    { title: t('help.howToVideo3Title') },
+    { title: t('help.howToVideo4Title') },
+    { title: t('help.howToVideo5Title') },
+    { title: t('help.howToVideo6Title') },
   ];
 }
 
 function makeSampleVideos(t: UseStringsResult['t']) {
   return [
-    { title: t('help.sampleVideo1Title'), duration: '0:48' },
-    { title: t('help.sampleVideo2Title'), duration: '0:39' },
-    { title: t('help.sampleVideo3Title'), duration: '0:52' },
+    { title: t('help.sampleVideo1Title') },
+    { title: t('help.sampleVideo2Title') },
+    { title: t('help.sampleVideo3Title') },
   ];
 }
 
@@ -101,7 +101,7 @@ export function HelpScreen() {
           <View key={v.title} style={styles.videoCard}>
             <View style={styles.videoThumb}>
               <PlayGlyph />
-              <Text style={styles.videoDuration}>{v.duration}</Text>
+              <Text style={styles.videoDuration}>{t('mediaPlaceholder.comingSoon')}</Text>
             </View>
             <Text style={styles.videoTitle}>{v.title}</Text>
           </View>
@@ -126,7 +126,7 @@ export function HelpScreen() {
           <View key={v.title} style={styles.sampleThumb}>
             <Text style={styles.exampleTagText}>{t('help.exampleTag')}</Text>
             <Text style={styles.sampleTitle}>{v.title}</Text>
-            <Text style={styles.sampleDuration}>{v.duration}</Text>
+            <Text style={styles.sampleDuration}>{t('mediaPlaceholder.comingSoon')}</Text>
           </View>
         ))}
       </Carousel>
@@ -149,9 +149,7 @@ export function HelpScreen() {
             <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 20, marginBottom: 16 }}>
               {openTip.reason}
             </Text>
-            <View style={[styles.videoThumb, { height: 160 }]}>
-              <PlayGlyph />
-            </View>
+            <View style={[styles.videoThumb, { height: 160 }]}><PlayGlyph /><Text style={styles.videoDuration}>{t('mediaPlaceholder.comingSoon')}</Text></View>
           </>
         )}
       </PopupSheet>
@@ -165,11 +163,11 @@ export function HelpScreen() {
         </Text>
         <View style={{ gap: 10 }}>
           <Button
-            label={t('help.contactPopupWhatsAppButton')}
-            onPress={() => Linking.openURL('https://wa.me/910000000000')}
+            label={t('help.contactPopupEmailButton')}
+            onPress={() => Linking.openURL(`mailto:${LEGAL_RELEASE.supportEmail}?subject=Insight%20Scoop%20support`).catch(() => Alert.alert(t('help.contactPopupTitle'), LEGAL_RELEASE.supportEmail))}
           />
           <Button
-            label={t('help.contactPopupCallBackButton')}
+            label={t('legal.close')}
             variant="secondary"
             onPress={() => setContactOpen(false)}
           />

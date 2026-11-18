@@ -2,7 +2,7 @@
 
 # dependencies
 node_modules/
-screenshots/
+/screenshots/
 
 # Expo
 .expo/
@@ -43,7 +43,28 @@ yarn-error.*
 
 # local APK/IPA builds
 /builds
+/release/insight-scoop-release-pack.zip
+/release/insight-scoop-aws-iam-policies.zip
+*.keystore
 assets/vo
 
 # agent worktrees (nested checkouts - must never be committed as gitlinks)
 /.claude/worktrees/
+
+# Private distribution signing material (also stored outside the checkout)
+**/android-signing.properties
+**/android-backup-password.txt
+**/android-signing-backup.enc
+
+/release/insight-scoop-website-hosting.zip
+
+.env
+
+.env.*
+
+!.env.example
+
+# Local signed store artifacts are delivered separately, never committed.
+release/insight-scoop/artifacts/*.aab
+
+/release/insight-scoop-elementor-pages.zip

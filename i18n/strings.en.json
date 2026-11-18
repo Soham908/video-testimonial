@@ -9,18 +9,18 @@
     "notesOnProperNouns": "A few entries are names/brand names used in mocked-up screens (e.g. \"Vardaan Paints\", \"Rajesh\") rather than general copy - usually fine to leave as-is or transliterate, not translate.",
     "languageNames": "The languageNames block is a special case: each language's name for ITSELF (an endonym). Keep identical across strings.en/hi/mr.json - same convention every app's language picker uses (a Hindi speaker looking for Hindi in an English-language picker still needs to see \"हिन्दी\", not a translated word for it). Do not translate these three values differently per file."
   },
-
+  "mediaPlaceholder": {
+    "comingSoon": "Coming soon"
+  },
   "errorBoundary": {
     "title": "Something went wrong",
     "subtitle": "Sorry about that. Tap below to try again — anything you already recorded or saved is safe.",
     "retryButton": "Try again"
   },
-
   "splash": {
     "appName": "Insight Scoop",
     "companyName": "Zeist Interactive"
   },
-
   "whatsAppInvite": {
     "invitedByEyebrow": "You were invited by",
     "inviterNameDefault": "Rajesh",
@@ -33,7 +33,6 @@
     "factWhatYouGetValue": "Your own branded videos to keep and share",
     "continueButton": "Continue"
   },
-
   "identityConfirm": {
     "eyebrow": "Is this you?",
     "title": "Confirm your details",
@@ -45,36 +44,46 @@
     "editHint": "Edit",
     "confirmButton": "This is me"
   },
-
   "onboarding": {
-    "skipButton": "Skip",
-    "step1Eyebrow": "What you'll do",
-    "step1Title": "Answer 5 quick questions on camera",
-    "step1Body": "The app guides you one step at a time — good light, good framing, a quiet moment. About 10 minutes, start to finish.",
-    "step2Eyebrow": "What you get",
-    "step2Title": "You get five finished videos",
-    "step2Body": "We add the frame, your name and your shop. They come back to you to keep and to send to whoever you like.",
-    "step3Eyebrow": "Sharing them",
-    "step3Title": "Share your reel however you like",
-    "step3Body": "WhatsApp is the fastest way, and it's always your call — nothing goes out until you press send.",
+    "skipButton": "Skip intro",
+    "step1Eyebrow": "What",
+    "step1Title": "Share your work story",
+    "step1Body": "Answer a few short questions on camera, one at a time. The app helps you get in position before recording.",
+    "step2Eyebrow": "Why",
+    "step2Title": "Let your experience speak",
+    "step2Body": "Your answers help your company understand what is working and what can improve. Share honest examples from your day-to-day work.",
+    "step3Eyebrow": "How",
+    "step3Title": "Prepare. Record. Review.",
+    "step3Body": "Find a quiet spot, face the light and steady your phone. Listen to each question, record your answer, then review your takes before choosing to send.",
     "rewardBadge": "YOUR VIDEO",
     "backButton": "Back",
     "nextButton": "Next",
-    "getStartedButton": "Get started"
+    "getStartedButton": "Read consent",
+    "languageTitle": "Choose your language",
+    "languageBody": "Choose the language you are most comfortable with. You can change it later in Profile.",
+    "languageHint": "Select a language to continue.",
+    "languageContinue": "Continue",
+    "changeLanguage": "Language",
+    "cardProgress": "{{number}} of {{total}}",
+    "whatBadge": "One question at a time",
+    "whyBadge": "Your experience matters",
+    "howStep1": "Find a quiet, well-lit spot",
+    "howStep2": "Listen and record",
+    "howStep3": "Review, then choose to send"
   },
-
   "consent": {
     "eyebrow": "Before you begin",
     "title": "Please read this — it's important",
-    "point1": "You will record a video of yourself answering 5 questions about your work.",
-    "point2": "Your company may show this video on its website and to other distributors.",
-    "point3": "Nothing is shared until you finish and press send. You can stop at any time.",
+    "point1": "Record answers to your campaign questions, review your takes and choose what to send.",
+    "point2": "Review your takes before sending. Selected videos and audio go to Zeist, your campaign organization and AWS storage.",
+    "point3": "ElevenLabs transcribes your audio; Google Gemini analyzes transcript text. Framing guidance stays on your device.",
     "readFullTermsLink": "Read the full terms",
-    "checkboxLabel": "I understand, and I agree to be recorded.",
+    "checkboxLabel": "I am 18+ and accept the Terms of Use and Privacy Policy.",
     "agreeButton": "Agree & continue",
-    "hint": "Tick the box above to continue"
+    "hint": "Select both boxes to continue. You can choose not to record or send.",
+    "processingCheckbox": "I allow audio sharing with ElevenLabs and transcript sharing with Google Gemini as explained above.",
+    "notNow": "Not now — sign out"
   },
-
   "permissions": {
     "backButton": "Go back",
     "deniedBadge": "Camera is switched off",
@@ -93,65 +102,67 @@
     "cameraCardBody": "So you can see yourself while you speak, and so the video can be saved on your phone.",
     "microphoneCardTitle": "Microphone",
     "microphoneCardBody": "So your voice is recorded along with the picture. Without it the video is silent.",
-    "promise1": "Nothing is recorded until you press the record button.",
-    "promise2": "Nothing leaves your phone until you choose to send it.",
+    "promise1": "Video recording starts after you choose Record and finish the countdown. The microphone may briefly check room noise during setup.",
+    "promise2": "Your recordings stay on your phone until you choose to send them.",
     "allowButton": "Allow camera and microphone",
     "notNowButton": "Not now"
   },
-
   "updateRequired": {
     "badge": "Update needed",
     "title": "Please update the app to continue",
     "subtitle": "A newer version fixes issues from the current one. Update from the Play Store, then open the app again.",
     "updateButton": "Update now"
   },
-
+  "authForm": {
+    "nextField": "Next"
+  },
   "login": {
     "title": "Sign in",
-    "subtitle": "Use the account your company gave you to get started.",
+    "subtitle": "Use your registered phone number and password.",
     "sessionExpiredNotice": "You were signed out because your session ended. Please sign in again.",
-    "usernameLabel": "Username",
+    "usernameLabel": "Phone number",
     "passwordLabel": "Password",
     "genericError": "Something went wrong.",
     "signInButton": "Sign in",
-    "registerLink": "New distributor? Register"
+    "registerLink": "New here? Create a free account"
   },
-
   "selfRegister": {
     "backLink": "‹ Back to sign in",
-    "registerTitle": "What's your name?",
+    "registerTitle": "Create your account",
     "signInTitle": "Sign in with phone",
-    "registerSubtitle": "This appears on your finished videos - you can change it later.",
+    "registerSubtitle": "Create a free account to try the starter questions, or join using an organization invite.",
     "signInSubtitle": "Use the phone number and password you registered with.",
     "nameLabel": "Your name",
     "phoneLabel": "Phone number",
     "passwordLabel": "Password",
     "registerButton": "Get started",
     "switchToSignInLink": "Already registered? Sign in",
-    "switchToRegisterLink": "New here? Register instead"
+    "switchToRegisterLink": "New here? Register instead",
+    "inviteToggle": "Have an organization invite?",
+    "inviteLabel": "Organization invite code",
+    "passwordHint": "Use at least 8 characters."
   },
-
   "home": {
     "greetingFirstTime": "Welcome, {{name}}",
     "greetingReturning": "Welcome back, {{name}}",
     "subGreeting": "{{businessName}} · {{city}}",
     "readyBannerText": "{{label}} is ready to share",
     "readyBannerShareButton": "Share",
-    "allRenderedEyebrow": "All five are ready",
+    "allRenderedEyebrow": "Your videos are ready",
     "allRenderedTitle": "Your branded videos are waiting for you",
     "allRenderedBody": "Head to My Videos to watch and share them.",
     "allRenderedButton": "Go to My Videos",
     "submittedEyebrow": "Sent, being made",
     "submittedTitle": "We're turning your answers into branded videos",
     "submittedBody": "Keep the app installed - we'll let you know the moment they're ready.",
-    "allRecordedEyebrow": "All five answered",
+    "allRecordedEyebrow": "All questions answered",
     "allRecordedTitle": "Send them to us and we'll make your videos",
     "allRecordedBody": "They're still only on your phone.",
-    "allRecordedButton": "Send all five",
+    "allRecordedButton": "Send selected answers",
     "nextQuestionEyebrow": "Question {{index}} of {{total}}",
     "nextQuestionButtonFirst": "Start your first question",
     "nextQuestionButtonLater": "Start this question",
-    "emptyVideosHint": "Your finished videos appear here after you answer all five and send them.",
+    "emptyVideosHint": "Your kept recordings appear in My videos. Sending them is a separate step.",
     "howToSectionTitle": "How to record well",
     "howToVideo1Title": "Where to stand for good light",
     "howToVideo2Title": "Speaking without a script",
@@ -164,13 +175,19 @@
     "exampleTag": "EXAMPLE",
     "seeAll": "See all"
   },
-
   "questionBrief": {
+    "recordingTipsLink": "Recording tips",
+    "prepTitle": "Before your first recording",
+    "prepPoint1": "Face a window or a light, and keep your phone steady.",
+    "prepPoint2": "Find a quiet spot where you can speak comfortably.",
+    "prepPoint3": "Speak in your own words. You do not need to memorise an answer.",
+    "prepPoint4": "You can practise first and record another take if you want.",
+    "prepContinue": "Continue to recording",
     "backButton": "Go back",
     "readToMeIdle": "Read to me",
     "readToMeActive": "Reading…",
     "questionNumberLabel": "Question {{number}}",
-    "talkingPointsSectionTitle": "A good answer usually covers",
+    "talkingPointsSectionTitle": "Your on-screen prompts",
     "addPromptRow": "+ Add your own prompts",
     "sampleAnswerTitle": "Hear how {{name}} answered",
     "beforeYouStartTitle": "Before you start",
@@ -182,16 +199,19 @@
     "startRecordingButton": "Start recording",
     "rehearseButton": "Rehearse once — nothing is saved"
   },
-
   "rehearse": {
     "topBanner": "Practice — nothing is being saved",
+    "listenHint": "Listen to the question, then practise your answer.",
+    "practiceHint": "Try answering out loud when you’re ready.",
+    "audioUnavailable": "The question audio is unavailable. You can practise using the text above.",
+    "playQuestion": "Play question",
+    "stopAudio": "Stop audio",
     "finishButton": "Finish practicing",
     "popupTitle": "Ready for the real one?",
     "popupBody": "That was just practice - nothing from it was saved.",
     "popupRecordForRealButton": "Record for real",
     "popupBackToBriefButton": "Back to the brief"
   },
-
   "cameraCheck": {
     "title": "Let's check your camera",
     "subtitle": "Question {{questionNumber}} of {{totalQuestions}}",
@@ -199,15 +219,19 @@
     "readQuestionAloudLabel": "Read question aloud",
     "countdownLabel": "Recording starts in {{seconds}}…",
     "startRecordingButton": "Start recording",
-    "waitingForChecksButton": "Waiting for checks…"
+    "waitingForChecksButton": "Waiting for checks…",
+    "preparingAudio": "Getting ready…",
+    "listenToQuestion": "Listen to the question. Your countdown starts afterward.",
+    "audioFailed": "Question audio could not play. Retry or continue without it.",
+    "preparationFailed": "Could not get ready to record. Please retry.",
+    "retryAudio": "Try again",
+    "skipAudio": "Continue without question audio"
   },
-
   "cameraCheckTip": {
     "title": "Tip",
     "body": "Position your face inside the circle. We'll detect it automatically and let you know when you're ready.",
     "gotItButton": "Got it"
   },
-
   "alignmentGuide": {
     "guidancePositionFace": "Position your face in the frame",
     "guidanceAdjustDistance": "Adjust your distance from the camera",
@@ -218,9 +242,10 @@
     "checklistDistance": "Distance",
     "checklistSound": "Sound",
     "checklistChecking": "Checking",
-    "skipNoiseCheckButton": "Skip anyway"
+    "skipNoiseCheckButton": "Skip anyway",
+    "noiseUnavailable": "Sound check unavailable",
+    "retryNoiseCheck": "Retry sound check"
   },
-
   "cameraAlignment": {
     "permissionNeeded": "Camera & microphone access is needed to continue.",
     "permissionDeniedPermanently": "Camera & microphone access was turned off, and your phone won't ask again here.",
@@ -228,13 +253,14 @@
     "openSettingsButton": "Open phone settings",
     "noCameraDevice": "No camera device found"
   },
-
   "recording": {
     "lengthNudge": "That's a good length — start wrapping up",
     "finishAnswerButton": "I'm done answering"
   },
-
   "reviewTrim": {
+    "playPreview": "Play this take",
+    "questionProgress": "Question {{number}} of {{total}}",
+    "recordedProgress": "{{completed}} / {{total}} recorded · {{remaining}} left",
     "title": "Have a look",
     "takeSubtitle": "Take {{number}} · {{duration}}",
     "usingBadge": "Using",
@@ -248,9 +274,11 @@
     "keepBothTakesButton": "Keep both takes",
     "keepTheseButton": "Keep these {{count}}",
     "selectToKeepButton": "Select {{count}} to keep ({{kept}} of {{count}})",
-    "recordAnotherButton": "Record another"
+    "recordAnotherButton": "Record another",
+    "durationError": "Could not read a supported recording duration. Keep this take here and try opening it again.",
+    "durationPending": "Checking the recording duration. Review each kept take before saving.",
+    "trimAdjusted": "The saved trim was outside the actual recording. Review the corrected interval before keeping this take."
   },
-
   "retakeConfirm": {
     "retakeTitle": "Record again for Question {{questionNumber}}?",
     "retakeBody": "You'll get to choose which take to keep afterward - nothing is replaced until then.",
@@ -260,7 +288,6 @@
     "firstRecordConfirmButton": "Start recording",
     "cancelButton": "Cancel"
   },
-
   "uploading": {
     "backLink": "‹ Back to My Videos",
     "title": "Sending your answers",
@@ -282,7 +309,6 @@
     "errorSendLaterButton": "Send later",
     "genericUploadError": "Upload failed."
   },
-
   "confirmation": {
     "titleSending": "Sending your answers",
     "titleDone": "Your answers are on their way",
@@ -294,7 +320,6 @@
     "reassuranceDone2": "✓ We'll message you when your videos are ready",
     "backToHomeButton": "Back to Home"
   },
-
   "myVideos": {
     "errorTitle": "Couldn't load your videos",
     "tryAgainButton": "Try again",
@@ -319,7 +344,6 @@
     "headerSubtitle": "Record all videos to start the upload",
     "uploadButton": "Upload videos"
   },
-
   "videoPlayer": {
     "closeButton": "Close",
     "congratulations": "Congratulations!",
@@ -329,13 +353,11 @@
     "saveButtonSaving": "Saving…",
     "saveButtonSaved": "Saved"
   },
-
   "languageNames": {
     "en": "English",
     "hi": "हिन्दी",
     "mr": "मराठी"
   },
-
   "profile": {
     "title": "Profile",
     "addYourNameFallback": "Add your name",
@@ -366,7 +388,6 @@
     "editPopupYearsLabel": "Years",
     "editPopupSaveButton": "Save"
   },
-
   "help": {
     "title": "Help",
     "subtitle": "Short answers and short videos",
@@ -385,7 +406,7 @@
     "howToVideo5Title": "What a 45-second answer sounds like",
     "howToVideo6Title": "Fixing a shaky start",
     "contactCardTitle": "Talk to someone",
-    "contactCardSubtitle": "WhatsApp, or ask for a call back",
+    "contactCardSubtitle": "Email the Insight Scoop support team",
     "sampleVideosSectionTitle": "Sample videos",
     "sampleVideosSectionSubtitle": "Made by the company to show what a good answer looks like",
     "sampleVideo1Title": "A good answer",
@@ -396,29 +417,28 @@
     "faq1Question": "Can I redo an answer?",
     "faq1Answer": "Yes - you can review and re-record any answer before you send everything, and change one afterward from My Videos.",
     "faq2Question": "Who sees my video?",
-    "faq2Answer": "Only your company. Nothing is shared with other distributors.",
+    "faq2Answer": "Authorized Zeist personnel, your campaign organization and the disclosed service providers process submitted answers. Other participants cannot access your account. Read your campaign notice and Privacy Policy for details.",
     "faq3Question": "What if I make a mistake mid-answer?",
     "faq3Answer": "Keep going - you'll get to watch it back and decide whether to keep it before anything is sent.",
     "contactPopupTitle": "Talk to someone",
-    "contactPopupSubtitle": "Weekdays, 9am - 7pm",
+    "contactPopupSubtitle": "Email soham@zeistinteractive.com. Do not send your password.",
     "contactPopupWhatsAppButton": "Message on WhatsApp",
-    "contactPopupCallBackButton": "Ask for a call back"
+    "contactPopupCallBackButton": "Ask for a call back",
+    "contactPopupEmailButton": "Email support"
   },
-
   "bottomTabBar": {
     "home": "Home",
     "myVideos": "My videos",
     "help": "Help",
     "profile": "Profile"
   },
-
   "appFlow": {
     "questionsLoadErrorTitle": "Couldn't load your questions",
     "questionsLoadErrorTryAgainButton": "Try again",
     "questionsLoadErrorFallback": "Could not load your questions.",
     "myVideosLoadErrorFallback": "Could not load your videos.",
     "postKeepPopupTitle": "Saved on your phone",
-    "postKeepPopupBody": "Question {{questionNumber}} is ready. Nothing is sent yet — all your videos go up together once you've recorded all five.",
+    "postKeepPopupBody": "Question {{questionNumber}} is ready. Nothing is sent yet — you choose when to send your selected answers.",
     "postKeepPopupNextQuestionButton": "Next question",
     "postKeepPopupMyVideosButton": "My Videos",
     "postKeepPopupHomeButton": "Home",
@@ -433,21 +453,179 @@
     "exitConfirmPopupStopButton": "Stop and go back",
     "exitConfirmPopupKeepGoingButton": "Keep going"
   },
-
   "upload": {
     "storageUploadFailed": "Upload to storage failed (status {{status}}).",
     "questionSetChanged": "No question found for local position {{position}} - question set may have changed since this was recorded."
   },
-
   "tooltips": {
     "gotItButton": "Got it",
     "homeProfileAvatar": {
-      "title": "Your profile",
-      "body": "Tap here anytime to view your profile, change language, or sign out."
+      "title": "Your profile and language",
+      "body": "Open your profile here to check your details or change the app language. You can return to it at any time."
     },
     "bottomTabBarMyVideos": {
-      "title": "My Videos",
-      "body": "All your recorded answers live here - review, retake, or send them from this tab."
+      "title": "Find your recordings",
+      "body": "My Videos is where you review your recorded answers and choose when to send them."
+    },
+    "nextButton": "Next",
+    "backButton": "Back",
+    "skipButton": "Skip tour",
+    "doneButton": "Done",
+    "replayButton": "Show page guide",
+    "stepProgress": "Step {{number}} of {{total}}",
+    "homeOverview": {
+      "title": "Your progress and next step",
+      "body": "This card shows where you are in the questions and what to do next. Its message changes as you record or send your answers."
+    },
+    "homeNextAction": {
+      "title": "Open your next question",
+      "body": "Use this button when you are ready. You can read the question and practise before recording. Replay this guide anytime with the ? button."
+    },
+    "questionText": {
+      "title": "Read the question first",
+      "body": "This is the question you will answer. Take a moment to think of an example from your own experience."
+    },
+    "questionAudio": {
+      "title": "Prefer to listen?",
+      "body": "Read to me plays this question aloud. Tap it again to pause. You can listen before moving to the camera."
+    },
+    "questionPoints": {
+      "title": "A few reminders for your answer",
+      "body": "Choose up to three reminders, or add your own short prompt. Your selection appears during question audio, countdown and recording. You can change it before starting."
+    },
+    "questionActions": {
+      "title": "Practise or get ready to record",
+      "body": "Choose Rehearse to practise, or Start recording to continue to preparation and camera checks. A countdown comes before recording. Replay this guide with ?."
     }
+  },
+  "prompts": {
+    "explanation": "Choose up to {{max}} reminders to see during question audio, countdown and recording. They appear only on your screen, not in your video.",
+    "selectedCount": "{{count}} of {{max}} selected",
+    "yourPrompt": "Your prompt",
+    "remove": "Remove prompt: {{prompt}}",
+    "limitHint": "Unselect one prompt to choose another. You can still save your own below.",
+    "optionalHint": "Prompts are optional. You can record with fewer than three, or none.",
+    "addedUnselected": "Prompt added. Unselect another prompt, then select your new one to show it while recording.",
+    "inputLabel": "Your prompt",
+    "inputHint": "Up to {{max}} characters.",
+    "placeholder": "e.g. My first customer",
+    "empty": "Enter a few words for your prompt.",
+    "duplicate": "This prompt is already in your list.",
+    "tooLong": "Keep your prompt within {{max}} characters.",
+    "cancel": "Cancel",
+    "add": "Add prompt",
+    "saveFailed": "Your choices work for this session, but could not be saved on this device. Try changing a prompt again.",
+    "selectionSummary": "Prompts · {{count}} of {{max}} selected"
+  },
+  "takeDeletion": {
+    "previewLabel": "Preview take {{number}}",
+    "deleteLabel": "Delete take {{number}}",
+    "title": "Delete take {{number}}?",
+    "question": "Question {{number}}",
+    "body": "This permanently removes this take from your phone. This cannot be undone.",
+    "remaining": "Your other takes and their trim settings will stay.",
+    "lastTake": "This is the only take for this question. You will need to record it again.",
+    "primary": "Another saved take will be selected for upload.",
+    "confirm": "Delete take",
+    "cancel": "Cancel",
+    "error": "Could not delete this take. Please try again."
+  },
+  "feedback": {
+    "savedCountSingular": "{{completed}} of {{total}} answer saved",
+    "uploadCompleteBodySingular": "Your answer has been received. Thank you for sharing your experience.",
+    "firstTitle": "Your first answer is saved",
+    "savedTitle": "Answer saved on your phone",
+    "updatedTitle": "Updated take saved",
+    "allSavedTitle": "All answers saved",
+    "savedBody": "Your chosen take is saved on this phone. You can review it in My Videos.",
+    "allSavedBody": "All your chosen answers are saved on this phone. You can review them before sending.",
+    "savedCount": "{{completed}} of {{total}} answers saved",
+    "dismiss": "Dismiss saved confirmation",
+    "reviewAndSend": "Review and send",
+    "uploadCompleteTitle": "Upload complete",
+    "uploadCompleteBody": "All {{count}} answers received. Thank you for sharing your experience.",
+    "uploadReceived": "{{completed}} of {{total}} answers received"
+  },
+  "legal": {
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Use",
+    "close": "Close",
+    "openWebsite": "Read on the website",
+    "linkFailed": "Could not open the website. The full document is available above.",
+    "draftNotice": "Release draft: company details, retention and deletion arrangements still need approval. This build is not ready for store submission.",
+    "saveFailed": "We could not save your agreement. Please try again."
+  },
+  "deletion": {
+    "title": "Delete account",
+    "cancel": "Cancel",
+    "warning": "This permanently deletes your account, submitted recordings, transcripts and analysis from our active systems. Your recordings and personal prompts on this device will also be removed. This cannot be undone.",
+    "timing": "Access stops when your request is accepted. Cloud cleanup runs in the background and may take longer if an upload or processing job is still running. Backups and external providers follow the retention arrangements in the Privacy Policy.",
+    "password": "Current password",
+    "acknowledge": "I understand that my account and recordings will be deleted permanently.",
+    "confirm": "Permanently delete my account",
+    "requesting": "Requesting deletion…",
+    "wrongPassword": "That password is incorrect. Please try again.",
+    "unavailable": "Account deletion is not available on this server yet. No deletion was requested.",
+    "requestError": "We could not confirm the request. Please check your connection and try again.",
+    "recoveryTitle": "Account deletion",
+    "recoveryBody": "We will verify any interrupted request before opening the app. Accepted requests cannot be cancelled. If device cleanup fails, your account stays inaccessible here while you retry.",
+    "recoveryError": "Could not finish checking or cleaning this account. Please retry when connected.",
+    "cleaning": "Cleaning this device…",
+    "retry": "Retry safely",
+    "acceptedNotice": "Your deletion request was accepted and you are signed out. Cloud cleanup will continue in the background.",
+    "accountChanged": "The signed-in account changed. No deletion was sent for the other account.",
+    "useAnotherAccount": "Use another account",
+    "recoverySignIn": "Confirm account and check",
+    "recoverySignInBody": "Retry the status check, or sign in to the same account if your login expired. Another account cannot resolve this request. Using another account preserves this account’s drafts and pending recovery."
+  },
+  "sharedUi": {
+    "moreInfo": "More information: {{title}}"
+  },
+  "phone": {
+    "countryButton": "Country: {{country}}, {{prefix}}",
+    "chooseCountry": "Choose country / calling code",
+    "lengthError": "Enter a {{digits}}-digit phone number.",
+    "indiaMobile": "Enter a 10-digit Indian mobile number starting with 6, 7, 8 or 9."
+  },
+  "uploadApproval": {
+    "locked": "This take is approved for upload. Editing is available after completion or cancellation.",
+    "cancel": "Cancel remaining uploads and review",
+    "reviewSelected": "Review the selected takes before uploading.",
+    "questionChanged": "The approved question changed. Cancel this batch and review your local answers.",
+    "questionSetChanged": "The question set changed. Review your answers before uploading.",
+    "verifyFailed": "Could not verify the selected recording. Your local take has been kept.",
+    "reviewTrim": "Review the recording duration and trim before uploading.",
+    "wrongAccount": "This recording does not belong to the signed-in account.",
+    "missingFile": "The approved recording is missing or unreadable. Your other takes have been kept.",
+    "accountChanged": "Account changed; upload stopped.",
+    "fileChanged": "The approved recording changed. Cancel this batch and review your local takes.",
+    "notReady": "Your account is not ready to save this upload.",
+    "consent": "Please review the consent notice before uploading.",
+    "saveFailed": "Could not save upload approval.",
+    "cancelFailed": "Could not cancel this batch.",
+    "failed": "Upload failed.",
+    "legacyReview": "This take has no verified question and language snapshot, or its question changed. Review the original against the current question before linking it, or record again.",
+    "bindQuestion": "Link this reviewed take to this question",
+    "preparing": "Verifying your chosen takes…",
+    "unavailable": "Secure uploads are not enabled on this server yet. Your recordings remain on this phone.",
+    "receiptMismatch": "The server receipt does not match this approved take. Your local recordings have been kept.",
+    "replacementConflict": "Another answer was submitted after this replacement was reviewed. Cancel this batch and review the current answer before sending again.",
+    "rejected": "This recording could not be accepted. Your local take has been kept for review.",
+    "validating": "The server is still checking this recording. Retry safely to recover its receipt.",
+    "recoveringReceipt": "We’re checking the status of an earlier upload. That take is still saved on this phone.",
+    "currentAnswer": "Current submitted answer",
+    "replaceReviewedBody": "Review the currently submitted answer. Your chosen local take will replace this answer only after a new upload is verified. If another answer arrives meanwhile, we will ask you to review again.",
+    "noCurrentAnswer": "No submitted answer is currently listed for this question. Your chosen take will be sent only after fresh upload approval.",
+    "reviewCurrentAnswer": "Play current submitted answer",
+    "useReviewedBase": "Use my take for the next submission",
+    "reviewReplacement": "Review the current submission before replacing it",
+    "originalReview": "Review original recording",
+    "originalRetained": "This preview shows the original recording. Your selected interval is used for submitted playback and analysis; the original upload is retained under the Privacy Policy.",
+    "removedQuestion": "This question is no longer in the current set. Your original recording remains on this phone:",
+    "selectedPreview": "Trim selected",
+    "selectedPreviewBody": "Your selected clip can be played here after it is sent and prepared. Review the original recording or adjust the trim below.",
+    "originalAndEdit": "Review original / edit take",
+    "legacyUpload": "Older upload",
+    "legacyUploadBody": "This older upload needs review or a new recording. Its original content and selected interval have not been verified, so playback is unavailable."
   }
 }

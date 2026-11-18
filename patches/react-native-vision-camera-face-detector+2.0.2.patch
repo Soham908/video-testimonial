@@ -1,3 +1,13 @@
+diff --git a/node_modules/react-native-vision-camera-face-detector/ios/HybridFaceDetectorOutput.swift b/node_modules/react-native-vision-camera-face-detector/ios/HybridFaceDetectorOutput.swift
+index c40c32b..83e8cf5 100644
+--- a/node_modules/react-native-vision-camera-face-detector/ios/HybridFaceDetectorOutput.swift
++++ b/node_modules/react-native-vision-camera-face-detector/ios/HybridFaceDetectorOutput.swift
+@@ -120,4 +120,4 @@ NativeCameraOutput {
+-  func configure(config: CameraOutputConfiguration) {
++  func configure(config: OutputConfiguration) {
+     guard let connection = self.output.connection(with: .video) else {
+       return
+     }
 diff --git a/node_modules/react-native-vision-camera-face-detector/src/hooks/useFaceDetectorOutput.ts b/node_modules/react-native-vision-camera-face-detector/src/hooks/useFaceDetectorOutput.ts
 index c0efa73..bd65344 100644
 --- a/node_modules/react-native-vision-camera-face-detector/src/hooks/useFaceDetectorOutput.ts

@@ -108,7 +108,7 @@ const sharedDarkBase = {
   border: 'rgba(255,255,255,0.6)',
 };
 
-// The original palette, kept as a real option rather than deleted outright.
+// Insight Scoop's approved production palette; other options are dev-only.
 export const paletteGreen: Palette = {
   id: 'green',
   label: 'Green (original)',
@@ -220,4 +220,4 @@ export const PALETTES: Record<string, Palette> = {
   [paletteRaspberry.id]: paletteRaspberry,
 };
 
-export const DEFAULT_PALETTE_ID = paletteEmber.id;
+export const DEFAULT_PALETTE_ID = paletteGreen.id;

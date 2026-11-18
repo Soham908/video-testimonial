@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
@@ -11,7 +11,10 @@ import { Carousel } from '../components/ui/Carousel';
 import { useStrings } from '../i18n/useStrings';
 import { TooltipTarget } from '../tooltips/TooltipTarget';
 import { HelpButton } from '../tooltips/HelpButton';
-import { HOME_TOOLTIP_IDS } from '../tooltips/tooltipRegistry';
+import { HOME_TOUR, HOME_TOOLTIP_IDS } from '../tooltips/tooltipRegistry';
+import { useGuidedTour } from '../tooltips/useGuidedTour';
+import { CompletionFeedback } from '../components/CompletionFeedback';
+import type { SavedFeedback } from '../completionFeedback';
 
 interface NextQuestion {
   index: number;
@@ -36,6 +39,7 @@ interface Props {
   questionsAnswered: number;
   /** True once "Send all five" has actually been pressed. */
   hasSubmittedBatch: boolean;
+  completionFeedback?: SavedFeedback;
   /** How many branded reels have come back for the current batch. */
   renderedReadyCount: number;
   nextQuestion: NextQuestion | null;
@@ -48,8 +52,6 @@ interface Props {
   onOpenProfile: () => void;
 }
 
-const HOW_TO_VIDEO_DURATIONS = ['1:10', '0:48'];
-const SAMPLE_VIDEO_DURATIONS = ['0:48', '0:39', '0:52'];
 
 // Home's job is prompting the next action - the distributor's own content
 // lives in My Videos, not here (DECISIONS.md). Five states derived from
@@ -65,6 +67,7 @@ export function HomeScreen({
   totalQuestions,
   questionsAnswered,
   hasSubmittedBatch,
+  completionFeedback,
   renderedReadyCount,
   nextQuestion,
   readyReel,
@@ -78,8 +81,13 @@ export function HomeScreen({
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
 
-  const allRecorded = questionsAnswered >= totalQuestions;
-  const allRendered = renderedReadyCount >= totalQuestions;
+  const allRecorded = totalQuestions > 0 && questionsAnswered >= totalQuestions;
+  const allRendered = totalQuestions > 0 && renderedReadyCount >= totalQuestions;
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffset = useRef(0);
+  const hasNextAction = !!nextQuestion && !allRecorded;
+  const tourIds = useMemo(() => HOME_TOOLTIP_IDS.filter(id => id !== 'home.nextAction' || hasNextAction), [hasNextAction]);
+  useGuidedTour(HOME_TOUR, tourIds, totalQuestions > 0);
   // Greeting uses the first name only (design 1C/15); the avatar monogram
   // below uses the full name's initials - both derived from one prop so
   // callers don't have to pass the name twice. No real name source exists
@@ -102,25 +110,25 @@ export function HomeScreen({
   });
   const greeting = firstName ? greetingRaw : greetingRaw.replace(/[,،]\s*$/, '');
   const howToVideos = [
-    { title: t('home.howToVideo1Title'), duration: HOW_TO_VIDEO_DURATIONS[0] },
-    { title: t('home.howToVideo2Title'), duration: HOW_TO_VIDEO_DURATIONS[1] },
+    { title: t('home.howToVideo1Title') },
+    { title: t('home.howToVideo2Title') },
   ];
   const sampleVideos = [
-    { title: t('home.sampleVideo1Title'), duration: SAMPLE_VIDEO_DURATIONS[0] },
-    { title: t('home.sampleVideo2Title'), duration: SAMPLE_VIDEO_DURATIONS[1] },
-    { title: t('home.sampleVideo3Title'), duration: SAMPLE_VIDEO_DURATIONS[2] },
+    { title: t('home.sampleVideo1Title') },
+    { title: t('home.sampleVideo2Title') },
+    { title: t('home.sampleVideo3Title') },
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} onScroll={event => { scrollOffset.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16} removeClippedSubviews={false} style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.greeting}>{greeting}</Text>
           {subGreeting.length > 0 && <Text style={styles.subGreeting}>{subGreeting}</Text>}
         </View>
         <View style={styles.headerRightGroup}>
-          <HelpButton tooltipIds={HOME_TOOLTIP_IDS} />
-          <TooltipTarget id="home.profileAvatar">
+          <HelpButton tourId={HOME_TOUR} tooltipIds={tourIds} />
+          <TooltipTarget id="home.profileAvatar" scrollRef={scrollRef} scrollOffset={scrollOffset}>
             <Pressable style={styles.avatar} onPress={onOpenProfile}>
               {initials ? <Text style={styles.avatarText}>{initials}</Text> : <GenericAvatarGlyph />}
             </Pressable>
@@ -136,6 +144,7 @@ export function HomeScreen({
         </View>
       )}
 
+      <TooltipTarget id="home.overview" scrollRef={scrollRef} scrollOffset={scrollOffset}>
       {allRendered ? (
         <Card style={styles.stateCard}>
           <Text style={styles.stateEyebrow}>{t('home.allRenderedEyebrow')}</Text>
@@ -160,17 +169,8 @@ export function HomeScreen({
         </Card>
       ) : allRecorded ? (
         <Card style={[styles.stateCard, styles.stateCardDark]}>
-          <View style={styles.progressRow}>
-            <Text style={[styles.stateEyebrow, { color: '#C9A184' }]}>{t('home.allRecordedEyebrow')}</Text>
-            <ProgressDots done={totalQuestions} total={totalQuestions} accent="#C9A184" />
-          </View>
-          <Text style={[styles.stateTitle, { color: '#FFFFFF' }]}>
-            {t('home.allRecordedTitle')}
-          </Text>
-          <Text style={[styles.stateBody, { color: 'rgba(255,255,255,0.72)' }]}>
-            {t('home.allRecordedBody')}
-          </Text>
-          <Button label={t('home.allRecordedButton')} onPress={onSendAll} style={{ marginTop: spacing.md }} />
+          <CompletionFeedback feedback={completionFeedback?.kind === 'allSaved' ? completionFeedback : undefined} completed={questionsAnswered} total={totalQuestions} allSaved dark />
+          <Button label={t('feedback.reviewAndSend')} onPress={onSendAll} style={{ marginTop: spacing.md }} />
         </Card>
       ) : (
         nextQuestion && (
@@ -183,14 +183,18 @@ export function HomeScreen({
             </View>
             <Text style={styles.stateTitle}>{nextQuestion.text}</Text>
             <Text style={styles.stateBody}>{nextQuestion.estimate}</Text>
+            <TooltipTarget id="home.nextAction" scrollRef={scrollRef} scrollOffset={scrollOffset}>
             <Button
               label={questionsAnswered === 0 ? t('home.nextQuestionButtonFirst') : t('home.nextQuestionButtonLater')}
               onPress={onStartNextQuestion}
               style={{ marginTop: spacing.md }}
             />
+            </TooltipTarget>
           </Card>
         )
       )}
+
+      </TooltipTarget>
 
       {questionsAnswered === 0 && (
         <View style={styles.emptyVideosHint}>
@@ -200,27 +204,27 @@ export function HomeScreen({
         </View>
       )}
 
-      <SectionHeader title={t('home.howToSectionTitle')} onSeeAll={() => {}} styles={styles} />
+      <SectionHeader title={t('home.howToSectionTitle')} styles={styles} />
       <View style={styles.howToRow}>
         {howToVideos.map((v) => (
           <View key={v.title} style={styles.howToItem}>
             <View style={styles.howToThumb}>
               <PlayGlyph size={32} />
-              <Text style={styles.thumbDuration}>{v.duration}</Text>
+              <Text style={styles.thumbDuration}>{t('mediaPlaceholder.comingSoon')}</Text>
             </View>
             <Text style={styles.howToTitle}>{v.title}</Text>
           </View>
         ))}
       </View>
 
-      <View style={styles.statLine}>
+      {__DEV__ && <View style={styles.statLine}>
         <View style={styles.statAvatars}>
           <View style={[styles.statAvatarDot, { backgroundColor: '#C9A184' }]} />
           <View style={[styles.statAvatarDot, { backgroundColor: '#A9846A', marginLeft: -9 }]} />
           <View style={[styles.statAvatarDot, { backgroundColor: '#7E6B5C', marginLeft: -9 }]} />
         </View>
         <Text style={styles.statText}>{t('home.statLine', { count: 41 })}</Text>
-      </View>
+      </View>}
 
       <SectionHeader title={t('home.sampleVideosSectionTitle')} subtitle={t('home.sampleVideosSectionSubtitle')} styles={styles} />
       <Carousel>
@@ -230,7 +234,7 @@ export function HomeScreen({
               <Text style={styles.exampleTagText}>{t('home.exampleTag')}</Text>
             </View>
             <Text style={styles.sampleTitle}>{v.title}</Text>
-            <Text style={styles.sampleDuration}>{v.duration}</Text>
+            <Text style={styles.sampleDuration}>{t('mediaPlaceholder.comingSoon')}</Text>
           </View>
         ))}
       </Carousel>
@@ -335,14 +339,14 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       paddingBottom: spacing.xxl,
       gap: spacing.md,
     },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    greeting: { ...typography.title, fontSize: 22, color: colors.text },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
+    greeting: { ...typography.title, fontSize: 20, color: colors.text },
     subGreeting: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
     headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       backgroundColor: colors.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',

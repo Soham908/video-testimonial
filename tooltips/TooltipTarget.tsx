@@ -1,56 +1,59 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { View, type StyleProp, type ViewStyle } from 'react-native';
-import { useTooltipContext } from './TooltipContext';
+import { useEffect, useRef, type ReactNode, type RefObject, type MutableRefObject } from 'react';
+import { View, ScrollView, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTooltipContext, type Rect } from './TooltipContext';
 import { ENABLE_ANCHORED_TOOLTIPS } from '../config';
-
 interface Props {
-  // Must match an id in tooltips/tooltipRegistry.ts - not typed against it
-  // directly to avoid a circular import (the registry doesn't need to know
-  // about this component).
   id: string;
-  // Gate on the caller's own state - e.g. don't offer a tip while a
-  // countdown/animation is running, or a target is mid-transition.
-  // Defaults to true (always eligible once mounted).
   active?: boolean;
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  scrollRef?: RefObject<ScrollView | null>;
+  scrollOffset?: MutableRefObject<number>;
 }
-
-// Wraps any existing element to make it a tooltip anchor - purely additive,
-// doesn't change the wrapped element's own appearance or behavior. Two
-// separate jobs: (1) measure its own on-screen position so the overlay
-// (AnchoredTooltipOverlay, mounted once at the app root) knows where to
-// point, and (2) offer itself to the queue once per mount if this device
-// hasn't dismissed it before (TooltipContext.notifyEligible).
-//
-// When ENABLE_ANCHORED_TOOLTIPS is off (config.ts), this degrades to a
-// plain passthrough View with none of the measuring/context wiring - the
-// single revert switch for the whole system.
-export function TooltipTarget({ id, active = true, children, style }: Props) {
-  const viewRef = useRef<View>(null);
-  const { setRect, notifyEligible } = useTooltipContext();
-
-  useEffect(() => {
-    if (ENABLE_ANCHORED_TOOLTIPS && active) notifyEligible(id);
-  }, [active, id, notifyEligible]);
-
-  if (!ENABLE_ANCHORED_TOOLTIPS) {
-    return <View style={style}>{children}</View>;
-  }
-
-  function measure() {
-    // collapsable={false} below keeps this View a real native node on
-    // Android (RN otherwise "flattens" plain wrapper Views out of the
-    // native tree for perf, which would make measureInWindow return
-    // garbage/zeroed coordinates).
-    viewRef.current?.measureInWindow((x, y, width, height) => {
-      if (width > 0 && height > 0) setRect(id, { x, y, width, height });
+interface Measurable { measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => void; }
+function measure(node: Measurable | null | undefined): Promise<Rect | undefined> {
+  return new Promise(resolve => {
+    const timeout = setTimeout(() => resolve(undefined), 180);
+    if (!node) { clearTimeout(timeout); resolve(undefined); return; }
+    node.measureInWindow((x, y, width, height) => {
+      clearTimeout(timeout);
+      resolve(width > 0 && height > 0 ? { x, y, width, height } : undefined);
     });
-  }
+  });
+}
+const settle = () => new Promise(resolve => setTimeout(resolve, 90));
 
-  return (
-    <View ref={viewRef} collapsable={false} onLayout={measure} style={style}>
-      {children}
-    </View>
-  );
+export function TooltipTarget({ id, active = true, children, style, scrollRef, scrollOffset }: Props) {
+  const view = useRef<View>(null);
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
+  const { registerTarget, refreshTarget } = useTooltipContext();
+  useEffect(() => {
+    if (!ENABLE_ANCHORED_TOOLTIPS || !active) return;
+    let mounted = true;
+    const unregister = registerTarget(id, { prepare: async () => {
+      for (let attempt = 0; attempt < 3 && mounted; attempt++) {
+        let rect = await measure(view.current);
+        if (!mounted) return undefined;
+        const scroll = scrollRef?.current;
+        if (rect && scroll && scrollOffset) {
+          const viewport = await measure(scroll.getNativeScrollRef());
+          if (!mounted) return undefined;
+          const visibleTop = viewport ? Math.max(viewport.y, insets.top) + 12 : 0;
+          const visibleBottom = viewport ? Math.min(viewport.y + viewport.height, screenHeight - insets.bottom) - 12 : 0;
+          if (viewport && (rect.y < visibleTop || rect.y + rect.height > visibleBottom)) {
+            scroll.scrollTo({ y: Math.max(0, scrollOffset.current + rect.y - visibleTop), animated: false });
+            await settle();
+            rect = await measure(view.current);
+          }
+        }
+        if (mounted && rect) return rect;
+        await settle();
+      }
+      return undefined;
+    } });
+    return () => { mounted = false; unregister(); };
+  }, [active, id, registerTarget, scrollRef, scrollOffset, insets.top, insets.bottom, screenHeight]);
+  return <View ref={view} collapsable={false} onLayout={ENABLE_ANCHORED_TOOLTIPS && active ? () => refreshTarget(id) : undefined} style={style}>{children}</View>;
 }

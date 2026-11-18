@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import {
   useFonts,
   NotoSans_400Regular,
@@ -27,8 +28,10 @@ import { NavigationBarSync } from './theme/NavigationBarSync';
 import { ErrorBoundary } from './ErrorBoundary';
 import { TooltipProvider } from './tooltips/TooltipContext';
 import { AnchoredTooltipOverlay } from './tooltips/AnchoredTooltipOverlay';
+import { SystemBarFrame, SYSTEM_BAR_BACKGROUND } from './theme/SystemBarFrame';
 
 export default function App() {
+  const [immersive, setImmersive] = useState(false);
   // Both UI-chrome families load up front (not just the active one) so
   // switching fonts via the dev PaletteSwitcher is instant, no reload.
   // Noto Sans Devanagari is a separate family (neither of the two above
@@ -51,9 +54,8 @@ export default function App() {
   });
 
   if (!fontsLoaded) {
-    // Renders before ThemeProvider can supply anything - a neutral
-    // hardcoded background here is fine, not part of the theme sweep.
-    return <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} />;
+    // Keep startup consistent with the dark system bars while fonts load.
+    return <View style={{ flex: 1, backgroundColor: SYSTEM_BAR_BACKGROUND }}><StatusBar style="light" /></View>;
   }
 
   return (
@@ -61,12 +63,14 @@ export default function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <TooltipProvider>
-            <AppFlow />
+            <SystemBarFrame immersive={immersive}>
+              <AppFlow onImmersiveChange={setImmersive} />
+              <PaletteSwitcher />
+            </SystemBarFrame>
             <AnchoredTooltipOverlay />
           </TooltipProvider>
-          <PaletteSwitcher />
           <NavigationBarSync />
-          <StatusBar style="dark" />
+          <StatusBar style="light" />
         </ThemeProvider>
       </SafeAreaProvider>
     </ErrorBoundary>

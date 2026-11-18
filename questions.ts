@@ -1,3 +1,4 @@
+import { accountFile, currentAccount } from './accountStorage';
 import { File, Paths } from 'expo-file-system';
 import { apiGet } from './api';
 
@@ -26,17 +27,16 @@ export interface QuestionDto {
   // same `updated_at`-compare pattern as myVideos.ts's segments/
   // rendered-videos caching.
   updated_at: string;
+  // Server-resolved language, including when no local override was chosen.
+  // Missing on legacy servers/caches: those cannot authorize a v2 upload.
+  language?: 'en' | 'hi' | 'mr';
 }
 
-// No in-app language selector exists yet (CLAUDE.md) - `language` is an
-// explicit, deliberate override for when one lands, not something this app
-// has a value for today. Omitted (not defaulted to 'en') whenever the
-// caller doesn't pass one, so the backend falls through to the
-// distributor's own stored language_pref instead of every distributor
-// silently getting English regardless of their real preference.
-export async function fetchQuestions(language?: string): Promise<QuestionDto[]> {
+// The device language override is optional. Without it, the backend resolves
+// the distributor preference and returns that actual language on every item.
+export async function fetchQuestions(language?: string, signal?: AbortSignal): Promise<QuestionDto[]> {
   const query = language ? `?language=${encodeURIComponent(language)}` : '';
-  const { questions } = await apiGet<{ questions: QuestionDto[] }>(`/distributors/me/questions${query}`);
+  const { questions } = await apiGet<{ questions: QuestionDto[] }>(`/distributors/me/questions${query}`, signal);
   return questions;
 }
 
@@ -50,10 +50,11 @@ export async function fetchQuestions(language?: string): Promise<QuestionDto[]> 
 const CACHE_FILE_NAME = 'questions-cache.json';
 
 function getCacheFile(): File {
-  return new File(Paths.document, CACHE_FILE_NAME);
+  return accountFile(CACHE_FILE_NAME);
 }
 
 export function getCachedQuestions(): QuestionDto[] | null {
+  if (!currentAccount()) return null;
   const file = getCacheFile();
   if (!file.exists) return null;
   try {

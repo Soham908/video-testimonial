@@ -1,0 +1,98 @@
+{
+  "privacy": {
+    "title": "Privacy Policy",
+    "intro": "Insight Scoop is operated by {{legalEntityName}} under the Zeist brand. It is free for participants and supports both a general starter campaign and organization-run testimonial campaigns. This notice explains what happens to your information when you create an account, prepare an answer and choose to submit it.",
+    "sections": [
+      {
+        "title": "Operator, campaign organizations and contact",
+        "body": "Zeist manages app accounts, security and the operation of the service. For a commissioned campaign, the named organization determines its campaign purpose and authorized use of responses, and Zeist also processes information to deliver that service. The allocation of responsibilities depends on the actual service and applicable law, not simply the label used in a contract. Your campaign notice should identify the organization and any additional use or retention terms before you record. Contact {{supportEmail}} with privacy questions, complaints or requests. You do not need to install the app to contact us."
+      },
+      {
+        "title": "Information we handle",
+        "body": "We handle the name and phone number you provide, a password hash rather than your readable password, account and campaign identifiers, language choices, optional business/profile details, recorded video and audio you submit, take/trim choices, processing status, and derived transcripts, captions, summaries and feedback analysis. Capture details can include resolution, frame rate, file size, device model and operating-system version. Service logs can include request timestamps, IP/network information, account identifiers and errors for operation, security and support. A phone number is an account identifier; this release does not verify ownership by SMS."
+      },
+      {
+        "title": "What remains on your device",
+        "body": "Camera access enables recording and on-device framing checks. Face detection is used to guide framing, not to recognize or identify people. Microphone access enables recorded speech and a room-noise check before recording; incidental noise-check files are discarded. Selected and pending takes are held in app-private storage so you can review them. Keeping a take does not send it to Zeist: uploading follows your separate submission confirmation. Unsent files may be lost if you uninstall the app, clear storage or lose the device. Saving/exporting an enabled finished video is a separate user action. We do not need to read your photo library to record a testimonial."
+      },
+      {
+        "title": "Purposes and your permission",
+        "body": "We use information to create and protect accounts, supply questions, guide recording, store and play submitted answers, process responses for the relevant campaign, provide support and meet legal obligations. Where consent is required, you can decline or withdraw it; withholding a permission may make the corresponding feature unavailable. Before recording, the app asks for agreement to the notices and separate permission for disclosed external transcription and AI analysis. Do not include sensitive personal information, confidential business material, or another person’s information unless necessary for the campaign and you have authority to share it. We do not use this participant app for advertising or in-app purchases."
+      },
+      {
+        "title": "Storage, transcription and AI services",
+        "body": "We use AWS for backend hosting and S3 object storage, and Neon/PostgreSQL for database services. For submitted answers, extracted audio is sent to ElevenLabs for transcription; transcript text and the question are sent to Google Gemini for feedback analysis. This external processing is separate from face guidance on your device. An enabled campaign rendering service may create edited or branded outputs; its use must follow the campaign notice. These providers have their own processing, security, abuse-monitoring and retention arrangements. Zeist has confirmed a billing-linked Gemini project and enabled ElevenLabs’ model-training/data-use opt-out. These controls are intended to restrict provider training or service-improvement use under the relevant service terms; they do not eliminate provider processing, security/abuse monitoring, legal retention or all recovery copies. We do not promise zero provider retention. Contact Zeist about the arrangements applicable to your campaign before submitting confidential material."
+      },
+      {
+        "title": "Face-guidance SDK diagnostics",
+        "body": "Face guidance uses Google ML Kit. Face-image inputs and detection results are processed on your device and are not sent to Google for face recognition. Separately, the SDK can send device/app information, installation-scoped identifiers, usage/performance events and errors to Google for diagnostics and service improvement, and can obtain model or compatibility updates. These technical metrics are separate from the testimonial content you choose to upload. Google handles SDK metrics under its applicable terms and privacy policy; deleting an Insight Scoop account does not necessarily remove every device-scoped diagnostic held by a provider."
+      },
+      {
+        "title": "Recipients and publication",
+        "body": "Authorized Zeist personnel, the commissioning organization where applicable, and providers acting for the service may access the information needed for their role. We may disclose limited information where required by law, to respond to a lawful request, or to investigate abuse and protect legal rights. The current mobile app does not automatically publish your answer to a public social feed. Promotional publication, permitted editing, audiences and any separate release must be explained by the campaign organization. Accepting this notice alone does not transfer ownership of your recordings or authorize unrelated advertising. A recipient that independently publishes a permitted copy may control that copy; tell us if you need help directing a request to that recipient."
+      },
+      {
+        "title": "Retention",
+        "body": "{{retentionSchedule}} Account details are retained while your account remains active or necessary to provide requested services, subject to your deletion request. Local copies remain subject to your choices and device storage. Limited deletion receipts and security records may be retained to enforce completed requests, prevent deleted data from reappearing, and document compliance; they are not retained as a substitute profile or media archive. We review retention and campaign instructions as the service develops."
+      },
+      {
+        "title": "Deletion and backups",
+        "body": "{{deletionInstructions}} In the app, confirm with your password and the deletion acknowledgement. Account access is revoked when the request is accepted; cleanup is asynchronous and includes associated uploaded originals, generated files, transcripts and analysis in systems Zeist controls. It also aborts account-scoped unfinished uploads. Removal of a local take alone does not delete an uploaded submission. {{backupDeletionPeriod}} Providers and organizations may hold copies governed by their own lawful arrangements; we will route or act on requests within our role and explain applicable exceptions. Do not include a password, identity document or video attachment in an initial email request."
+      },
+      {
+        "title": "Access, correction, withdrawal and complaints",
+        "body": "Email {{supportEmail}} with the account phone number and relevant campaign, stating whether you request access, correction, withdrawal, account deletion, or deletion of particular data. We may request proportionate verification to prevent disclosure or deletion of somebody else’s information. If you have lost access to the phone/account, contact us for an alternative verification process; do not send your password. Rights, response requirements and lawful exceptions depend on the circumstances and applicable law. You may also contact the commissioning organization or a competent authority where applicable. Withdrawal does not retrospectively invalidate processing lawfully performed before it."
+      },
+      {
+        "title": "Security, location and children",
+        "body": "We use authenticated account access, access-scoped media transfers and other reasonable organizational and technical measures. No service can guarantee absolute security. Service providers may process information outside India under their applicable arrangements and legal requirements. Insight Scoop is intended for adults aged 18 or older taking part in business feedback activities, and is not directed to children. If you believe a child’s information has been provided, contact us so that we can assess and address it."
+      },
+      {
+        "title": "Changes to this notice",
+        "body": "We may revise this notice as the service, campaigns or legal requirements change. The version is shown above. Material changes to purposes, recipients or permissions will be brought to your attention where required; a later policy update does not by itself create permission for an unrelated use of an earlier recording. Campaign-specific instructions cannot remove rights that applicable law makes mandatory."
+      }
+    ]
+  },
+  "terms": {
+    "title": "Terms of Use",
+    "intro": "These terms apply to your use of Insight Scoop, operated by {{legalEntityName}} under the Zeist brand. Read them with the Privacy Policy and any campaign notice before submitting an answer.",
+    "sections": [
+      {
+        "title": "Eligibility and accounts",
+        "body": "The service is intended for participants aged 18 or older. Use your own account and information you are authorized to provide. Keep your credentials secure and promptly report suspected unauthorized access to {{supportEmail}}. Open registration provides a starter campaign; a valid organization invite permits enrollment in the specified organization’s campaign. An invite does not give access to other participants’ accounts or make you an administrator. Do not share an organization’s invitation without authority. Phone-based sign-in in this release uses your password, not SMS verification. Contact support if you lose account access."
+      },
+      {
+        "title": "Free participant service",
+        "body": "The app is free for participants, with no in-app purchases, subscriptions or payment checkout in this release. Commissioning organizations arrange paid services directly with Zeist under separate agreements. Your internet provider may charge for connectivity. These participant terms do not replace an organization’s commercial agreement with Zeist."
+      },
+      {
+        "title": "Your content and the limited permission to operate the service",
+        "body": "You retain your rights in your original recordings. By choosing to submit a response, you grant Zeist a non-exclusive permission to host, copy, securely transmit, transcribe, caption, analyze and, where disclosed for your campaign, edit or render that response solely to provide the requested service to you and the campaign organization. This permission extends to service providers only to the extent needed for that purpose and is subject to the Privacy Policy, your applicable withdrawal/deletion rights and lawful retention exceptions. It is not a blanket transfer of ownership or a license for unrelated public advertising. The campaign organization must separately explain promotional publication, audiences, permitted edits and any release it requires."
+      },
+      {
+        "title": "Your responsibilities",
+        "body": "Submit only material you have the right and authority to share. Obtain appropriate permission before including another person, copyrighted material, client secrets or confidential information. Do not impersonate another person, submit unlawful, defamatory, abusive or intentionally misleading content, compromise the service, probe other accounts or upload malicious files. Zeist may restrict access or remove material where reasonably necessary to investigate misuse, comply with law, or protect users and the service. Where appropriate and lawful, we will provide a route to contact support about a restriction."
+      },
+      {
+        "title": "Recording, AI and availability limits",
+        "body": "Review your selected takes and submission before sending. Framing and noise guidance are assistance, not a guarantee of production quality. Transcription, captions and AI analysis can be incorrect, incomplete or biased and require human review before consequential decisions or publication. They are not professional advice or a reliable basis for employment, credit, medical or similar decisions. Device capabilities, permissions, storage and networks affect recording and upload. Local recordings and recovery features are not a guaranteed backup. Zeist may maintain or update the service and cannot promise uninterrupted availability, a particular campaign outcome or permanent storage."
+      },
+      {
+        "title": "Privacy, withdrawal and account deletion",
+        "body": "The Privacy Policy describes collection, external processors, retention and your choices. {{deletionInstructions}} If you wish to withdraw a campaign submission or discuss a separately published copy, contact {{supportEmail}} and the campaign organization. Verified requests will be handled in accordance with applicable law and our role; backup and third-party retention can differ from active-service removal. We do not ask you to waive mandatory privacy or consumer rights."
+      },
+      {
+        "title": "Intellectual property",
+        "body": "The Insight Scoop application, Zeist branding and service materials remain owned by Zeist or their respective licensors. You receive permission to use the app for its intended purpose, subject to these terms and applicable law. You may not claim ownership of Zeist or client branding, reproduce the service for an unauthorized commercial purpose, or bypass its security. Nothing in this section limits a use that applicable law expressly permits."
+      },
+      {
+        "title": "Responsibility and liability",
+        "body": "You are responsible for your own submissions and for acting within your authority. Campaign organizations are responsible for the uses they commission and their separate publication and participant arrangements. To the extent permitted by applicable law, Zeist is not responsible for loss caused by unauthorized actions outside its reasonable control, or for indirect or consequential losses such as lost business opportunities or anticipated profits. Any limitation applies only as far as the law permits and does not exclude liability for fraud, deliberate misconduct, or any duty or remedy that cannot lawfully be excluded. These terms do not guarantee that all service failures or claims can be disclaimed."
+      },
+      {
+        "title": "Changes, law and support",
+        "body": "We may update these terms with notice where required. Material changes apply prospectively, and additional agreement will be sought where applicable. Indian law applies, subject to mandatory protections and jurisdiction available to you under applicable law. Disputes may be brought before a competent court; please first contact {{supportEmail}} so that we can try to resolve the issue. An unenforceable provision does not remove the remainder of these terms or your mandatory rights."
+      }
+    ]
+  }
+}

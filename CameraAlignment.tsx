@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import {
   Camera,
   CommonResolutions,
@@ -23,7 +23,7 @@ import {
 import { useFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector';
 import { AlignmentGuideOverlay } from './AlignmentGuideOverlay';
 import { AlignmentStatusStrip } from './AlignmentStatusStrip';
-import { computeAlignmentSignals, isFullyAligned, type AlignmentSignals } from './alignment';
+import { computeAlignmentSignals, getAlignmentGeometry, isFullyAligned, type AlignmentSignals } from './alignment';
 import { useAlignmentLock, type AlignmentLockMode } from './useAlignmentLock';
 import { useAmbientNoiseCheck } from './useAmbientNoiseCheck';
 import { useStrings } from './i18n/useStrings';
@@ -76,6 +76,7 @@ export interface CaptureFormatInfo {
 }
 
 export interface CameraAlignmentHandle {
+  stopNoiseCheck: () => Promise<void>;
   startRecording: () => Promise<void>;
   // Finalizes the current recording to a file; triggers onRecordingFinished.
   stopRecording: () => Promise<void>;
@@ -90,6 +91,9 @@ interface Props {
   // lock cycle - used to re-run the (lighter) recheck for each question.
   resetToken: number | string;
   onLocked: () => void;
+  // A resized preview needs a fresh lock before countdown/capture. The
+  // parent clears its ready state without remounting the camera.
+  onAlignmentInvalidated?: () => void;
   // False while the caller is showing something else (e.g. the question
   // intro/VO) that alignment checking shouldn't run underneath - detection
   // stays fully off until this flips true, regardless of `isLocked`.
@@ -114,6 +118,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
       lockMode,
       resetToken,
       onLocked,
+      onAlignmentInvalidated,
       alignmentActive,
       recordingActive,
       onRecordingFinished,
@@ -136,7 +141,14 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
 
     // Front camera — this is a selfie testimonial recording flow.
     const device = useCameraDevice('front');
-    const { width, height } = useWindowDimensions();
+    // Detector autoMode, guide and checks all use the measured preview's
+    // local coordinates, including iPad full-screen and multitasking.
+    // Window dimensions can include space the actual camera view lacks.
+    const [previewSize, setPreviewSize] = useState<{ width: number; height: number } | null>(null);
+    const previewSizeRef = useRef(previewSize);
+    const width = previewSize?.width ?? 0;
+    const height = previewSize?.height ?? 0;
+    const geometry = useMemo(() => getAlignmentGeometry(width, height), [width, height]);
 
     // Requesting both permissions in separate, independent effects fires
     // them concurrently on mount - Android can only show one system
@@ -166,19 +178,42 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
 
     const [signals, setSignals] = useState<AlignmentSignals | null>(null);
     const frameCount = useRef(0);
+    const latestAlignedRef = useRef(false);
     // Stable, sticky "have we left the alignment screen for this question"
     // flag - deliberately state, not a ref, because visibility/detection
     // below need to react to it. This is NOT the same thing as
     // `readyToAdvance` further down: readyToAdvance is a live, fluctuating
     // value (noise can flip it back to false later, e.g. if the room gets
     // noisy again during the countdown), whereas `hasAdvanced` only ever
-    // goes false->true once per question and then stays put. Using the
+    // goes false->true once per question and then stays put unless the
+    // preview is resized before recording and needs a fresh lock. Using the
     // fluctuating value for visibility/detection-enable was the bug in the
     // previous version of this file: a later noise fluctuation could
     // reopen the guide/status strip and re-enable full detection mid
     // countdown, reconfiguring the camera session right as recording was
     // about to start.
     const [hasAdvanced, setHasAdvanced] = useState(false);
+
+    const handlePreviewLayout = useCallback((event: LayoutChangeEvent) => {
+      const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
+      const current = previewSizeRef.current;
+      const next = Number.isFinite(nextWidth) && nextWidth > 0 && Number.isFinite(nextHeight) && nextHeight > 0
+        ? { width: nextWidth, height: nextHeight }
+        : null;
+      if (current?.width === next?.width && current?.height === next?.height) return;
+      // Invalidate immediately; a callback from the previous layout must
+      // not complete a streak while React is applying the new dimensions.
+      previewSizeRef.current = next;
+      reset();
+      latestAlignedRef.current = false;
+      frameCount.current = 0;
+      setSignals(null);
+      setPreviewSize(next);
+      if (hasAdvanced && !recordingActive) {
+        setHasAdvanced(false);
+        onAlignmentInvalidated?.();
+      }
+    }, [reset, hasAdvanced, recordingActive, onAlignmentInvalidated]);
 
     // Ambient noise only needs sampling up to the moment we've advanced
     // past this screen - stopped during the question intro/VO, stopped for
@@ -206,23 +241,24 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
       reset();
       setNoiseOverridden(false);
       setHasAdvanced(false);
+      latestAlignedRef.current = false;
+      setSignals(null);
     }, [lockMode, resetToken, reset]);
 
-    // Live gate for the one-time "fire onLocked()" trigger only - noise
-    // only ever *holds* the advance it would otherwise already be
-    // triggering, and only in the specific case where it's still bad at
-    // that exact moment. Not used for anything else (see `hasAdvanced`).
-    const noiseReady = noise.status !== 'noisy' || noiseOverridden;
-    const readyToAdvance = isLocked && noiseReady;
+    // Checking/failed sampling is not evidence of a quiet room.
+    const noiseReady = noise.status === 'good' || noiseOverridden;
+    const readyToAdvance = previewSize != null && isLocked && noiseReady;
 
     const handleFacesDetected = useCallback(
       (faces: Face[]) => {
+        if (previewSize == null || previewSizeRef.current !== previewSize || !alignmentActive || recordingActive) return;
         const currentSignals =
-          faces.length > 0
+          faces?.length > 0 && faces[0]?.bounds != null
             ? computeAlignmentSignals(faces[0].bounds, width, height)
             : null;
         const currentlyAligned =
           currentSignals != null && isFullyAligned(currentSignals);
+        latestAlignedRef.current = currentlyAligned;
         registerFrame(currentlyAligned);
 
         // useAlignmentLock's streak is normally sticky once locked (by
@@ -239,7 +275,8 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
         // real delay. Guarded on `!hasAdvanced` so this can only ever fire
         // while still genuinely waiting on this screen, never during the
         // separate post-advance recheck.
-        if (!hasAdvanced && isLocked && !noiseReady && !currentlyAligned) {
+        // Even a simultaneous noise override cannot preserve a stale lock.
+        if (!hasAdvanced && isLocked && !currentlyAligned) {
           reset();
         }
 
@@ -251,7 +288,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
         }
         if (frameCount.current % 15 === 0) {
           console.log('[alignment]', {
-            faces: faces.length,
+            faces: faces?.length ?? 0,
             signals: currentSignals,
             goodFrameStreak,
             requiredFrames,
@@ -261,18 +298,20 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
       [
         width,
         height,
+        previewSize,
+        alignmentActive,
+        recordingActive,
         registerFrame,
         goodFrameStreak,
         requiredFrames,
         isLocked,
-        noiseReady,
         reset,
         hasAdvanced,
       ],
     );
 
     useEffect(() => {
-      if (readyToAdvance && !hasAdvanced) {
+      if (alignmentActive && readyToAdvance && !hasAdvanced && previewSizeRef.current === previewSize && latestAlignedRef.current) {
         console.log('[alignment] LOCKED — ready to record', {
           noiseStatus: noise.status,
           noiseOverridden,
@@ -280,7 +319,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
         setHasAdvanced(true);
         onLocked();
       }
-    }, [readyToAdvance, onLocked, hasAdvanced, noise.status, noiseOverridden]);
+    }, [alignmentActive, readyToAdvance, onLocked, hasAdvanced, noise.status, noiseOverridden, previewSize]);
 
     // Detection stays fully continuous for as long as the alignment UI is
     // still visible - which is `!hasAdvanced`, a stable flag, not the live
@@ -295,9 +334,9 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     // actual recording is in progress, and fully suspended whenever the
     // caller says alignment shouldn't be running at all (e.g. the question
     // intro/VO is showing).
-    const [detectionEnabled, setDetectionEnabled] = useState(true);
+    const [detectionEnabled, setDetectionEnabled] = useState(false);
     useEffect(() => {
-      if (recordingActive || !alignmentActive) {
+      if (recordingActive || !alignmentActive || previewSize == null) {
         setDetectionEnabled(false);
         return;
       }
@@ -320,7 +359,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
         clearInterval(interval);
         if (recheckTimeout) clearTimeout(recheckTimeout);
       };
-    }, [hasAdvanced, recordingActive, alignmentActive]);
+    }, [hasAdvanced, recordingActive, alignmentActive, previewSize]);
 
     const faceDetectorOutput = useFaceDetectorOutput({
       onFacesDetected: handleFacesDetected,
@@ -335,9 +374,12 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
       runLandmarks: false,
       performanceMode: 'fast',
       minFaceSize: MIN_FACE_SIZE,
+      // Preserve the native plugin's existing coordinate conversion. It
+      // independently scales X/Y; cover-crop calibration still needs real
+      // sensor QA (iOS preview-sized buffers need not match upstream size).
       autoMode: true,
-      windowWidth: width,
-      windowHeight: height,
+      windowWidth: width || 1,
+      windowHeight: height || 1,
     });
 
     // No filePath given -> records to a temp file within the app's own
@@ -383,7 +425,9 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        stopNoiseCheck: noise.stop,
         async startRecording() {
+          await noise.stop();
           // H.264, not H.265: HEVC encoders fail silently on budget
           // MediaTek/Unisoc chips (this app's actual hardware target).
           // iOS defaults to H.265 unless told otherwise - this is the only
@@ -420,7 +464,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           recorderRef.current = null;
         },
       }),
-      [videoOutput, onRecordingFinished, onRecordingError],
+      [videoOutput, onRecordingFinished, onRecordingError, noise.stop],
     );
 
     // `outputs` must be a stable/memoized array (per VisionCamera's docs)
@@ -478,7 +522,7 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
     }
 
     return (
-      <View style={styles.container}>
+      <View style={styles.container} onLayout={handlePreviewLayout}>
         <Camera
           style={StyleSheet.absoluteFill}
           device={device}
@@ -489,18 +533,20 @@ export const CameraAlignment = forwardRef<CameraAlignmentHandle, Props>(
           onStarted={handleCameraStarted}
         />
         <AlignmentGuideOverlay
-          visible={!hasAdvanced}
+          visible={alignmentActive && !hasAdvanced && previewSize != null}
+          geometry={geometry}
           signals={signals}
           goodFrameStreak={goodFrameStreak}
           requiredFrames={requiredFrames}
         />
         <AlignmentStatusStrip
-          visible={!hasAdvanced}
+          visible={alignmentActive && !hasAdvanced}
           signals={signals}
           noiseStatus={noise.status}
           noiseSustained={noise.sustainedNoisy}
           noiseOverridden={noiseOverridden}
           onOverrideNoise={() => setNoiseOverridden(true)}
+          onRetryNoise={noise.retry}
         />
       </View>
     );

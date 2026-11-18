@@ -1,3 +1,4 @@
+import { accountDirectory, accountFile, accountScope, scopeIsCurrent, trackAccountTask, type AccountScope } from './accountStorage';
 import { Directory, File, Paths } from 'expo-file-system';
 import type { QuestionDto } from './questions';
 
@@ -12,7 +13,7 @@ import type { QuestionDto } from './questions';
 const VO_DIR_NAME = 'vo-cache';
 
 function getVoDirectory(): Directory {
-  const dir = new Directory(Paths.document, VO_DIR_NAME);
+  const dir = new Directory(accountDirectory(), VO_DIR_NAME);
   if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
   return dir;
 }
@@ -53,7 +54,7 @@ export function getLocalVoUri(questionId: string, language: string): string | nu
 const SYNC_CACHE_FILE_NAME = 'vo-sync-cache.json';
 
 function getSyncCacheFile(): File {
-  return new File(Paths.document, SYNC_CACHE_FILE_NAME);
+  return accountFile(SYNC_CACHE_FILE_NAME);
 }
 
 type SyncCache = Record<string, string>;
@@ -83,15 +84,21 @@ function writeSyncCache(cache: SyncCache): void {
 // that question's "Read to me"/countdown VO just falls back to the
 // (possibly-expired-by-then) remote URL, same as before this cache
 // existed.
-export async function cacheQuestionAudio(questions: QuestionDto[], language: string): Promise<void> {
+export function cacheQuestionAudio(questions: QuestionDto[], language: string): Promise<void> {
+  const scope = accountScope();
+  return trackAccountTask(scope.owner, cacheAudio(questions, language, scope));
+}
+async function cacheAudio(questions: QuestionDto[], language: string, scope: AccountScope): Promise<void> {
   const cache = readSyncCache();
   await Promise.all(
     questions.map(async (question) => {
       const file = getVoFile(question.id, language);
+      if (!scopeIsCurrent(scope)) return;
       const cacheKey = `${question.id}:${language}`;
       if (file.exists && cache[cacheKey] === question.updated_at) return;
       try {
-        await File.downloadFileAsync(question.vo_playback_url, file, { idempotent: true });
+        await File.downloadFileAsync(question.vo_playback_url, file, { idempotent: true, signal: scope.signal });
+        if (!scopeIsCurrent(scope)) { if (file.exists) file.delete(); return; }
         cache[cacheKey] = question.updated_at;
         console.log(`[voCache] downloaded VO for question ${question.id} (${language})`);
       } catch (error) {
@@ -99,7 +106,7 @@ export async function cacheQuestionAudio(questions: QuestionDto[], language: str
       }
     }),
   );
-  writeSyncCache(cache);
+  if (scopeIsCurrent(scope)) writeSyncCache(cache);
 }
 
 // Testing-only - wired to a __DEV__ menu action, kept as a manual

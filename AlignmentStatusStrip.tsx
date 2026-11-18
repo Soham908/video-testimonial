@@ -17,6 +17,7 @@ interface Props {
   noiseSustained: boolean;
   noiseOverridden: boolean;
   onOverrideNoise: () => void;
+  onRetryNoise: () => void;
 }
 
 // Reveal order/timing is a pure UI staging device - each row's underlying
@@ -35,6 +36,7 @@ export function AlignmentStatusStrip({
   noiseSustained,
   noiseOverridden,
   onOverrideNoise,
+  onRetryNoise,
 }: Props) {
   const { spacing, radius } = useTheme();
   const styles = useMemo(() => makeStyles(spacing, radius), [spacing, radius]);
@@ -61,24 +63,38 @@ export function AlignmentStatusStrip({
       ? 'good'
       : 'checking';
   const distanceStatus: CheckStatus = !revealed.distance ? 'pending' : signals?.distanceOk ? 'good' : 'checking';
+  const unavailable = noiseStatus === 'unavailable';
   const soundGood = noiseOverridden || noiseStatus === 'good';
-  const soundStatus: CheckStatus = !revealed.sound ? 'pending' : soundGood ? 'good' : 'checking';
+  const soundStatus: CheckStatus = !revealed.sound ? 'pending' : soundGood ? 'good' : unavailable ? 'pending' : 'checking';
 
-  const showSkip = revealed.sound && noiseStatus === 'noisy' && noiseSustained && !noiseOverridden;
+  const showSkip = revealed.sound && !noiseOverridden &&
+    (unavailable || (noiseStatus === 'noisy' && noiseSustained));
 
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.rows}>
         <ChecklistRow label={t('alignmentGuide.checklistFraming')} status={framingStatus} />
         <ChecklistRow label={t('alignmentGuide.checklistDistance')} status={distanceStatus} />
-        <ChecklistRow label={t('alignmentGuide.checklistSound')} status={soundStatus} />
+        <ChecklistRow
+          label={t(unavailable && !noiseOverridden ? 'alignmentGuide.noiseUnavailable' : 'alignmentGuide.checklistSound')}
+          status={soundStatus}
+        />
       </View>
       {showSkip && (
-        <Pressable style={styles.skipRow} onPress={onOverrideNoise} hitSlop={8}>
-          <View style={styles.skipPill}>
-            <Text style={styles.skipText}>{t('alignmentGuide.skipNoiseCheckButton')}</Text>
-          </View>
-        </Pressable>
+        <View>
+          {unavailable && (
+            <Pressable style={styles.skipRow} onPress={onRetryNoise} hitSlop={8}>
+              <View style={styles.skipPill}>
+                <Text style={styles.skipText}>{t('alignmentGuide.retryNoiseCheck')}</Text>
+              </View>
+            </Pressable>
+          )}
+          <Pressable style={styles.skipRow} onPress={onOverrideNoise} hitSlop={8}>
+            <View style={styles.skipPill}>
+              <Text style={styles.skipText}>{t('alignmentGuide.skipNoiseCheckButton')}</Text>
+            </View>
+          </Pressable>
+        </View>
       )}
     </View>
   );

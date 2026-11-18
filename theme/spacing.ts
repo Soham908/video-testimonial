@@ -10,14 +10,14 @@ export interface Spacing {
    * more than xxl alone so the button doesn't feel glued to the edge. Use
    * this instead of a one-off padding value on any new footer-style screen. */
   footerBottom: number;
-  /** Extra top clearance layered onto a screen's existing top padding
-   * (`paddingTop: spacing.xl + spacing.topExtra`, not standalone) - content
-   * sat too close to the status bar by default. A flat add-on, not a real
-   * device safe-area inset (unlike BottomTabBar's, which reads
-   * useSafeAreaInsets() - this is a deliberately simpler fix, since unlike
-   * the bottom nav bar this was never an overlap/functional bug, just
-   * tight spacing). */
+  /** Extra visual space within a page (`spacing.xl + spacing.topExtra`).
+   * ThemeProvider raises this when necessary to clear the top system band.
+   * Camera overlays instead use the real inset directly. */
   topExtra: number;
+  /** Spacing at screen edges and between content and the app's tab bar. */
+  edgeGap: number;
+  /** Clear space between footer controls and the colored system area. */
+  footerGap: number;
 }
 
 export const spacing: Spacing = {
@@ -29,4 +29,6 @@ export const spacing: Spacing = {
   xxl: 48,
   footerBottom: 64,
   topExtra: 16,
+  edgeGap: 12,
+  footerGap: 24,
 };

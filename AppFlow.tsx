@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
 import * as Application from 'expo-application';
@@ -32,22 +32,38 @@ import { ConfirmationScreen } from './screens/ConfirmationScreen';
 import { DevEntryMenu } from './components/dev/DevEntryMenu';
 import { PopupSheet } from './components/ui/Modal';
 import { Button } from './components/ui/Button';
+import { useQuestionPrompts } from './useQuestionPrompts';
+import { commitTakeDeletion, firstUnansweredQuestion, planTakeDeletion } from './takeDeletion';
+import { keptAnswerCount, savedFeedback, type SavedFeedback } from './completionFeedback';
+import { CompletionFeedback } from './components/CompletionFeedback';
 import {
   moveRecordingToDurableStorage,
   clearAllRecordings,
   deleteRecording,
   MAX_KEPT_TAKES,
+  snapshotQuestion,
+  reconcileTakePositions,
+  questionSnapshotMatches,
+  type RecordedQuestionSnapshot,
   type RecordedVideo,
 } from './recordings';
 import { useTheme } from './theme/ThemeContext';
 import { useHideNavigationBarWhile } from './theme/NavigationBarSync';
-import { restoreSession, getCurrentAuth, logout } from './auth';
-import { setSessionExpiredHandler } from './api';
+import { restoreSession, getCurrentAuth, logout, logoutIfSession, adoptRecoveredAuth } from './auth';
+import { setSessionExpiredHandler, captureAuthSession, authSessionIsCurrent, type AuthSession } from './api';
+import { activateAccount, accountScope, currentAccount, scopeIsCurrent } from './accountStorage';
+import { rememberAccountDeletion, pendingAccountDeletion, requestAccountDeletion, finishLocalAccountDeletion, recoverAccountDeletion, reauthenticateAccountDeletion } from './accountDeletion';
+import type { PhoneCountryCode } from './phoneNumbers';
 import { hasConsented, markConsented } from './consent';
 import { fetchDistributorProfile, type DistributorProfile } from './distributorProfile';
 import { isVersionBelow } from './appVersion';
-import { uploadSegment } from './upload';
-import { fetchSegments, fetchRenderedVideos, checkAndSyncCache, renderedUserStatus } from './myVideos';
+import { uploadSegment, recoverUploadReceipt, readUploadFileIdentity, requireUploadCapabilities } from './upload';
+import { createApprovedBatch, freezeUploadSelection, takeIdentity, checkpointBatchAttempt, confirmBatchEntry, batchSummary,
+  isQuestionLocked, isExactConfirmedTake, acknowledgeConfirmedTakes, acknowledgeUploadReceipt, hasExactAcknowledgement,
+  availableUploadTakes, pendingReceiptsForBatch, type ApprovedUploadBatch, type PendingUploadReceipt, type UploadConfirmation } from './uploadBatch';
+import { fetchSegments, fetchRenderedVideos, renderedUserStatus, type SegmentDto } from './myVideos';
+import { buildAnswerRows, reviewedTakeSelection } from './answerLibrary';
+import { normalizeReviewTrim, requestedTrim } from './trim';
 import { getDeviceInfo } from './deviceInfo';
 import { ENABLE_REEL_RENDERING, ENABLE_SELF_REGISTRATION } from './config';
 import {
@@ -72,6 +88,7 @@ import {
   restorableQuestionPhase,
   purgeOrphanedRecordingTempFiles,
   type PersistedScreen,
+  type PersistedSession,
 } from './session';
 
 // Lightweight state-based flow - no navigation library added yet, so this
@@ -132,24 +149,8 @@ type QuestionPhase =
   | 'reviewTrim';
 
 const MAX_TAKES = 3;
-// Bumped 3 -> 5 as a stopgap: the question-read-aloud VO can outlast the
-// countdown, and recording starting before it's actually finished is a
-// real clash, not just an audio-overlap glitch - see the sequencing note
-// on the countdown-tick effect below for why this alone doesn't fully fix
-// it for a VO clip longer than 5s.
+// The full question audio finishes before these five seconds begin.
 const COUNTDOWN_SECONDS = 5;
-// Extra real time folded into the very first tick (the "5", before
-// counting down to "4") rather than held past "1" at the end - a slightly
-// longer first second is unnoticeable before the countdown has established
-// a rhythm; holding right before recording starts looked like an obvious
-// stall instead. Displayed countdown is still exactly 5..1, unchanged.
-// Today's VO clips run 2.7s-5.1s; the visible countdown alone only spans
-// 5.0s real time (5 one-second ticks), so the longest clip could still
-// outlast it by ~100ms without this. 300ms covers that with margin for
-// normal JS timer jitter. Revisit if VO gets re-recorded longer than
-// ~5.3s - it's tied to today's actual clip lengths, not a structural
-// guarantee.
-const COUNTDOWN_BUFFER_MS = 300;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -186,39 +187,35 @@ async function androidUploadKeepAliveTask(): Promise<void> {
 // during a live take still doesn't exist. Question VO, alignment guidance
 // (incl. ambient noise check), and video recording/storage/playback are
 // all real.
-export function AppFlow() {
+export function AppFlow({ onImmersiveChange }: { onImmersiveChange: (immersive: boolean) => void }) {
+  const renderAccountScope = currentAccount() ? accountScope() : null;
+  const renderAuthSession = captureAuthSession();
   const { colors, spacing } = useTheme();
   const { t } = useStrings();
   const [screen, setScreen] = useState<Screen>('sessionLoading');
+  const [deletionBusy, setDeletionBusy] = useState(false);
+  const [deletionRecovery, setDeletionRecovery] = useState<string | null>(null);
+  const [deletionRecoveryOwner, setDeletionRecoveryOwner] = useState<string | null>(null);
+  const deletionUIVersion = useRef(0);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [deletionNotice, setDeletionNotice] = useState(false);
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [phase, setPhase] = useState<QuestionPhase>('brief');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [countdownRemaining, setCountdownRemaining] = useState(COUNTDOWN_SECONDS);
+  const [questionAudioComplete, setQuestionAudioComplete] = useState(false);
   // Up to 2 entries per questionIndex now (the take-keeping flow below can
   // keep a runner-up alongside the primary) - `videos` itself is the right
-  // source when something genuinely needs both (My Videos' take picker,
-  // the post-upload cleanup that deletes the runner-up's file), but every
+  // source when something genuinely needs both (My Videos' take picker), but every
   // "how many questions has this distributor actually answered" count
   // elsewhere in this file means one video per question, so those read
   // primaryVideos instead. Undefined isPrimary is treated as primary (not
   // filtered out) - a session persisted before this field existed only
   // ever had exactly one entry per question, which was implicitly it.
   const [videos, setVideos] = useState<RecordedVideo[]>([]);
-  const primaryVideos = videos.filter((v) => v.isPrimary !== false);
+  const primaryVideos = videos.filter((v) => v.isPrimary !== false && v.questionIndex >= 0);
   const [playingVideo, setPlayingVideo] = useState<PlayableVideo | null>(null);
-  // Android's own nav-bar contrast scrim isn't something an app can recolor
-  // (NavigationBarSync's comment) - hiding it outright is the only real way
-  // to get true full-bleed. CameraCheckScreen renders during both
-  // 'cameraCheck' (the alignment/lighting check) and 'countdown' - full-bleed
-  // for both, same as 'recording'. VideoPlayerScreen (My Videos' playback,
-  // also full-bleed with nativeControls) is included too - without this,
-  // its bottom native control bar sat flush against the bottom edge with no
-  // safe-area clearance, so the system nav bar's own back/home buttons
-  // visually overlapped the player's own controls (real tester feedback).
-  useHideNavigationBarWhile(
-    phase === 'cameraCheck' || phase === 'countdown' || phase === 'recording' || !!playingVideo,
-  );
   // Non-null while retaking a single already-answered question from My
   // Videos - overrides lockMode to a full lock (this is a cold entry, not
   // a continuous session) and makes handleKeepTake replace that question's
@@ -227,12 +224,22 @@ export function AppFlow() {
   // The question index pending the "record again?" confirmation, shown
   // from My Videos before entering the camera flow at all.
   const [pendingRetake, setPendingRetake] = useState<number | null>(null);
+  const [replacementReview, setReplacementReview] = useState<{ takeId: string; questionId: string; segmentId: string | null; play: PlayableVideo | null } | null>(null);
+  const [replacementReviewError, setReplacementReviewError] = useState<string | null>(null);
+  const retakeBaseRef = useRef<string | null>(null);
+  const recordingSnapshotRef = useRef<{ question: RecordedQuestionSnapshot; expectedCurrentSegmentId: string | null } | null>(null);
   const [myVideosLoading, setMyVideosLoading] = useState(false);
   const [myVideosError, setMyVideosError] = useState<string | null>(null);
   const [answerRows, setAnswerRows] = useState<AnswerRow[]>([]);
+  const [serverSegments, setServerSegments] = useState<SegmentDto[]>([]);
   const [brandedRows, setBrandedRows] = useState<BrandedRow[]>([]);
   const [myVideosRefreshToken, setMyVideosRefreshToken] = useState(0);
   const cameraRef = useRef<CameraAlignmentHandle>(null);
+  const prepareQuestionAudio = useCallback(async () => {
+    if (!cameraRef.current) throw new Error('Camera is not ready');
+    await cameraRef.current.stopNoiseCheck();
+  }, []);
+  const handleQuestionAudioComplete = useCallback(() => setQuestionAudioComplete(true), []);
   // Live camera/mic permission status, read here (not just inside
   // CameraAlignment/PermissionsScreen) so "Start this question" from Home
   // can skip the whole Permissions explainer once both are already
@@ -286,6 +293,9 @@ export function AppFlow() {
   // a different account signing in on the same device never shows a stale
   // id. Used by ProfileScreen's "Distributor ID" row.
   const [distributorId, setDistributorId] = useState<string | null>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const consentResumeScreen = useRef<Screen>('main');
   // Real name/phone (distributorProfile.ts) - fetched alongside distributorId
   // on both a restored session and a fresh login, best-effort (a failed
   // fetch just leaves whatever's already there, same as loadQuestions()'s
@@ -306,7 +316,7 @@ export function AppFlow() {
   // unconditional); this is genuinely new, not a reskin. Not reset
   // per-question - it's a standing preference the person sets once.
   const [autoStart, setAutoStart] = useState(true);
-  // Whether the 3-2-1 countdown reads the question aloud (existing
+  // Whether the question is read aloud before the five-second countdown (existing
   // per-question VO, same clip QuestionBriefScreen's "Read to me" plays) -
   // a standing device preference, not per-question/per-session state, so it
   // lives in SecureStore (preferences.ts) rather than session.ts. Defaults
@@ -362,7 +372,7 @@ export function AppFlow() {
   // everything in the pool automatically when it's 2 or fewer, no picking
   // needed.
   const [keptTakeIds, setKeptTakeIds] = useState<string[]>([]);
-  // Shown after "Keep this take" on any question except the last one -
+  // Shown after "Keep this take" while another question is unanswered -
   // DECISIONS.md's "post-keep prompt: next question / my videos / home".
   const [showPostKeepPrompt, setShowPostKeepPrompt] = useState(false);
   // Shown when the hardware back button is pressed during cameraCheck/
@@ -398,17 +408,17 @@ export function AppFlow() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadAttempt, setUploadAttempt] = useState(0);
-  // Gates the actual upload effect below - the new Upload screen shows a
-  // plain list + confirmation pop-up first (design 7a/7b), and nothing
-  // actually goes out until that's confirmed. Reset to false every time
-  // 'uploading' is entered fresh, from either Home or My Videos.
-  const [uploadConfirmed, setUploadConfirmed] = useState(false);
-  // question_index (0-based) of every video already confirmed uploaded in
-  // the current batch - see session.ts. Lets the upload effect resume
-  // after a force-quit mid-upload instead of re-sending everything, and is
-  // reset to [] whenever 'uploading' is entered as a genuinely new batch
-  // (not on retry - a retry should only redo what didn't finish).
-  const [uploadedQuestionIndices, setUploadedQuestionIndices] = useState<number[]>([]);
+  const [approvedBatch, setApprovedBatch] = useState<ApprovedUploadBatch | null>(null);
+  // Updated synchronously at approval/checkpoint boundaries, so a second tap
+  // cannot create another batch before React commits the first one.
+  const approvedBatchRef = useRef<ApprovedUploadBatch | null>(null);
+  const [pendingUploadReceipts, setPendingUploadReceipts] = useState<PendingUploadReceipt[]>([]);
+  const pendingUploadReceiptsRef = useRef<PendingUploadReceipt[]>([]);
+  const preparingUploadRef = useRef<{ videos: RecordedVideo[]; controller: AbortController } | null>(null);
+  const [uploadPreparing, setUploadPreparing] = useState(false);
+  const uploadConfirmed = approvedBatch !== null;
+  const uploadedQuestionIndices = approvedBatch?.entries.filter(entry => entry.confirmation).map(entry => entry.video.questionIndex) ?? [];
+  const uploadRunning = useRef(false);
   // True once the launch-time restore (session.ts) has run to completion -
   // gates the persistence effect below so it can never fire with the
   // component's initial default state and clobber a just-loaded session
@@ -435,11 +445,30 @@ export function AppFlow() {
   // language-switch handler, both need this) - omit it entirely to use
   // whatever `language` currently holds, which is correct for every other
   // caller (retry button, fresh login/register).
+  // Rapid language choices must not be overwritten by an older, slower response.
+  function loadOwnedProfile() {
+    const scope = accountScope();
+    fetchDistributorProfile().then(profile => { if (scopeIsCurrent(scope)) setDistributorProfile(profile); }).catch(() => {});
+  }
+  const questionsRequest = useRef(0);
+  const questionsCatalogRef = useRef<QuestionDto[]>(questions);
+  questionsCatalogRef.current = questions;
   async function loadQuestions(languageOverride?: LanguageCode | null) {
+    if (!currentAccount()) return;
+    const scope = accountScope();
+    const request = ++questionsRequest.current;
     const lang = languageOverride === undefined ? language : languageOverride;
     try {
       const fresh = await fetchQuestions(lang ?? undefined);
+      if (request !== questionsRequest.current || !scopeIsCurrent(scope)) return;
       cacheQuestions(fresh);
+      questionsCatalogRef.current = fresh;
+      setVideos(previous => reconcileTakePositions(previous, fresh));
+      setTakesByQuestion(previous => {
+        const regrouped: Record<number, RecordedVideo[]> = {};
+        for (const take of reconcileTakePositions(Object.values(previous).flat(), fresh)) (regrouped[take.questionIndex] ??= []).push(take);
+        return regrouped;
+      });
       setQuestions(fresh);
       setQuestionsError(null);
       // Fire-and-forget, same tolerance as fetchDistributorProfile() above -
@@ -451,6 +480,7 @@ export function AppFlow() {
         .then(() => setVoCacheVersion((v) => v + 1))
         .catch(() => {});
     } catch (error) {
+      if (request !== questionsRequest.current || !scopeIsCurrent(scope)) return;
       setQuestions((current) => {
         if (current.length === 0) {
           setQuestionsError(
@@ -474,20 +504,44 @@ export function AppFlow() {
   // is set true in every branch so the save effect below always knows the
   // restore attempt has finished, whether or not there was anything to
   // restore.
-  useEffect(() => {
+  async function bootstrapApp() {
+    const version = deletionUIVersion.current;
+    setBootstrapError(null);
     // Resolved together, not in two independent effects each racing to
     // finish first - the very first loadQuestions() call below needs the
     // real preference value, not whichever of two unrelated async reads
     // happens to land first.
-    Promise.all([restoreSession(), getLanguagePref()]).then(([auth, lang]) => {
+    try {
+      let recoveryFailure: unknown = null;
+      let recoveryOwner: string | null = null;
+      try {
+        recoveryOwner = pendingAccountDeletion()?.owner ?? null;
+        if (await recoverAccountDeletion() === 'accepted') setDeletionNotice(true);
+      } catch (error) { recoveryFailure = error; }
+      if (deletionUIVersion.current !== version) return;
+      const [auth, lang] = await Promise.all([restoreSession(), getLanguagePref()]);
+      if (deletionUIVersion.current !== version) return;
       setLanguageState(lang);
+      if (recoveryFailure && (!auth || auth.distributorId === recoveryOwner)) {
+        setDeletionRecoveryOwner(recoveryOwner);
+        setDeletionRecovery(recoveryFailure instanceof Error ? recoveryFailure.message : t('deletion.recoveryError'));
+        return;
+      }
+      if (auth && pendingAccountDeletion(auth.distributorId)) {
+        await handleAuthenticated(); return;
+      }
+      setDeletionBusy(false); setDeletionRecovery(null); setDeletionRecoveryOwner(null);
       if (!auth) {
         setScreen(DEFAULT_UNAUTHENTICATED_SCREEN);
         setSessionRestored(true);
         return;
       }
+      activateAccount(auth.distributorId);
       setDistributorId(auth.distributorId);
-      fetchDistributorProfile().then(setDistributorProfile).catch(() => {});
+      setClientId(auth.clientId);
+      const currentConsent = hasConsented(auth.distributorId);
+      setConsentAccepted(currentConsent);
+      loadOwnedProfile();
 
       // Cache-first: show whatever's on disk immediately (if anything),
       // then kick a real fetch in the background - loadQuestions() keeps
@@ -501,9 +555,16 @@ export function AppFlow() {
       }
       loadQuestions(lang);
 
+      restoreOwnedProgress(currentConsent, cachedQuestions);
+
+    } catch (error) { if (deletionUIVersion.current === version) setBootstrapError(error instanceof Error ? error.message : 'Could not restore your account. Please retry.'); }
+  }
+  useEffect(() => { void bootstrapApp(); }, []);
+
+  function restoreOwnedProgress(currentConsent: boolean, cachedQuestions: QuestionDto[] | null) {
       const stored = loadSession();
       if (!stored || !hasMeaningfulProgress(stored)) {
-        setScreen(hasConsented(auth.distributorId) ? 'main' : 'onboarding');
+        setScreen(currentConsent ? 'main' : 'onboarding');
         setSessionRestored(true);
         return;
       }
@@ -511,8 +572,10 @@ export function AppFlow() {
       setMainTab(stored.mainTab);
       setQuestionIndex(stored.questionIndex);
       setRetakeQuestionIndex(stored.retakeQuestionIndex);
-      setVideos(stored.videos);
-      setTakesByQuestion(stored.takesByQuestion);
+      setVideos(cachedQuestions ? reconcileTakePositions(stored.videos, cachedQuestions) : stored.videos);
+      const restoredTakes: Record<number, RecordedVideo[]> = {};
+      for (const take of cachedQuestions ? reconcileTakePositions(Object.values(stored.takesByQuestion).flat(), cachedQuestions) : Object.values(stored.takesByQuestion).flat()) (restoredTakes[take.questionIndex] ??= []).push(take);
+      setTakesByQuestion(restoredTakes);
       setSelectedTakeId(stored.selectedTakeId);
       // Optional because a session persisted before this field existed can
       // be restored without it - an empty selection is always safe (see
@@ -520,8 +583,10 @@ export function AppFlow() {
       setKeptTakeIds(stored.keptTakeIds ?? []);
       setAutoStart(stored.autoStart);
       setHasSubmittedBatch(stored.hasSubmittedBatch);
-      setUploadConfirmed(stored.uploadConfirmed);
-      setUploadedQuestionIndices(stored.uploadedQuestionIndices);
+      approvedBatchRef.current = stored.approvedBatch ?? null;
+      setApprovedBatch(stored.approvedBatch ?? null);
+      pendingUploadReceiptsRef.current = stored.pendingUploadReceipts ?? [];
+      setPendingUploadReceipts(pendingUploadReceiptsRef.current);
 
       if (stored.phase === 'recording' || stored.phase === 'countdown') {
         // Force-quit landed mid-capture (or during the countdown right
@@ -533,6 +598,7 @@ export function AppFlow() {
         purgeOrphanedRecordingTempFiles();
       }
 
+      let restoredScreen: Screen = 'main';
       if (stored.screen === 'question') {
         const restoredPhase = restorableQuestionPhase(stored.phase);
         // 'reviewTrim' with no pending takes for this question means the
@@ -565,16 +631,21 @@ export function AppFlow() {
           setPhase(restoredPhase);
           setChecksReady(false);
           setTakeAttempt(0);
+          restoredScreen = 'question';
           setScreen('question');
         }
       } else if (stored.screen === 'uploading') {
+        restoredScreen = 'uploading';
         setScreen('uploading');
       } else {
         setScreen('main');
       }
+      if (!currentConsent) {
+        consentResumeScreen.current = restoredScreen;
+        setScreen('consent');
+      }
       setSessionRestored(true);
-    });
-  }, []);
+  }
 
   // Standing device preference (preferences.ts), not session state - loaded
   // independently of the force-quit restore above so it's available even
@@ -588,7 +659,7 @@ export function AppFlow() {
     setReadQuestionAloudPref(next);
   }
 
-  // Settings' language picker - local-only override (API_CONTRACT.md:
+  // Onboarding and Settings share the same local-only override (API_CONTRACT.md:
   // nothing is written back to the distributor's stored language_pref).
   // Re-fetches and re-caches immediately so My Videos' question text and
   // every question's VO reflect the new language right away, rather than
@@ -596,53 +667,164 @@ export function AppFlow() {
   // explicitly instead of relying on `language` state, which wouldn't
   // have committed yet in this same tick.
   function handleChangeLanguage(next: LanguageCode) {
+    if (preparingUploadRef.current) return;
     setLanguageState(next);
     setLanguagePref(next);
     loadQuestions(next);
   }
+
+  const latestSessionRef = useRef<Omit<PersistedSession, 'version' | 'ownerId'> | null>(null);
+  latestSessionRef.current = {
+    screen: screen === 'question' || screen === 'uploading' ? screen : 'main',
+    mainTab, questionIndex, phase, retakeQuestionIndex, videos, takesByQuestion,
+    selectedTakeId, keptTakeIds, autoStart, hasSubmittedBatch,
+    approvedBatch: approvedBatchRef.current, pendingUploadReceipts: pendingUploadReceiptsRef.current,
+    uploadConfirmed: false, uploadedQuestionIndices: [],
+  };
+  function questionUploadLocked(index: number): boolean {
+    return isQuestionLocked(approvedBatchRef.current, index, preparingUploadRef.current?.videos, questionsCatalogRef.current[index]?.id);
+  }
+  function checkpointBatch(batch: ApprovedUploadBatch | null, pending = pendingUploadReceiptsRef.current,
+    recovered?: { entry: PendingUploadReceipt; confirmation: UploadConfirmation }) {
+    if (!sessionRestored || !distributorId || currentAccount() !== distributorId || deletionBusy || deletionRecovery || !latestSessionRef.current) throw new Error(t('uploadApproval.notReady'));
+    if (batch && (batch.ownerId !== distributorId || batch.clientId !== clientId)) throw new Error(t('uploadApproval.wrongAccount'));
+    const latest = latestSessionRef.current;
+    const accepted = batch ?? approvedBatchRef.current;
+    const takes = accepted ? acknowledgeConfirmedTakes(latest.videos, accepted) : latest.videos;
+    const next = { ...latest, videos: recovered ? acknowledgeUploadReceipt(takes, recovered.entry, recovered.confirmation) : takes,
+      hasSubmittedBatch: latest.hasSubmittedBatch || batch?.status === 'completed',
+      approvedBatch: batch, pendingUploadReceipts: pending };
+    saveSession(next);
+    latestSessionRef.current = next;
+  }
+  async function approveUpload() {
+    if (approvedBatchRef.current?.status === 'pending' || preparingUploadRef.current) return;
+    let preparing: { videos: RecordedVideo[]; controller: AbortController } | null = null;
+    const scope = accountScope();
+    const abortPreparation = () => preparing?.controller.abort();
+    scope.signal.addEventListener('abort', abortPreparation);
+    try {
+      if (!consentAccepted) throw new Error(t('uploadApproval.consent'));
+      if (!distributorId || !clientId || distributorId !== scope.owner) throw new Error(t('uploadApproval.notReady'));
+      // Freeze and lock synchronously, before capabilities or hashing yields.
+      const available = availableUploadTakes(primaryVideos, pendingUploadReceipts);
+      if (!available.length && pendingUploadReceipts.length) throw new Error(t('uploadApproval.recoveringReceipt'));
+      preparing = { videos: freezeUploadSelection(available, questions), controller: new AbortController() };
+      preparingUploadRef.current = preparing;
+      setUploadPreparing(true);
+      setUploadError(null);
+      const capabilities = await requireUploadCapabilities(preparing.controller.signal);
+      if (!scopeIsCurrent(scope) || scope.signal.aborted || preparing.controller.signal.aborted || preparingUploadRef.current !== preparing) throw new Error(t('uploadApproval.accountChanged'));
+      const batch = await createApprovedBatch(preparing.videos, questions,
+        path => readUploadFileIdentity(path, preparing!.controller.signal), { ownerId: distributorId, clientId });
+      if (!scopeIsCurrent(scope) || scope.signal.aborted || preparing.controller.signal.aborted || preparingUploadRef.current !== preparing) throw new Error(t('uploadApproval.accountChanged'));
+      const latestSelection = freezeUploadSelection(
+        availableUploadTakes(latestSessionRef.current?.videos ?? [], pendingUploadReceiptsRef.current), questionsCatalogRef.current);
+      if (JSON.stringify(latestSelection.map(takeIdentity)) !== JSON.stringify(preparing.videos.map(takeIdentity))
+        || batch.entries.some(entry => entry.file.sizeBytes > capabilities.limits.source_size_bytes)) throw new Error(t('uploadApproval.reviewSelected'));
+      checkpointBatch(batch);
+      approvedBatchRef.current = batch;
+      setApprovedBatch(batch);
+      setUploadError(null);
+    } catch (error) { if (scopeIsCurrent(scope) && !preparing?.controller.signal.aborted) setUploadError(error instanceof Error ? error.message : t('uploadApproval.saveFailed')); }
+    finally {
+      scope.signal.removeEventListener('abort', abortPreparation);
+      if (preparing && preparingUploadRef.current === preparing) { preparingUploadRef.current = null; setUploadPreparing(false); }
+    }
+  }
+  function openUploadReview() {
+    if (preparingUploadRef.current) return;
+    // An unfinished approval remains the only batch until completion or an
+    // explicit cancellation after its outstanding request has settled.
+    if (approvedBatchRef.current?.status !== 'pending') {
+      approvedBatchRef.current = null;
+      setApprovedBatch(null);
+      setUploadError(null);
+    }
+    setScreen('uploading');
+  }
+  function cancelFailedBatch() {
+    if (uploadRunning.current || preparingUploadRef.current) return;
+    try {
+      const detached = pendingReceiptsForBatch(approvedBatchRef.current);
+      const pending = [...pendingUploadReceiptsRef.current, ...detached];
+      checkpointBatch(null, pending);
+      pendingUploadReceiptsRef.current = pending;
+      setPendingUploadReceipts(pending);
+      approvedBatchRef.current = null;
+      setApprovedBatch(null);
+      setUploadError(null);
+    } catch (error) { setUploadError(error instanceof Error ? error.message : t('uploadApproval.cancelFailed')); }
+  }
+
+  async function reconcilePendingUploadReceipts(signal: AbortSignal) {
+    if (!clientId || !distributorId || currentAccount() !== distributorId) return;
+    const scope = accountScope();
+    for (const entry of pendingUploadReceiptsRef.current) {
+      if (signal.aborted || !scopeIsCurrent(scope)) return;
+      if (entry.ownerId !== scope.owner || entry.clientId !== clientId) continue;
+      try {
+        const result = await recoverUploadReceipt(entry, signal);
+        if (signal.aborted || !scopeIsCurrent(scope)) return;
+        const current = pendingUploadReceiptsRef.current;
+        if (!result || !current.includes(entry)) continue;
+        const pending = current.filter(item => item !== entry);
+        // Commit the acknowledgement and journal removal together. A failure
+        // leaves the handle available for another read-only check.
+        checkpointBatch(approvedBatchRef.current, pending, result === 'terminal' ? undefined : { entry, confirmation: result });
+        pendingUploadReceiptsRef.current = pending;
+        setPendingUploadReceipts(pending);
+        if (result !== 'terminal') setVideos(previous => acknowledgeUploadReceipt(previous, entry, result));
+      } catch {
+        // Ambiguous status, connectivity and disk errors retain this entry.
+      }
+    }
+  }
+
+  const hasPendingUploadReceipts = pendingUploadReceipts.length > 0;
+  useEffect(() => {
+    if (!sessionRestored || !consentAccepted || deletionBusy || deletionRecovery || !distributorId || !clientId || !hasPendingUploadReceipts) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function check() {
+      await reconcilePendingUploadReceipts(controller.signal);
+      if (!controller.signal.aborted && pendingUploadReceiptsRef.current.length) timer = setTimeout(check, 5000);
+    }
+    void check();
+    return () => { controller.abort(); clearTimeout(timer); };
+    // Pending entries and saved takes are read from current refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionRestored, consentAccepted, deletionBusy, deletionRecovery, distributorId, clientId, hasPendingUploadReceipts]);
 
   // Persists the whole session as it changes - not only on screen
   // transitions - so any of the force-quit points above can be resumed.
   // File writes here are synchronous local JSON (session.ts), same
   // pattern already used for the My Videos sync cache (myVideos.ts).
   useEffect(() => {
-    if (!sessionRestored) return;
-    const persistedScreen: PersistedScreen =
-      screen === 'question' || screen === 'uploading' ? screen : 'main';
-    // uploadConfirmed is restored unconditionally on every app launch
-    // (see loadSession() above) and the upload effect fires purely off
-    // that flag, with no dependency on `screen` - deliberately, so a
-    // genuinely-interrupted upload (force-quit mid-send) resumes on the
-    // next launch instead of silently staying half-sent. But without this
-    // guard, that same persisted `true` would never turn itself back off
-    // once a batch actually finishes - every future app launch would
-    // re-arm the upload effect and silently send whatever new question
-    // happens to exist by then, with no UI and no confirmation. Found via
-    // a report of a question showing as uploaded that was never
-    // knowingly sent - 4 separate uploads that turned out to be 4
-    // separate app reloads across one testing session, not 4 deliberate
-    // sends. Only persist `true` while something from the current batch
-    // is genuinely still pending (mirrors the loop's own skip check
-    // above) - once every primary take is already in
-    // uploadedQuestionIndices, there's nothing left to resume.
-    const uploadPending = primaryVideos.some((v) => !uploadedQuestionIndices.includes(v.questionIndex));
-    saveSession({
-      screen: persistedScreen,
-      mainTab,
-      questionIndex,
-      phase,
-      retakeQuestionIndex,
-      videos,
-      takesByQuestion,
-      selectedTakeId,
-      keptTakeIds,
-      autoStart,
-      hasSubmittedBatch,
-      uploadConfirmed: uploadConfirmed && uploadPending,
-      uploadedQuestionIndices,
-    });
+    if (!sessionRestored || !distributorId || currentAccount() !== distributorId || deletionBusy || deletionRecovery) return;
+    const checkpoint = latestSessionRef.current;
+    if (!checkpoint) return;
+    const persistedScreen: PersistedScreen = checkpoint.screen;
+    try {
+      // A scheduled effect can run after a receipt checkpoint. Read the
+      // current session so it cannot overwrite a just-recovered acknowledgement.
+      saveSession({
+        ...checkpoint,
+        screen: persistedScreen,
+        videos: approvedBatchRef.current ? acknowledgeConfirmedTakes(checkpoint.videos, approvedBatchRef.current) : checkpoint.videos,
+        hasSubmittedBatch: checkpoint.hasSubmittedBatch || approvedBatchRef.current?.status === 'completed',
+        approvedBatch: approvedBatchRef.current,
+        pendingUploadReceipts: pendingUploadReceiptsRef.current,
+      });
+    } catch {
+      // Leave the last readable checkpoint in place if storage is unavailable.
+      console.warn('[session] checkpoint failed');
+    }
   }, [
     sessionRestored,
+    distributorId,
+    deletionBusy,
+    deletionRecovery,
     screen,
     mainTab,
     questionIndex,
@@ -654,8 +836,7 @@ export function AppFlow() {
     keptTakeIds,
     autoStart,
     hasSubmittedBatch,
-    uploadConfirmed,
-    uploadedQuestionIndices,
+    approvedBatch,
   ]);
 
   // AppFlow is a custom state machine, not React Navigation, so the
@@ -675,6 +856,7 @@ export function AppFlow() {
         return true;
       }
       if (screen === 'uploading') {
+        preparingUploadRef.current?.controller.abort();
         // Pre-confirm: back means "stop reviewing the batch," same target
         // as before. Once confirmed (sending or already sent - the
         // "release" state), back means "go home," matching the old
@@ -721,11 +903,12 @@ export function AppFlow() {
         }
         return false;
       }
+      // The onboarding screen owns Back through cards -> language -> entry.
+      if (screen === 'onboarding') return false;
       if (
         screen === 'splash' ||
         screen === 'whatsappInvite' ||
-        screen === 'identityConfirm' ||
-        screen === 'onboarding'
+        screen === 'identityConfirm'
       ) {
         setScreen(DEFAULT_UNAUTHENTICATED_SCREEN);
         return true;
@@ -745,76 +928,54 @@ export function AppFlow() {
   // screen. `uploadAttempt` exists only to let the retry button re-run
   // this same effect without changing `screen`.
   //
-  // Deliberately NOT gated on `screen` (and `screen` is deliberately not a
-  // dependency below) - ConfirmationScreen's "Back to Home" button is
-  // reachable while a batch is still genuinely sending, and tapping it
-  // must not silently abandon whatever hasn't uploaded yet. Gating on
-  // `screen` here would tear this effect down the moment `screen` left
-  // 'uploading', stopping the loop before the next segment even starts.
+  // Every transfer reads only the durable approval snapshot. Current library
+  // additions/selection never expand an already approved batch.
   useEffect(() => {
-    if (!uploadConfirmed) return;
+    const batch = approvedBatchRef.current;
+    if (!batch || batch.status !== 'pending' || !consentAccepted || deletionBusy || deletionRecovery !== null || !distributorId) return;
+    const scope = accountScope();
     let cancelled = false;
+    const controller = new AbortController();
+    uploadRunning.current = true;
     setUploadError(null);
-
     (async () => {
-      for (let i = 0; i < primaryVideos.length; i++) {
-        if (cancelled) return;
-        const video = primaryVideos[i];
-        // Already confirmed in a previous run of this effect, or in a
-        // previous app session before a force-quit mid-upload - see
-        // session.ts's uploadedQuestionIndices. Skipping it is what makes
-        // resuming mid-upload not re-send everything from scratch.
-        if (uploadedQuestionIndices.includes(video.questionIndex)) continue;
-        try {
-          await uploadSegment(video, questions);
-        } catch (error) {
-          if (!cancelled) {
-            setUploadError(error instanceof Error ? error.message : 'Upload failed.');
-          }
-          return;
+      try {
+        for (const entry of batch.entries) {
+          if (cancelled || !scopeIsCurrent(scope) || approvedBatchRef.current?.id !== batch.id) return;
+          if (entry.confirmation) continue;
+          const confirmation = await uploadSegment(entry, controller.signal, attempt => {
+            if (cancelled || !scopeIsCurrent(scope) || approvedBatchRef.current?.id !== batch.id) throw new Error(t('uploadApproval.accountChanged'));
+            const next = checkpointBatchAttempt(approvedBatchRef.current, entry.id, attempt);
+            checkpointBatch(next);
+            approvedBatchRef.current = next;
+            setApprovedBatch(next);
+          });
+          if (cancelled || !scopeIsCurrent(scope) || approvedBatchRef.current?.id !== batch.id) return;
+          const next = confirmBatchEntry(approvedBatchRef.current, entry.id, confirmation);
+          // Closing the final entry is durable before any later take can be
+          // saved. A checkpoint failure stops this batch without deleting media.
+          checkpointBatch(next);
+          approvedBatchRef.current = next;
+          setApprovedBatch(next);
+          setVideos(previous => acknowledgeConfirmedTakes(previous, next));
+          if (next.status === 'completed') setHasSubmittedBatch(true);
         }
-        if (!cancelled) {
-          setUploadedQuestionIndices((prev) =>
-            prev.includes(video.questionIndex) ? prev : [...prev, video.questionIndex],
-          );
-        }
-      }
-      if (!cancelled) {
-        setHasSubmittedBatch(true);
-        // The take that wasn't chosen has done its job (comparison,
-        // pre-upload) - free the space now rather than leaving 2x storage
-        // around forever. The backend only ever has the primary anyway
-        // (the loop above uploads primaryVideos, never both), so there's
-        // nothing left to compare once every question has actually gone
-        // out.
-        setVideos((prev) => {
-          const runnersUp = prev.filter((v) => v.isPrimary === false);
-          runnersUp.forEach((v) => deleteRecording(v.filePath));
-          return prev.filter((v) => v.isPrimary !== false);
-        });
+      } catch (error) {
+        if (!cancelled && scopeIsCurrent(scope)) setUploadError(error instanceof Error ? error.message : t('uploadApproval.failed'));
+      } finally {
+        if (scopeIsCurrent(scope)) uploadRunning.current = false;
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; controller.abort(); };
+    // Batch progress is checkpointed inside this single loop; a state update
+    // must not restart its still-running network request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uploadConfirmed, uploadAttempt]);
+  }, [approvedBatch?.id, uploadAttempt, consentAccepted, deletionBusy, deletionRecovery, distributorId]);
 
-  // Android-only foreground-service wrapper around the upload effect above -
-  // a keep-alive, not a reimplementation. The real effect (uploadSegment
-  // calls, uploadedQuestionIndices, every bit of its React state) is
-  // completely untouched; this one only observes the same signals that
-  // effect already produces - uploadConfirmed/uploadAttempt for when a
-  // batch starts or retries, hasSubmittedBatch/uploadError for when it
-  // settles - and starts/stops a foreground service alongside it, so
-  // Android's Doze/App Standby battery management doesn't throttle or kill
-  // the in-flight PUT the moment the app is genuinely backgrounded (not
-  // just navigated away from within the app - that case already worked,
-  // since the real effect was never gated on `screen`). iOS needs none of
-  // this - expo-file-system's File.upload() already defaults to a
-  // background URLSession there (see putVideoBytes's own comment in
-  // upload.ts) - so this whole effect is a no-op on iOS.
+  // The Android keep-alive observes only the approved batch. Native PUT,
+  // receipt recovery and exact-entry checkpoints remain in uploadSegment.
+  // iOS uses Expo's background URLSession; runtime/termination behavior is
+  // a separate device gate, never inferred from this foreground service.
   //
   // Must start right here, the instant a batch begins, not reactively off
   // an AppState backgrounding event - Android 12+ blocks starting a
@@ -827,7 +988,7 @@ export function AppFlow() {
   // upload is not worth that.
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    const batchInFlight = uploadConfirmed && !hasSubmittedBatch && !uploadError;
+    const batchInFlight = !deletionBusy && consentAccepted && approvedBatch?.status === 'pending' && !uploadError;
 
     if (batchInFlight) {
       if (!BackgroundService.isRunning()) {
@@ -843,22 +1004,16 @@ export function AppFlow() {
       BackgroundService.stop().catch((error) => console.error('[upload] failed to stop foreground service', error));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uploadConfirmed, uploadAttempt, hasSubmittedBatch, uploadError]);
+  }, [approvedBatch, uploadAttempt, uploadError, consentAccepted, deletionBusy]);
 
-  // Mirrors uploadedQuestionIndices into the Uploading screen's 0-1
-  // progress bar - a separate derived effect (rather than computed inline
-  // in the loop above) so a session resumed mid-upload shows the correct
-  // progress immediately, before the loop has uploaded anything new this
-  // launch.
-  useEffect(() => {
-    setUploadProgress(primaryVideos.length ? uploadedQuestionIndices.length / primaryVideos.length : 0);
-  }, [uploadedQuestionIndices, primaryVideos.length]);
+  useEffect(() => { setUploadProgress(batchSummary(approvedBatch).progress); }, [approvedBatch]);
 
   // Fetches My Videos' data whenever that tab is opened while on 'main' -
   // not continuously polled (no push/notification system exists yet per
   // CLAUDE.md, so "reopen the tab" is the refresh mechanism for now).
   useEffect(() => {
-    if (screen !== 'main' || mainTab !== 'myVideos') return;
+    if (screen !== 'main' || mainTab !== 'myVideos' || !distributorId || currentAccount() !== distributorId) return;
+    const scope = accountScope();
     let cancelled = false;
     setMyVideosLoading(true);
     setMyVideosError(null);
@@ -873,7 +1028,7 @@ export function AppFlow() {
           fetchSegments(),
           ENABLE_REEL_RENDERING ? fetchRenderedVideos() : Promise.resolve([]),
         ]);
-        if (cancelled) return;
+        if (cancelled || !scopeIsCurrent(scope)) return;
 
         // Merge of local `videos` (recorded, possibly not yet uploaded) and
         // server `segments` (confirmed-uploaded) - a take kept via Review &
@@ -882,73 +1037,15 @@ export function AppFlow() {
         // "not recorded / recorded / uploaded" three pre-upload states).
         // Built as a Map keyed by the app's own 0-based position so both
         // sources can independently contribute a row for the same question.
-        const rowsByQuestionIndex = new Map<number, AnswerRow>();
-
-        // Local recordings first - the only source of truth before upload,
-        // and the only copy that exists at all for a question not yet sent.
-        // Grouped by question first since up to 2 takes (a primary plus a
-        // runner-up) can exist locally pre-upload - the take picker needs
-        // both, `play` itself always reflects whichever is primary.
-        const localByQuestion = new Map<number, RecordedVideo[]>();
-        for (const video of videos) {
-          const list = localByQuestion.get(video.questionIndex) ?? [];
-          list.push(video);
-          localByQuestion.set(video.questionIndex, list);
-        }
-        for (const [qIndex, takes] of localByQuestion) {
-          const primary = takes.find((t) => t.isPrimary !== false) ?? takes[0];
-          const label = `Question ${qIndex + 1}`;
-          rowsByQuestionIndex.set(qIndex, {
-            questionIndex: qIndex,
-            label,
-            questionText: questions[qIndex]?.text ?? label,
-            play: { filePath: primary.filePath, label },
-            takes: takes
-              .slice()
-              .sort((a) => (a.id === primary.id ? -1 : 1))
-              .map((t) => ({ id: t.id, play: { filePath: t.filePath, label }, durationSeconds: t.durationSeconds })),
-            uploaded: false,
-          });
-        }
-
-        // Server segments refine that once uploaded: prefer the local file
-        // only while it's still in sync with the server's updated_at
-        // (local-first cache pattern, API_CONTRACT.md) - e.g. a re-login
-        // on a different device with no local copy at all falls through to
-        // playback_url. `segment.question_index` is the backend's real
-        // index (see upload.ts), not this app's local position - resolved
-        // back via `questions`, not a `- 1` assumption that only happened
-        // to hold for 1-based-contiguous seed data. Once a segment exists,
-        // the runner-up (if any) has already been - or is about to be -
-        // deleted by the post-upload cleanup, so there's nothing left to
-        // pick between; `takes` collapses to whichever single source is
-        // actually showing.
-        for (const segment of segments) {
-          const qIndex = questions.findIndex((q) => q.index === segment.question_index);
-          if (qIndex === -1) continue; // question no longer in the current set
-          const label = `Question ${segment.question_index}`;
-          const local = primaryVideos.find((v) => v.questionIndex === qIndex);
-          const useLocal = !!local && checkAndSyncCache(qIndex, segment.updated_at);
-          const play = useLocal
-            ? { filePath: local!.filePath, label }
-            : { filePath: segment.playback_url, label };
-          rowsByQuestionIndex.set(qIndex, {
-            questionIndex: qIndex,
-            label,
-            questionText: questions[qIndex]?.text ?? label,
-            play,
-            takes: [{ id: local?.id ?? `segment-${qIndex}`, play, durationSeconds: local?.durationSeconds ?? segment.duration_seconds ?? 0 }],
-            uploaded: true,
-          });
-        }
-
-        const answers: AnswerRow[] = Array.from(rowsByQuestionIndex.values());
+        const answers = buildAnswerRows(videos, questions, segments);
 
         // Same real-index resolution as the segments merge above - not a
         // `- 1` assumption.
         const branded: BrandedRow[] = renderedVideos
           .map((rv) => {
-            const qIndex = questions.findIndex((q) => q.index === rv.question_index);
+            const qIndex = questions.findIndex((q) => q.id === rv.question_id);
+            const current = segments.find(segment => segment.question_id === rv.question_id);
+            if (!current || current.integrity_status !== 'verified_v2' || rv.segment_id !== current.segment_id) return null;
             const label = `Question ${rv.question_index}`;
             return {
               questionIndex: qIndex,
@@ -957,8 +1054,9 @@ export function AppFlow() {
               play: rv.playback_url ? { filePath: rv.playback_url, label } : null,
             };
           })
-          .filter((row) => row.questionIndex !== -1);
+          .filter((row): row is NonNullable<typeof row> => row !== null && row.questionIndex !== -1);
 
+        setServerSegments(segments);
         setAnswerRows(answers);
         setBrandedRows(branded);
       } catch (error) {
@@ -976,7 +1074,7 @@ export function AppFlow() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, mainTab, myVideosRefreshToken]);
+  }, [screen, mainTab, myVideosRefreshToken, distributorId]);
 
   // Fake elapsed-time ticker while "recording" - the recording itself is
   // real, but this on-screen timer doesn't yet read the Recorder's actual
@@ -997,36 +1095,31 @@ export function AppFlow() {
   useEffect(() => {
     if (phase !== 'countdown') {
       setCountdownRemaining(COUNTDOWN_SECONDS);
+      setQuestionAudioComplete(false);
       return;
     }
+    if (!questionAudioComplete) return;
     if (countdownRemaining <= 0) {
-      // Fires immediately, no hold - COUNTDOWN_BUFFER_MS is spent up front
-      // instead (the first tick below), so today's VO clips finish
-      // naturally before this point instead of racing it, without a
-      // visible stall right before recording starts. Not a structural fix
-      // for arbitrarily long VO (see COUNTDOWN_BUFFER_MS's own comment) - a
-      // real fix would pause the VO player synchronously the instant it
-      // starts, rather than relying on it finishing in time. Crash-safe
-      // either way now: CameraCheckScreen's safePause() absorbs the "shared
-      // object already released" race from its cleanup running after
-      // useVideoPlayer's own unmount-triggered release, whether or not the
-      // buffer was enough.
-      recordingStartedAtRef.current = Date.now();
-      cameraRef.current
-        ?.startRecording()
-        .catch((error) => console.error('[recording] start failed', error));
-      setPhase('recording');
-      return;
+      let cancelled = false;
+      const camera = cameraRef.current;
+      if (!camera) { handleRecordingError(new Error('Camera is not ready')); return; }
+      camera.startRecording().then(() => {
+        if (cancelled || !renderAccountScope || !scopeIsCurrent(renderAccountScope)) {
+          camera.cancelRecording().catch(() => {});
+          return;
+        }
+        recordingStartedAtRef.current = Date.now();
+        setPhase('recording');
+      }).catch(error => { if (!cancelled) handleRecordingError(error); });
+      return () => { cancelled = true; };
     }
-    // The very first tick (still showing "5") runs COUNTDOWN_BUFFER_MS
-    // longer than the rest - see that constant's comment for why the extra
-    // time lives here instead of at the end.
-    const tickMs = countdownRemaining === COUNTDOWN_SECONDS ? 1000 + COUNTDOWN_BUFFER_MS : 1000;
-    const timeout = setTimeout(() => setCountdownRemaining((r) => r - 1), tickMs);
+    const timeout = setTimeout(() => setCountdownRemaining((r) => r - 1), 1000);
     return () => clearTimeout(timeout);
-  }, [phase, countdownRemaining]);
+  }, [phase, countdownRemaining, questionAudioComplete]);
 
   function enterCameraCheck() {
+    const question = snapshotQuestion(questions[questionIndex]);
+    recordingSnapshotRef.current = question ? { question, expectedCurrentSegmentId: retakeBaseRef.current } : null;
     setTakeAttempt((n) => n + 1);
     setChecksReady(false);
     setPhase('cameraCheck');
@@ -1038,7 +1131,16 @@ export function AppFlow() {
   // always routes into Review & Trim, which is now mandatory after every
   // take rather than a conditional "alignment broke" overlay.
   function handleRecordingFinished(tempFilePath: string, format: CaptureFormatInfo) {
-    const fileName = `question-${questionIndex + 1}-${Date.now()}.mp4`;
+    if (!renderAccountScope || !scopeIsCurrent(renderAccountScope)) {
+      // Only this native callback's temporary file; never another account's
+      // durable directory or an unowned legacy recording.
+      const abandoned = new File(tempFilePath.startsWith('file://') ? tempFilePath : `file://${tempFilePath}`);
+      if (abandoned.exists) abandoned.delete();
+      return;
+    }
+    const snapshot = recordingSnapshotRef.current;
+    const capturedIndex = snapshot ? questionsCatalogRef.current.findIndex(question => question.id === snapshot.question.id) : questionIndex;
+    const fileName = `question-${capturedIndex + 1}-${Date.now()}.mp4`;
     const durablePath = moveRecordingToDurableStorage(tempFilePath, fileName);
     const durationSeconds = recordingStartedAtRef.current
       ? (Date.now() - recordingStartedAtRef.current) / 1000
@@ -1049,11 +1151,14 @@ export function AppFlow() {
     // copy (actual bytes on disk), not estimated.
     const device = getDeviceInfo();
     const newTake: RecordedVideo = {
-      id: `q${questionIndex}-${Date.now()}`,
-      label: `Question ${questionIndex + 1}`,
+      id: `take-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      label: `Question ${capturedIndex + 1}`,
       filePath: durablePath,
-      questionIndex,
+      questionIndex: capturedIndex,
       durationSeconds,
+      durationVerified: false,
+      ...(recordingSnapshotRef.current && { questionSnapshot: { ...recordingSnapshotRef.current.question },
+        expectedCurrentSegmentId: recordingSnapshotRef.current.expectedCurrentSegmentId }),
       captureMetadata: {
         fileSizeBytes: new File(durablePath).size,
         width: format.width ?? null,
@@ -1065,7 +1170,7 @@ export function AppFlow() {
       },
     };
 
-    const existingLive = takesByQuestion[questionIndex] ?? [];
+    const existingLive = takesByQuestion[capturedIndex] ?? [];
     const updatedLive = [...existingLive, newTake];
     let finalLive = updatedLive;
     if (updatedLive.length > MAX_TAKES) {
@@ -1073,7 +1178,7 @@ export function AppFlow() {
       deleteRecording(oldest.filePath);
       finalLive = rest;
     }
-    setTakesByQuestion((prev) => ({ ...prev, [questionIndex]: finalLive }));
+    setTakesByQuestion((prev) => ({ ...prev, [capturedIndex]: finalLive }));
     setSelectedTakeId(newTake.id);
     // Default "kept" selection once the combined pool (this question's
     // already-saved takes + this session's fresh ones) exceeds the cap.
@@ -1083,13 +1188,14 @@ export function AppFlow() {
     // preselection. The just-recorded take fills the other slot. Only a
     // preselection either way - handleToggleKept still lets the user pick
     // differently before confirming with "Keep."
-    const savedForQuestion = videos.filter((v) => v.questionIndex === questionIndex);
+    const savedForQuestion = videos.filter((v) => v.questionIndex === capturedIndex);
     const pool = [...savedForQuestion, ...finalLive];
     const currentPrimary = pool.find((t) => t.isPrimary);
     const defaultKeptIds = currentPrimary
       ? [currentPrimary.id, newTake.id]
       : pool.slice(-MAX_KEPT_TAKES).map((t) => t.id);
     setKeptTakeIds(pool.length > MAX_KEPT_TAKES ? defaultKeptIds : []);
+    setQuestionIndex(capturedIndex);
     setPhase('reviewTrim');
   }
 
@@ -1107,6 +1213,10 @@ export function AppFlow() {
   function reviewPoolFor(qIndex: number): RecordedVideo[] {
     return [...videos.filter((v) => v.questionIndex === qIndex), ...(takesByQuestion[qIndex] ?? [])];
   }
+  function activeReviewTake(): RecordedVideo | undefined {
+    const pool = reviewPoolFor(questionIndex);
+    return pool.find(take => take.id === selectedTakeId) ?? pool[pool.length - 1];
+  }
 
   // Applies a trim-edit patch to whichever pool member has this id,
   // regardless of whether it's an already-saved take
@@ -1117,9 +1227,11 @@ export function AppFlow() {
   // switched away from - there's no separate flow-level scratch value to
   // lose, edits go straight onto the take object.
   function updatePoolTake(qIndex: number, takeId: string, patch: Partial<RecordedVideo>) {
+    if (questionUploadLocked(qIndex)) return;
     setVideos((prev) => {
       if (!prev.some((v) => v.id === takeId)) return prev;
-      return prev.map((v) => (v.id === takeId ? { ...v, ...patch } : v));
+      return prev.map((v) => (v.id === takeId ? { ...v,
+        ...(hasExactAcknowledgement(v) && ('trimStartSeconds' in patch || 'trimEndSeconds' in patch) ? { expectedCurrentSegmentId: v.uploadAcknowledgement!.receipt!.segment_id } : {}), ...patch } : v));
     });
     setTakesByQuestion((prev) => {
       const list = prev[qIndex];
@@ -1130,6 +1242,60 @@ export function AppFlow() {
       next[idx] = { ...next[idx], ...patch };
       return { ...prev, [qIndex]: next };
     });
+  }
+
+  function handleMeasuredDuration(takeId: string, filePath: string, duration: number) {
+    if (!renderAccountScope || !scopeIsCurrent(renderAccountScope) || activeReviewTake()?.id !== takeId
+      || questionUploadLocked(questionIndex)) return;
+    const take = reviewPoolFor(questionIndex).find(take => take.id === takeId && take.filePath === filePath);
+    if (!take || hasExactAcknowledgement(take)) return;
+    const trim = normalizeReviewTrim(duration, take.trimStartSeconds, take.trimEndSeconds);
+    if (!trim) return;
+    updatePoolTake(questionIndex, takeId, { durationSeconds: duration, durationVerified: true,
+      trimStartSeconds: trim.startSeconds, trimEndSeconds: trim.endSeconds,
+      trimAdjustedForReview: take.trimAdjustedForReview || trim.adjusted });
+  }
+
+  function bindReviewedQuestion() {
+    if (questionUploadLocked(questionIndex)) return;
+    const snapshot = snapshotQuestion(questions[questionIndex]);
+    const take = activeReviewTake();
+    if (!snapshot || !take) return;
+    // Only this explicit review action assigns a modern snapshot to an old
+    // positional recording. Restoring or refreshing never makes that claim.
+    updatePoolTake(questionIndex, take.id, { questionSnapshot: snapshot, expectedCurrentSegmentId: retakeBaseRef.current });
+  }
+
+  async function reviewReplacementBase() {
+    if (questionUploadLocked(questionIndex)) return;
+    const take = activeReviewTake();
+    const question = questions[questionIndex];
+    if (!take || !question || !take.questionSnapshot || take.questionSnapshot.id !== question.id) return;
+    const scope = accountScope();
+    setReplacementReviewError(null);
+    try {
+      const segments = await fetchSegments();
+      if (!scopeIsCurrent(scope)) return;
+      const current = segments.find(segment => segment.question_id === question.id)
+        ?? segments.find(segment => !segment.question_id && segment.question_index === question.index);
+      setServerSegments(segments);
+      // This modal pins the revision being shown. A later refresh cannot
+      // silently move the replacement basis while the user is reviewing it.
+      if (current && !current.segment_id) throw new Error(t('uploadApproval.unavailable'));
+      setReplacementReview({ takeId: take.id, questionId: question.id, segmentId: current?.segment_id ?? null,
+        play: current?.integrity_status === 'verified_v2' && current.playback_status === 'ready' && current.playback_url
+          ? { filePath: current.playback_url, label: t('uploadApproval.currentAnswer') } : null });
+    } catch (error) { if (scopeIsCurrent(scope)) setReplacementReviewError(error instanceof Error ? error.message : t('uploadApproval.failed')); }
+  }
+
+  function acceptReviewedReplacementBase() {
+    const review = replacementReview;
+    if (!review || questionUploadLocked(questionIndex)) return;
+    const take = reviewPoolFor(questionIndex).find(take => take.id === review.takeId);
+    if (!take || activeReviewTake()?.id !== take.id || take.questionSnapshot?.id !== review.questionId) { setReplacementReview(null); return; }
+    updatePoolTake(questionIndex, take.id, { expectedCurrentSegmentId: review.segmentId });
+    retakeBaseRef.current = review.segmentId;
+    setReplacementReview(null);
   }
 
   // Toggles a pool member's kept/dropped status - capped at MAX_KEPT_TAKES
@@ -1145,6 +1311,7 @@ export function AppFlow() {
   }
 
   function handleKeepTake() {
+    if (questionUploadLocked(questionIndex)) return;
     const pool = reviewPoolFor(questionIndex);
     if (pool.length === 0) return;
 
@@ -1158,14 +1325,27 @@ export function AppFlow() {
     if (finalKeptIds.length !== Math.min(pool.length, MAX_KEPT_TAKES)) return;
 
     const kept = pool.filter((t) => finalKeptIds.includes(t.id));
+    if (kept.some(take => requestedTrim(take) === null)) return;
     const dropped = pool.filter((t) => !finalKeptIds.includes(t.id));
-    dropped.forEach((t) => deleteRecording(t.filePath));
 
     // Primary defaults to whichever kept take was actively being
     // previewed; falls back to the first kept take if that one somehow
     // isn't among the kept set (e.g. it was the one just dropped).
     const primaryId = kept.some((t) => t.id === selectedTakeId) ? selectedTakeId : kept[0]?.id;
-    const finalized = kept.map((t) => ({ ...t, isPrimary: t.id === primaryId }));
+    const current = serverSegments.find(segment => segment.question_id === questions[questionIndex]?.id);
+    const finalized = kept.map((t) => ({ ...(t.id === primaryId ? reviewedTakeSelection(t, current) : t), isPrimary: t.id === primaryId, trimAdjustedForReview: false }));
+    const nextVideos = [...videos.filter((v) => v.questionIndex !== questionIndex), ...finalized];
+    if (latestSessionRef.current) {
+      const nextPending = { ...takesByQuestion }; delete nextPending[questionIndex];
+      const checkpoint = { ...latestSessionRef.current, videos: nextVideos, takesByQuestion: nextPending,
+        approvedBatch: approvedBatchRef.current, keptTakeIds: [] };
+      saveSession(checkpoint);
+      latestSessionRef.current = checkpoint;
+    }
+    dropped.forEach((t) => deleteRecording(t.filePath));
+    const allSaved = firstUnansweredQuestion(nextVideos, questions.length) === null;
+    const destination = retakeQuestionIndex !== null ? 'myVideos' : allSaved ? 'home' : 'postKeep';
+    setKeptFeedback(savedFeedback(videos, nextVideos, questionIndex, questions.length, ++feedbackSequence.current, destination));
 
     setTakesByQuestion((prev) => {
       const next = { ...prev };
@@ -1182,11 +1362,9 @@ export function AppFlow() {
       return;
     }
 
-    // Last question: land on Home, whose "all recorded" state (built in
-    // Phase 4b) already carries the "Send all five" CTA - no separate
-    // completion screen needed any more. Every other question: the
-    // post-keep prompt.
-    if (questionIndex + 1 >= questions.length) {
+    // Deleting an earlier answer can leave a gap. Return Home only when
+    // every question has a kept take; otherwise offer the next open one.
+    if (allSaved) {
       setMainTab('home');
       setScreen('main');
     } else {
@@ -1194,20 +1372,59 @@ export function AppFlow() {
     }
   }
 
-  // Purely local - flips which of a question's up to 2 kept takes is the
-  // one that gets uploaded and shown by default in My Videos (no camera,
-  // no network). Only meaningful pre-upload; once a segment exists
-  // server-side there's only ever one video left to show at all (the
-  // runner-up's local file is deleted right after a successful upload -
-  // see the upload effect).
+  // Local primary selection never changes the server answer. A historical
+  // receipt cannot approve a newly reselected take over a different revision.
   function handleSwitchPrimary(qIndex: number, takeId: string) {
+    if (questionUploadLocked(qIndex)) return;
+    const current = serverSegments.find(segment => segment.question_id === questions[qIndex]?.id);
     setVideos((prev) =>
-      prev.map((v) => (v.questionIndex === qIndex ? { ...v, isPrimary: v.id === takeId } : v)),
+      prev.map((v) => (v.questionIndex === qIndex ? { ...(v.id === takeId ? reviewedTakeSelection(v, current) : v), isPrimary: v.id === takeId } : v)),
     );
   }
 
   function handleRecordAnother() {
     enterCameraCheck();
+  }
+
+  function canDeleteReviewTake() {
+    return sessionRestored && screen === 'question' && phase === 'reviewTrim'
+      && !questionUploadLocked(questionIndex)
+      && !uploadedQuestionIndices.includes(questionIndex)
+      && !answerRows.some(row => row.questionIndex === questionIndex && row.uploaded);
+  }
+
+  function handleDeleteTake(takeId: string) {
+    if (deletingTake.current || !canDeleteReviewTake()) throw new Error('Take deletion is unavailable');
+    const plan = planTakeDeletion({ videos, takesByQuestion, selectedTakeId, keptTakeIds }, questionIndex, takeId);
+    if (!plan) throw new Error('Take no longer exists');
+    deletingTake.current = true;
+    try {
+      const previous = {
+        screen: 'question' as const, mainTab, questionIndex, phase, retakeQuestionIndex,
+        videos, takesByQuestion, selectedTakeId, keptTakeIds, autoStart, hasSubmittedBatch,
+        approvedBatch: approvedBatchRef.current, pendingUploadReceipts: pendingUploadReceiptsRef.current,
+        uploadConfirmed: false, uploadedQuestionIndices: [],
+      };
+      const empty = plan.remaining.length === 0;
+      const returnToLibrary = empty && retakeQuestionIndex !== null;
+      const next = {
+        ...previous, ...plan.next,
+        screen: returnToLibrary ? 'main' as const : 'question' as const,
+        mainTab: returnToLibrary ? 'myVideos' as const : mainTab,
+        phase: empty ? 'brief' as const : phase,
+        retakeQuestionIndex: empty ? null : retakeQuestionIndex,
+      };
+      commitTakeDeletion(previous, next, plan.fileToDelete, saveSession, deleteRecording);
+      setVideos(next.videos);
+      setTakesByQuestion(next.takesByQuestion);
+      setSelectedTakeId(next.selectedTakeId);
+      setKeptTakeIds(next.keptTakeIds ?? []);
+      if (empty) {
+        setRetakeQuestionIndex(null);
+        setPhase('brief');
+        if (returnToLibrary) { setMainTab('myVideos'); setScreen('main'); }
+      }
+    } finally { deletingTake.current = false; }
   }
 
   // Confirmed exit from the hardware-back popup during cameraCheck/
@@ -1262,6 +1479,7 @@ export function AppFlow() {
   // from confirmExitQuestionFlow above - just cancel the broken recording
   // and return to the same Brief screen a deliberate exit would.
   function handleRecordingError(error: Error) {
+    if (!renderAccountScope || !scopeIsCurrent(renderAccountScope)) return;
     console.error('[recording]', error);
     cameraRef.current?.cancelRecording().catch((cancelError) =>
       console.error('[recording] cancel after error failed', cancelError),
@@ -1273,8 +1491,11 @@ export function AppFlow() {
   }
 
   function goToNextQuestion() {
+    retakeBaseRef.current = null;
     setShowPostKeepPrompt(false);
-    setQuestionIndex((i) => i + 1);
+    const next = firstUnansweredQuestion(videos, questions.length);
+    if (next === null) { setMainTab('home'); setScreen('main'); return; }
+    setQuestionIndex(next);
     setChecksReady(false);
     setTakeAttempt(0);
     setPhase('brief');
@@ -1287,7 +1508,10 @@ export function AppFlow() {
   // whenever a later question was started (e.g. tapping "Start" for
   // question 3 deleted questions 1-2). See DEV_NOTES.md.
   function enterNextQuestion() {
-    setQuestionIndex(primaryVideos.length);
+    const next = firstUnansweredQuestion(videos, questions.length);
+    if (next === null) return;
+    setQuestionIndex(next);
+    retakeBaseRef.current = null;
     setRetakeQuestionIndex(null);
     setChecksReady(false);
     setTakeAttempt(0);
@@ -1300,6 +1524,7 @@ export function AppFlow() {
   // across repeated test runs. Never wire this into the normal recording
   // flow (see enterNextQuestion() above for why).
   function startNewSession() {
+    if (approvedBatchRef.current?.status === 'pending' || pendingUploadReceiptsRef.current.length || preparingUploadRef.current) return;
     clearAllRecordings();
     clearSession();
     setVideos([]);
@@ -1309,7 +1534,7 @@ export function AppFlow() {
     setChecksReady(false);
     setTakeAttempt(0);
     setAutoStart(true);
-    setUploadedQuestionIndices([]);
+    approvedBatchRef.current = null; setApprovedBatch(null);
     setHasSubmittedBatch(false);
     setPhase('brief');
     setScreen('question');
@@ -1320,6 +1545,7 @@ export function AppFlow() {
   // 2-5's lighter recheck, since there's no continuous camera session
   // behind this entry to justify a lighter check.
   function startRetake(qIndex: number) {
+    if (questionUploadLocked(qIndex)) return;
     setQuestionIndex(qIndex);
     setRetakeQuestionIndex(qIndex);
     setTakesByQuestion((prev) => {
@@ -1344,11 +1570,12 @@ export function AppFlow() {
   // `retakeQuestionIndex` as the "return to My Videos after Keep" signal,
   // exactly like a real retake does once its own recording reaches
   // Review & Trim - handleKeepTake doesn't need to know which path got it
-  // there. Only reachable pre-upload (MyVideosScreen.tsx gates the link on
-  // `!answer.uploaded`) - there's nothing to edit once a segment is
-  // already confirmed server-side.
+  // there. Submitted takes remain available through the labelled original
+  // review route; changing their trim requires fresh submission approval.
   function handleEditTakes(qIndex: number) {
+    if (questionUploadLocked(qIndex)) return;
     setQuestionIndex(qIndex);
+    retakeBaseRef.current = buildAnswerRows(videos, questions, serverSegments).find(row => row.questionIndex === qIndex)?.serverSegmentId ?? null;
     setRetakeQuestionIndex(qIndex);
     const questionVideos = videos.filter((v) => v.questionIndex === qIndex);
     const primary = questionVideos.find((v) => v.isPrimary !== false) ?? questionVideos[0];
@@ -1357,10 +1584,101 @@ export function AppFlow() {
     setScreen('question');
   }
 
+  function resetAccountMemory() {
+    preparingUploadRef.current?.controller.abort(); preparingUploadRef.current = null; setUploadPreparing(false);
+    recordingSnapshotRef.current = null; retakeBaseRef.current = null; setClientId(null);
+    setReplacementReview(null); setReplacementReviewError(null);
+    cameraRef.current?.cancelRecording().catch(() => {});
+    questionsRequest.current++;
+    setSessionRestored(false);
+    setVideos([]); setTakesByQuestion({}); setQuestions([]);
+    setAnswerRows([]); setServerSegments([]); setBrandedRows([]); setPlayingVideo(null);
+    approvedBatchRef.current = null; setApprovedBatch(null); uploadRunning.current = false; setHasSubmittedBatch(false);
+    pendingUploadReceiptsRef.current = []; setPendingUploadReceipts([]);
+    setUploadError(null); setPendingRetake(null); setRetakeQuestionIndex(null);
+    setSelectedTakeId(null); setKeptTakeIds([]); setQuestionIndex(0); setPhase('brief');
+    setConsentAccepted(false); setDistributorProfile(null); setKeptFeedback(null);
+    voSourceRef.current = null;
+  }
+
+  function deletionViewIsCurrent(version: number, owner: string, auth: AuthSession): boolean {
+    return deletionUIVersion.current === version && (currentAccount() === owner || currentAccount() === null) && (!captureAuthSession().token || authSessionIsCurrent(auth));
+  }
+
+  async function handleDeleteAccount(password: string) {
+    if (!renderAccountScope || !scopeIsCurrent(renderAccountScope) || !authSessionIsCurrent(renderAuthSession)) throw new Error(t('deletion.accountChanged'));
+    const owner = renderAccountScope.owner, version = ++deletionUIVersion.current;
+    const auth = captureAuthSession();
+    setDeletionBusy(true);
+    try {
+      await requestAccountDeletion(password);
+      if (deletionViewIsCurrent(version, owner, auth)) {
+        resetAccountMemory(); setDeletionRecoveryOwner(owner); setDeletionRecovery(t('deletion.cleaning'));
+      }
+      await finishLocalAccountDeletion(owner);
+      // This token comparison and the UI epoch are independent: storage,
+      // native transfers and another account's login can all settle later.
+      const cleared = await logoutIfSession(auth);
+      if (deletionViewIsCurrent(version, owner, auth) && (!captureAuthSession().token || (cleared && authSessionIsCurrent(cleared)))) {
+        setDistributorId(null); setMainTab('home'); setDeletionRecoveryOwner(null);
+        setDeletionRecovery(null); setDeletionNotice(true); setScreen('login');
+      }
+    } catch (error) {
+      if (deletionViewIsCurrent(version, owner, auth) && pendingAccountDeletion(owner)) {
+        setDeletionRecoveryOwner(owner);
+        setDeletionRecovery(error instanceof Error ? error.message : t('deletion.recoveryError'));
+      }
+      throw error;
+    } finally { if (deletionViewIsCurrent(version, owner, auth)) setDeletionBusy(false); }
+  }
+
+  async function retryDeletionRecovery() {
+    const owner = deletionRecoveryOwner ?? pendingAccountDeletion()?.owner;
+    if (!owner) { void bootstrapApp(); return; }
+    const version = deletionUIVersion.current, auth = captureAuthSession();
+    if (!deletionViewIsCurrent(version, owner, renderAuthSession)) return;
+    setDeletionBusy(true);
+    try {
+      const result = await recoverAccountDeletion(owner);
+      if (!deletionViewIsCurrent(version, owner, auth)) return;
+      setDeletionRecovery(null); setDeletionRecoveryOwner(null);
+      if (result === 'accepted') { await logoutIfSession(auth); if (!deletionViewIsCurrent(version, owner, auth)) return; resetAccountMemory(); setDistributorId(null); setDeletionNotice(true); setScreen('login'); }
+      else { await bootstrapApp(); }
+    } catch (error) {
+      if (deletionViewIsCurrent(version, owner, auth)) setDeletionRecovery(error instanceof Error ? error.message : t('deletion.recoveryError'));
+    } finally { if (deletionViewIsCurrent(version, owner, auth)) setDeletionBusy(false); }
+  }
+
+  async function signInForDeletionRecovery(phone: string, password: string, country: PhoneCountryCode = 'IN') {
+    const owner = deletionRecoveryOwner;
+    if (!owner) throw new Error(t('deletion.recoveryError'));
+    const version = deletionUIVersion.current, auth = captureAuthSession();
+    if (!deletionViewIsCurrent(version, owner, renderAuthSession)) throw new Error(t('deletion.accountChanged'));
+    const { result, credentials } = await reauthenticateAccountDeletion(owner, phone, password, country);
+    if (!deletionViewIsCurrent(version, owner, auth) || (result === 'none' && !authSessionIsCurrent(auth))) return;
+    setDeletionRecovery(null); setDeletionRecoveryOwner(null); setDeletionBusy(false);
+    if (result === 'accepted') { await logoutIfSession(auth); if (!deletionViewIsCurrent(version, owner, auth)) return; resetAccountMemory(); setDistributorId(null); setDeletionNotice(true); setScreen('login'); }
+    else {
+      await adoptRecoveredAuth(credentials.token, auth);
+      await handleAuthenticated();
+    }
+  }
+
+  function leaveDeletionRecovery(version: number, owner: string | null, auth: AuthSession) {
+    if (deletionUIVersion.current !== version || (currentAccount() && currentAccount() !== owner)) return;
+    if (captureAuthSession().token && !authSessionIsCurrent(auth)) return;
+    // Leave the owner-scoped journal/proof and drafts for later reconciliation.
+    handleLogout();
+  }
+
   // Clears the stored auth token and returns to the login screen. Recorded
   // videos on disk are left alone - logging out is a session/auth action,
   // not a data wipe (unlike the testing-only clearAllRecordings() above).
   function handleLogout() {
+    deletionUIVersion.current++; setDeletionBusy(false); setDeletionRecovery(null); setDeletionRecoveryOwner(null);
+    activateAccount(null);
+    resetAccountMemory();
+    setConsentAccepted(false);
     logout();
     setDistributorId(null);
     setDistributorProfile(null);
@@ -1376,12 +1694,31 @@ export function AppFlow() {
   // Login render so this doesn't look like an unexplained upload/fetch
   // failure - FRONTEND_AUDIT's §1 "Session/auth token expired mid-flow"
   // finding was specifically that nothing distinguished this case before.
-  function handleSessionExpired() {
-    logout();
-    setDistributorId(null);
-    setDistributorProfile(null);
-    setMainTab('home');
-    setScreen('login');
+  function handleSessionExpired(code?: string) {
+    const owner = currentAccount(), auth = captureAuthSession();
+    let hasIntent = false;
+    try { hasIntent = !!owner && !!pendingAccountDeletion(owner); }
+    catch { hasIntent = !!owner; }
+    if (owner && (code === 'account_deleted' || hasIntent)) {
+      const version = deletionUIVersion.current;
+      // A generic account_deleted response is not itself a deletion receipt.
+      // Preserve proof first, then verify the owner-bound receipt in isolation.
+      const remembered = rememberAccountDeletion(owner, auth.token);
+      activateAccount(null); resetAccountMemory(); setDistributorId(null);
+      setDeletionRecoveryOwner(owner); setDeletionRecovery(t('deletion.recoveryBody')); setDeletionBusy(true);
+      void remembered.then(async () => {
+        await logoutIfSession(auth);
+        if (code === 'account_deleted') await recoverAccountDeletion(owner);
+      }).then(() => {
+        if (deletionViewIsCurrent(version, owner, auth) && !captureAuthSession().token) {
+          if (!pendingAccountDeletion(owner)) { setDeletionRecovery(null); setDeletionRecoveryOwner(null); setDeletionNotice(true); setScreen('login'); }
+        }
+      }).catch(error => {
+        if (deletionViewIsCurrent(version, owner, auth)) setDeletionRecovery(error instanceof Error ? error.message : t('deletion.recoveryError'));
+      }).finally(() => { if (deletionViewIsCurrent(version, owner, auth)) setDeletionBusy(false); });
+      return;
+    }
+    handleLogout();
     setSessionExpiredNotice(true);
   }
 
@@ -1397,10 +1734,36 @@ export function AppFlow() {
   // proceed exactly the same way from here on, not separate paths that
   // could drift out of sync with each other.
   async function handleAuthenticated() {
+    const version = ++deletionUIVersion.current, authSession = captureAuthSession();
+    setDeletionBusy(false); setDeletionRecovery(null); setDeletionRecoveryOwner(null);
+    activateAccount(null);
     setSessionExpiredNotice(false);
+    setDeletionNotice(false);
+    resetAccountMemory();
     const auth = await getCurrentAuth();
-    if (auth) setDistributorId(auth.distributorId);
-    fetchDistributorProfile().then(setDistributorProfile).catch(() => {});
+    if (deletionUIVersion.current !== version || !authSessionIsCurrent(authSession)) return;
+    if (!auth) { handleLogout(); return; }
+    if (pendingAccountDeletion(auth.distributorId)) {
+      try {
+        const result = await recoverAccountDeletion(auth.distributorId, authSession.token ?? undefined);
+        if (result === 'accepted') {
+          const cleared = await logoutIfSession(authSession);
+          if (deletionUIVersion.current === version && cleared && authSessionIsCurrent(cleared)) {
+            setDistributorId(null); setDeletionNotice(true); setScreen('login');
+          }
+          return;
+        }
+      } catch (error) {
+        if (deletionUIVersion.current === version && authSessionIsCurrent(authSession)) {
+          setDeletionRecoveryOwner(auth.distributorId); setDeletionRecovery(error instanceof Error ? error.message : t('deletion.recoveryError'));
+        }
+        return;
+      }
+    }
+    if (deletionUIVersion.current !== version || !authSessionIsCurrent(authSession)) return;
+    activateAccount(auth.distributorId);
+    if (auth) { setDistributorId(auth.distributorId); setClientId(auth.clientId); }
+    loadOwnedProfile();
     // Cache-first: show cached questions immediately if any exist for this
     // device, then refresh in the background.
     const cachedQuestions = getCachedQuestions();
@@ -1414,8 +1777,31 @@ export function AppFlow() {
     // after a token was just issued, which would also fail every other
     // authenticated call about to fire above; falling back to onboarding
     // in that edge case is the safe default (same as a first-ever login).
-    setScreen(auth && hasConsented(auth.distributorId) ? 'main' : 'onboarding');
+    const currentConsent = !!auth && hasConsented(auth.distributorId);
+    setConsentAccepted(currentConsent);
+    consentResumeScreen.current = 'main';
+    restoreOwnedProgress(currentConsent, cachedQuestions);
   }
+
+  // One selection feeds preparation, countdown and recording. Preferences
+  // use stable question IDs, and are kept separate from recorded media.
+  const { controls: promptSelection, prompts } = useQuestionPrompts(
+    distributorId, questions[questionIndex]?.id ?? '', language ?? 'default',
+    questions[questionIndex]?.talking_points ?? [],
+  );
+  const deletingTake = useRef(false);
+  const nextUnanswered = firstUnansweredQuestion(videos, questions.length);
+  // UI-only feedback belongs to the successful Keep action, not a restored
+  // session. Leaving its destination clears it so tab revisits stay quiet.
+  const [keptFeedback, setKeptFeedback] = useState<SavedFeedback | null>(null);
+  const feedbackSequence = useRef(0);
+  useEffect(() => {
+    if (!keptFeedback) return;
+    const visible = !playingVideo && (keptFeedback.destination === 'postKeep'
+      ? screen === 'question' && phase === 'reviewTrim' && showPostKeepPrompt
+      : screen === 'main' && mainTab === keptFeedback.destination);
+    if (!visible) setKeptFeedback(null);
+  }, [keptFeedback, screen, mainTab, phase, showPostKeepPrompt, playingVideo]);
 
   // Force-update gate - checked ahead of every other screen (including a
   // still-open video player) since it's a hard block, not a normal
@@ -1431,6 +1817,13 @@ export function AppFlow() {
     !!Application.nativeApplicationVersion &&
     isVersionBelow(Application.nativeApplicationVersion, distributorProfile.min_app_version);
 
+  // Use the same screen state for native navigation and its painted inset.
+  const immersive = !updateRequired && (playingVideo !== null ||
+    (screen === 'question' && (phase === 'rehearse' || phase === 'cameraCheck' ||
+      phase === 'countdown' || phase === 'recording')));
+  useHideNavigationBarWhile(immersive);
+  useLayoutEffect(() => onImmersiveChange(immersive), [immersive, onImmersiveChange]);
+
   if (updateRequired) {
     return <UpdateRequiredScreen />;
   }
@@ -1444,6 +1837,18 @@ export function AppFlow() {
     );
   }
 
+  if (deletionRecovery !== null) {
+    const version = deletionUIVersion.current, auth = captureAuthSession();
+    return <LoginScreen key={`deletion-recovery-${deletionRecoveryOwner ?? 'unknown'}`}
+      onLoggedIn={() => {}} authenticate={signInForDeletionRecovery}
+      heading={t('deletion.recoveryTitle')} description={t('deletion.recoverySignInBody')}
+      notice={deletionRecovery} signInLabel={t('deletion.recoverySignIn')}
+      recoveryBusy={deletionBusy} onRetryRecovery={retryDeletionRecovery}
+      onUseAnotherAccount={() => leaveDeletionRecovery(version, deletionRecoveryOwner, auth)} />;
+  }
+  if (bootstrapError !== null) {
+    return <View style={[styles.sessionLoading, {backgroundColor:colors.background,padding:24,gap:16}]}><Text style={{color:colors.text}}>{bootstrapError}</Text><Button label={t('deletion.retry')} onPress={() => void bootstrapApp()} /></View>;
+  }
   if (screen === 'sessionLoading') {
     return (
       <View style={[styles.sessionLoading, { backgroundColor: colors.background }]}>
@@ -1458,7 +1863,7 @@ export function AppFlow() {
         <LoginScreen
           onLoggedIn={handleAuthenticated}
           onRegisterPress={ENABLE_SELF_REGISTRATION ? () => setScreen('selfRegister') : undefined}
-          notice={sessionExpiredNotice ? t('login.sessionExpiredNotice') : undefined}
+          notice={deletionNotice ? t('deletion.acceptedNotice') : sessionExpiredNotice ? t('login.sessionExpiredNotice') : undefined}
         />
         {__DEV__ && (
           <DevEntryMenu
@@ -1506,15 +1911,27 @@ export function AppFlow() {
   }
 
   if (screen === 'onboarding') {
-    return <OnboardingScreen onGetStarted={() => setScreen('consent')} />;
+    return (
+      <OnboardingScreen
+        language={language}
+        onChangeLanguage={handleChangeLanguage}
+        onGetStarted={() => setScreen('consent')}
+        onBack={() => setScreen(DEFAULT_UNAUTHENTICATED_SCREEN)}
+      />
+    );
   }
 
   if (screen === 'consent') {
     return (
       <ConsentScreen
+        campaignNotice={distributorProfile?.campaign ? distributorProfile.campaign.participant_notice : undefined}
+        onDecline={handleLogout}
         onAgree={() => {
-          if (distributorId) markConsented(distributorId);
-          setScreen('main');
+          if (!distributorId || !distributorProfile) throw new Error('Wait for your account and campaign notice to load, then try again');
+          markConsented(distributorId);
+          setConsentAccepted(true);
+          setScreen(consentResumeScreen.current);
+          consentResumeScreen.current = 'main';
         }}
       />
     );
@@ -1561,13 +1978,14 @@ export function AppFlow() {
             distributorName={distributorProfile?.name}
             totalQuestions={questions.length}
             questionsAnswered={primaryVideos.length}
-            hasSubmittedBatch={hasSubmittedBatch}
+            hasSubmittedBatch={primaryVideos.length > 0 && primaryVideos.every(video => isExactConfirmedTake(approvedBatch, video))}
+            completionFeedback={keptFeedback?.destination === 'home' ? keptFeedback : undefined}
             renderedReadyCount={brandedRows.filter((b) => b.status === 'ready').length}
             nextQuestion={
-              primaryVideos.length < questions.length
+              nextUnanswered !== null
                 ? {
-                    index: primaryVideos.length + 1,
-                    text: questions[primaryVideos.length]?.text ?? '',
+                    index: nextUnanswered + 1,
+                    text: questions[nextUnanswered]?.text ?? '',
                     estimate: '45–60 second answer · about 3 minutes',
                   }
                 : null
@@ -1581,47 +1999,31 @@ export function AppFlow() {
                 setScreen('permissions');
               }
             }}
-            onSendAll={() => {
-              setUploadConfirmed(false);
-              setUploadedQuestionIndices([]);
-              // Without this, a stale error from a previously abandoned
-              // attempt (Try again / Send later) survives into this fresh
-              // entry - uploadConfirmed is false here, so the render logic
-              // falls straight through to UploadingScreen's error branch
-              // (error is still set) instead of the normal confirm list,
-              // and "Try again" from there is a dead end: it only bumps
-              // uploadAttempt, which the real upload effect ignores while
-              // uploadConfirmed is false. Reported as "stuck, Try again
-              // does nothing, Send later -> Upload doesn't work either" -
-              // this is that exact loop.
-              setUploadError(null);
-              setScreen('uploading');
-            }}
+            onSendAll={openUploadReview}
             onOpenMyVideos={() => setMainTab('myVideos')}
             onShareReadyReel={() => {}}
           />
         )}
         {mainTab === 'myVideos' && (
           <MyVideosScreen
+            feedback={keptFeedback?.destination === 'myVideos'
+              ? <CompletionFeedback compact feedback={keptFeedback} completed={keptFeedback.completed} total={keptFeedback.total} card onDismiss={() => setKeptFeedback(null)} />
+              : undefined}
             loading={myVideosLoading}
             error={myVideosError}
             onRetryLoad={() => setMyVideosRefreshToken((n) => n + 1)}
             questionTexts={questions.map((q) => q.text)}
-            answers={answerRows}
+            answers={buildAnswerRows(videos, questions, serverSegments).map(row => ({ ...row, uploadLocked: questionUploadLocked(row.questionIndex) }))}
             branded={brandedRows}
             reelRenderingEnabled={ENABLE_REEL_RENDERING}
-            onPressAnswer={(row) => setPlayingVideo(row.play)}
+            onPressAnswer={(row) => { if (row.play) setPlayingVideo(row.play); }}
             onPressBranded={(row) => row.play && setPlayingVideo({ ...row.play, celebratory: true })}
-            onRetake={(qIndex) => setPendingRetake(qIndex)}
+            onRetake={(qIndex) => { if (!questionUploadLocked(qIndex)) { retakeBaseRef.current = serverSegments.find(segment => segment.question_id === questions[qIndex]?.id)?.segment_id ?? serverSegments.find(segment => !segment.question_id && segment.question_index === questions[qIndex]?.index)?.segment_id ?? null; setPendingRetake(qIndex); } }}
             onEditTakes={handleEditTakes}
             onSwitchPrimary={handleSwitchPrimary}
-            onUploadAll={() => {
-              setUploadConfirmed(false);
-              setUploadedQuestionIndices([]);
-              // Same reset as Home's onSendAll above - see its comment.
-              setUploadError(null);
-              setScreen('uploading');
-            }}
+            onUploadAll={openUploadReview}
+            unmatchedTakes={videos.filter(video => video.questionSnapshot && !questions.some(question => question.id === video.questionSnapshot!.id)).map(video => ({ id: video.id, label: video.questionSnapshot!.text }))}
+            onReviewOriginal={(id) => { const take = videos.find(video => video.id === id); if (take) setPlayingVideo({ filePath: take.filePath, label: t('uploadApproval.originalReview') }); }}
           />
         )}
         {mainTab === 'help' && <HelpScreen />}
@@ -1634,6 +2036,8 @@ export function AppFlow() {
             onChangeLanguage={handleChangeLanguage}
             onOpenConsent={() => setScreen('consent')}
             onLogout={handleLogout}
+            onDeleteAccount={handleDeleteAccount}
+            deletionBusy={deletionBusy}
           />
         )}
         <BottomTabBar
@@ -1666,6 +2070,7 @@ export function AppFlow() {
     // after there's nothing left to report. An error always falls back
     // to UploadingScreen's own retry/send-later UI, confirmed or not.
     if (uploadConfirmed && !uploadError) {
+      const confirmed = batchSummary(approvedBatch);
       return (
         <ConfirmationScreen
           // Not `!hasSubmittedBatch` - that flag means "submitted at
@@ -1673,8 +2078,10 @@ export function AppFlow() {
           // retake's re-upload and would wrongly skip straight to "done"
           // on a batch that's actually still sending. This is the actual
           // per-run signal the upload effect below drives.
-          uploading={uploadedQuestionIndices.length < primaryVideos.length}
-          progress={uploadProgress}
+          uploading={!confirmed.complete}
+          progress={confirmed.progress}
+          confirmedCount={confirmed.completed}
+          totalCount={confirmed.total}
           reelsEnabled={ENABLE_REEL_RENDERING}
           onDone={() => {
             setMainTab('home');
@@ -1686,20 +2093,25 @@ export function AppFlow() {
 
     return (
       <UploadingScreen
-        items={primaryVideos.map((v) => ({
+        items={(approvedBatch?.entries.map(entry => entry.video) ?? availableUploadTakes(primaryVideos, pendingUploadReceipts)).map((v) => ({
           questionIndex: v.questionIndex,
           label: `Question ${v.questionIndex + 1}`,
-          questionText: questions[v.questionIndex]?.text ?? '',
+          questionText: approvedBatch?.entries.find(entry => entry.video.id === v.id)?.question.text ?? questions[v.questionIndex]?.text ?? '',
           durationSeconds: v.durationSeconds,
         }))}
         error={uploadError}
-        onConfirm={() => setUploadConfirmed(true)}
-        onRetry={() => setUploadAttempt((n) => n + 1)}
+        recoveringReceipt={!approvedBatch && hasPendingUploadReceipts}
+        preparing={uploadPreparing}
+        onConfirm={approveUpload}
+        onRetry={() => approvedBatchRef.current?.status === 'pending' ? setUploadAttempt((n) => n + 1) : setUploadError(null)}
+        onCancelBatch={approvedBatch?.status === 'pending' && !!uploadError ? cancelFailedBatch : undefined}
         onSendLater={() => {
+          preparingUploadRef.current?.controller.abort();
           setMainTab('home');
           setScreen('main');
         }}
         onBack={() => {
+          preparingUploadRef.current?.controller.abort();
           setMainTab('myVideos');
           setScreen('main');
         }}
@@ -1709,8 +2121,8 @@ export function AppFlow() {
         // still local-only (nothing's uploaded yet), so play it straight
         // from disk, same shape My Videos uses for its own answer rows.
         onReviewItem={(qIndex) => {
-          const video = primaryVideos.find((v) => v.questionIndex === qIndex);
-          if (video) setPlayingVideo({ filePath: video.filePath, label: `Question ${qIndex + 1}` });
+          const video = approvedBatch?.entries.find(entry => entry.video.questionIndex === qIndex)?.video ?? primaryVideos.find((v) => v.questionIndex === qIndex);
+          if (video) setPlayingVideo({ filePath: video.filePath, label: t('uploadApproval.originalReview') });
         }}
       />
     );
@@ -1718,7 +2130,8 @@ export function AppFlow() {
 
   // screen === 'question'
   const currentQuestion = questions[questionIndex];
-  const questionText = currentQuestion?.text ?? '';
+  const questionText = (phase === 'cameraCheck' || phase === 'countdown' || phase === 'recording')
+    ? recordingSnapshotRef.current?.question.text ?? currentQuestion?.text ?? '' : currentQuestion?.text ?? '';
   // Same 'default' sentinel loadQuestions()/voCache.ts use - never a
   // guessed real language code for a lookup that hasn't been explicitly
   // chosen yet.
@@ -1738,13 +2151,6 @@ export function AppFlow() {
       : null;
   }
   const voPlaybackUrl = voSourceRef.current?.url;
-  // Question Brief's "a good answer usually covers" and Recording's
-  // on-screen prompts both read from the same backend-provided list
-  // (questions.ts) - null (no talking points configured, or not translated
-  // into the resolved language yet) degrades to an empty array, same as
-  // before this field existed.
-  const talkingPoints: string[] = currentQuestion?.talking_points ?? [];
-  const prompts: string[] = talkingPoints;
   // Retake is always a cold entry (no continuous camera session behind
   // it) - full lock regardless of which question index it targets, same
   // as question 1's first-time entry.
@@ -1759,7 +2165,7 @@ export function AppFlow() {
           totalQuestions={questions.length}
           voPlaybackUrl={voPlaybackUrl}
           questionText={questionText}
-          talkingPoints={talkingPoints}
+          promptSelection={promptSelection}
           onStartRecording={enterCameraCheck}
           onRehearse={() => setPhase('rehearse')}
           onBack={() => {
@@ -1803,16 +2209,29 @@ export function AppFlow() {
       <View style={{ flex: 1 }}>
         <ReviewTrimScreen
           questionNumber={questionIndex + 1}
+          totalQuestions={questions.length}
+          recordedQuestions={new Set([
+            ...videos.map((video) => video.questionIndex),
+            ...(pool.length > 0 ? [questionIndex] : []),
+          ]).size}
           takes={pool.map((t) => ({
             id: t.id,
             filePath: t.filePath,
             durationSeconds: t.durationSeconds,
+            durationVerified: t.durationVerified,
+            trimAdjustedForReview: t.trimAdjustedForReview,
             trimStartSeconds: t.trimStartSeconds,
             trimEndSeconds: t.trimEndSeconds,
             saved: savedIds.has(t.id),
+            isPrimary: savedIds.has(t.id) && t.isPrimary !== false,
           }))}
           selectedTakeId={activeTakeId}
           onSelectTake={setSelectedTakeId}
+          onBack={() => {
+            const editingSavedTakes = retakeQuestionIndex !== null && (takesByQuestion[questionIndex] ?? []).length === 0;
+            if (editingSavedTakes) confirmExitQuestionFlow();
+            else setPendingExitConfirm(true);
+          }}
           onChangeTrim={(s, e) =>
             updatePoolTake(questionIndex, activeTakeId, { trimStartSeconds: s, trimEndSeconds: e })
           }
@@ -1824,15 +2243,26 @@ export function AppFlow() {
           onToggleKept={handleToggleKept}
           onRecordAnother={handleRecordAnother}
           onKeep={handleKeepTake}
+          onMeasuredDuration={handleMeasuredDuration}
+          bindingQuestionText={questions[questionIndex]?.text}
+          questionBindingNeeded={!questionSnapshotMatches(pool.find(take => take.id === activeTakeId)?.questionSnapshot, questions[questionIndex])}
+          onBindQuestion={bindReviewedQuestion}
+          onReviewReplacement={reviewReplacementBase}
+          replacementReviewError={replacementReviewError}
+          onDeleteTake={canDeleteReviewTake() ? handleDeleteTake : undefined}
         />
 
-        <PopupSheet visible={showPostKeepPrompt} onDismiss={() => setShowPostKeepPrompt(false)} dismissable={false}>
-          <Text style={{ fontSize: 21, fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-            {t('appFlow.postKeepPopupTitle')}
-          </Text>
-          <Text style={{ fontSize: 14.5, color: colors.textMuted, lineHeight: 21, marginBottom: 16 }}>
-            {t('appFlow.postKeepPopupBody', { questionNumber: questionIndex + 1 })}
-          </Text>
+        <PopupSheet visible={replacementReview !== null} onDismiss={() => setReplacementReview(null)}>
+          <Text style={{ fontSize: 21, fontWeight: '700', color: colors.text, marginBottom: spacing.sm }}>{t('uploadApproval.currentAnswer')}</Text>
+          <Text style={{ color: colors.textMuted, marginBottom: spacing.md }}>{t(replacementReview?.segmentId ? 'uploadApproval.replaceReviewedBody' : 'uploadApproval.noCurrentAnswer')}</Text>
+          {replacementReview?.play && <Button label={t('uploadApproval.reviewCurrentAnswer')} onPress={() => setPlayingVideo(replacementReview.play)} variant="secondary" />}
+          <View style={{ marginTop: spacing.md }}><Button label={t('uploadApproval.useReviewedBase')} onPress={acceptReviewedReplacementBase} /></View>
+        </PopupSheet>
+
+        <PopupSheet visible={showPostKeepPrompt} onDismiss={() => setShowPostKeepPrompt(false)} dismissable={false} groupAccessibility={false}>
+          <View style={{ marginBottom: spacing.lg }}>
+            <CompletionFeedback feedback={keptFeedback?.destination === 'postKeep' ? keptFeedback : undefined} completed={keptAnswerCount(videos, questions.length)} total={questions.length} />
+          </View>
           <View style={{ gap: 9 }}>
             <Button label={t('appFlow.postKeepPopupNextQuestionButton')} onPress={goToNextQuestion} />
             <View style={{ flexDirection: 'row', gap: 9 }}>
@@ -1892,10 +2322,16 @@ export function AppFlow() {
         lockMode={lockMode}
         resetToken={resetToken}
         onLocked={() => {
+          if (phase !== 'cameraCheck') return;
           setChecksReady(true);
           if (autoStart) setPhase('countdown');
         }}
-        alignmentActive
+        onAlignmentInvalidated={() => {
+          if (phase !== 'cameraCheck' && phase !== 'countdown') return;
+          setChecksReady(false);
+          setPhase('cameraCheck');
+        }}
+        alignmentActive={phase !== 'rehearse'}
         recordingActive={phase === 'recording'}
         onRecordingFinished={handleRecordingFinished}
         onRecordingError={handleRecordingError}
@@ -1905,6 +2341,8 @@ export function AppFlow() {
       {phase === 'rehearse' && (
         <RehearseScreen
           questionText={questionText}
+          voPlaybackUrl={voPlaybackUrl}
+          readQuestionAloud={readQuestionAloud}
           onRecordForReal={enterCameraCheck}
           onBackToBrief={() => setPhase('brief')}
         />
@@ -1915,10 +2353,14 @@ export function AppFlow() {
           questionNumber={questionIndex + 1}
           totalQuestions={questions.length}
           questionText={questionText}
+          prompts={prompts}
           autoStart={autoStart}
           onToggleAutoStart={setAutoStart}
           checksReady={checksReady}
           countingDown={phase === 'countdown'}
+          countdownReady={questionAudioComplete}
+          prepareQuestionAudio={prepareQuestionAudio}
+          onQuestionAudioComplete={handleQuestionAudioComplete}
           countdownSeconds={countdownRemaining}
           onStartRecording={() => setPhase('countdown')}
           voPlaybackUrl={voPlaybackUrl}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -19,10 +20,13 @@ export interface UploadItem {
 }
 
 interface Props {
+  preparing?: boolean;
+  recoveringReceipt?: boolean;
   items: UploadItem[];
   error: string | null;
   onConfirm: () => void;
   onRetry: () => void;
+  onCancelBatch?: () => void;
   onSendLater: () => void;
   /** Row tap - back to that question's review/trim (design 7a). */
   onReviewItem?: (questionIndex: number) => void;
@@ -44,28 +48,33 @@ function formatTime(totalSeconds: number): string {
 // of being reached only once there's nothing left to report. This
 // component only reappears if an error happens (Try again / Send later).
 export function UploadingScreen({
+  preparing = false,
+  recoveringReceipt = false,
   items,
   error,
   onConfirm,
   onRetry,
+  onCancelBatch,
   onSendLater,
   onReviewItem,
   onBack,
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const [confirming, setConfirming] = useState(false);
   const { t } = useStrings();
 
   if (error) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: insets.bottom + spacing.edgeGap + spacing.footerGap }]}>
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <Text style={styles.title}>{t('uploading.errorTitle')}</Text>
           <Text style={styles.subtitle}>{error}</Text>
         </View>
         <View style={{ gap: spacing.sm }}>
           <Button label={t('uploading.errorTryAgainButton')} onPress={onRetry} />
+          {onCancelBatch && <Button label={t('uploadApproval.cancel')} onPress={onCancelBatch} variant="quiet" />}
           <Button label={t('uploading.errorSendLaterButton')} onPress={onSendLater} variant="secondary" />
         </View>
       </View>
@@ -86,6 +95,7 @@ export function UploadingScreen({
         {t(items.length === 1 ? 'uploading.subtitleSingular' : 'uploading.subtitlePlural', { count: items.length })}
       </Text>
       <Text style={styles.hint}>{t('uploading.hint')}</Text>
+      {recoveringReceipt && <Text style={styles.hint}>{t('uploadApproval.recoveringReceipt')}</Text>}
 
       <ScrollView style={styles.list} contentContainerStyle={{ gap: spacing.xs + 1 }}>
         {items.map((item) => {
@@ -132,7 +142,7 @@ export function UploadingScreen({
       </ScrollView>
 
       <View style={{ gap: spacing.sm }}>
-        <Button label={t('uploading.sendAllButton')} onPress={() => setConfirming(true)} />
+        <Button label={t(preparing ? 'uploadApproval.preparing' : 'uploading.sendAllButton')} disabled={preparing || items.length === 0} onPress={() => setConfirming(true)} />
         <Text style={styles.notNow} onPress={onSendLater}>
           {t('uploading.notNowButton')}
         </Text>

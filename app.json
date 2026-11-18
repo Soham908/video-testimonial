@@ -1,51 +1,98 @@
 {
   "expo": {
-    "name": "testimonial-app",
+    "name": "Insight Scoop",
     "slug": "testimonial-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/insight-scoop-icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "bundleIdentifier": "com.zeistinteractive.testimonialapp",
+      "bundleIdentifier": "com.zeistinteractive.insightscoop",
+      "appleTeamId": "XSA5BHAGHX",
+      "deploymentTarget": "16.4",
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "This app needs camera access to record your testimonial video and provide real-time framing guidance.",
         "NSMicrophoneUsageDescription": "This app needs microphone access to record audio for your testimonial video."
-      }
+      },
+      "buildNumber": "4"
     },
     "android": {
-      "package": "com.zeistinteractive.testimonialapp",
+      "package": "com.zeistinteractive.insightscoop",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#1E7A5A",
+        "foregroundImage": "./assets/insight-scoop-adaptive.png",
+        "monochromeImage": "./assets/insight-scoop-adaptive.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "versionCode": 4,
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "react-native-fast-tflite",
-      "expo-video",
-      "expo-splash-screen",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1E7A5A",
+          "image": "./assets/insight-scoop-splash.png",
+          "imageWidth": 100
+        }
+      ],
       "expo-font",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
+        }
+      ],
       "expo-secure-store",
       [
         "expo-media-library",
         {
           "photosPermission": "Allow $(PRODUCT_NAME) to save your finished branded video to your photos.",
-          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save your finished branded video to your photos."
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save your finished branded video to your photos.",
+          "granularPermissions": []
         }
       ],
-      "./plugins/withBackgroundUploadService.js"
+      "./plugins/withBackgroundUploadService.js",
+      "./plugins/withIosDeploymentTarget.js",
+      "./plugins/withIosSourceModules.js",
+      "./plugins/withAndroidReleaseSigning.js",
+      "./plugins/withAndroidPrivacy.js",
+      "./plugins/withReleasePolicyInputs.js",
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": false,
+          "style": "light"
+        }
+      ]
     ]
   }
 }

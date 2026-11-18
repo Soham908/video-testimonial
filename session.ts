@@ -1,5 +1,8 @@
 import { File, Paths } from 'expo-file-system';
+import { accountFile, currentAccount, ownsRecording } from './accountStorage';
 import type { RecordedVideo } from './recordings';
+import { acknowledgeConfirmedTakes, pendingReceiptsForBatch, restoreApprovedBatch, restorePendingUploadReceipts,
+  type ApprovedUploadBatch, type PendingUploadReceipt } from './uploadBatch';
 import type { MainTab } from './screens/BottomTabBar';
 
 // Persists the in-progress recording session (which question, every take,
@@ -10,8 +13,8 @@ import type { MainTab } from './screens/BottomTabBar';
 // My Videos' server-fetched rows) - those either don't need surviving a
 // force-quit or are cheaply refetched/recomputed on restore.
 
-const SESSION_FILE_NAME = 'session-state.json';
-const SESSION_VERSION = 1;
+const SESSION_FILES = ['session-state.json', 'session-state.backup.json'] as const;
+const SESSION_VERSION = 5;
 
 // The subset of AppFlow's QuestionPhase that can actually be resumed as-is.
 // 'countdown' and 'recording' are intentionally not included here - see
@@ -22,6 +25,7 @@ export type PersistedScreen = 'main' | 'question' | 'uploading';
 
 export interface PersistedSession {
   version: number;
+  ownerId: string;
   screen: PersistedScreen;
   mainTab: MainTab;
   questionIndex: number;
@@ -42,6 +46,9 @@ export interface PersistedSession {
   keptTakeIds?: string[];
   autoStart: boolean;
   hasSubmittedBatch: boolean;
+  approvedBatch?: ApprovedUploadBatch | null;
+  pendingUploadReceipts?: PendingUploadReceipt[];
+  // Deprecated compatibility fields; never grant approval on restore.
   uploadConfirmed: boolean;
   // question_index (0-based) of every video that upload.ts has already
   // successfully confirmed in the current batch - lets a force-quit
@@ -50,31 +57,70 @@ export interface PersistedSession {
   uploadedQuestionIndices: number[];
 }
 
-function getSessionFile(): File {
-  return new File(Paths.document, SESSION_FILE_NAME);
-}
-
-export function saveSession(state: Omit<PersistedSession, 'version'>): void {
-  const file = getSessionFile();
-  if (!file.exists) file.create();
-  file.write(JSON.stringify({ ...state, version: SESSION_VERSION }));
-}
-
-export function loadSession(): PersistedSession | null {
-  const file = getSessionFile();
-  if (!file.exists) return null;
+function readCheckpoint(file: File, ownerId: string): { revision: number; state: PersistedSession } | null {
   try {
     const parsed = JSON.parse(file.textSync());
-    if (parsed?.version !== SESSION_VERSION) return null;
-    return parsed as PersistedSession;
+    if (![2, 3, 4, SESSION_VERSION].includes(parsed?.version) || parsed.ownerId !== ownerId
+      || !Array.isArray(parsed.videos) || !parsed.takesByQuestion || typeof parsed.takesByQuestion !== 'object'
+      || Object.values(parsed.takesByQuestion).some(takes => !Array.isArray(takes))) return null;
+    const revision = parsed.version === SESSION_VERSION ? parsed.checkpoint : 0;
+    if (!Number.isSafeInteger(revision) || revision < 0) return null;
+    const restored = parsed.version >= 4 ? restoreApprovedBatch(parsed.approvedBatch) : null;
+    const approvedBatch = restored?.ownerId === ownerId ? restored : null;
+    const pendingUploadReceipts = restorePendingUploadReceipts(parsed.pendingUploadReceipts, ownerId)
+      .filter(entry => ownsRecording(entry.video.filePath, ownerId));
+    const takes = [...parsed.videos, ...Object.values(parsed.takesByQuestion).flat()] as RecordedVideo[];
+    if ([...takes, ...(approvedBatch?.entries.map(entry => entry.video) ?? [])]
+      .some(video => typeof video?.filePath !== 'string' || !ownsRecording(video.filePath, ownerId))) return null;
+    // Older approvals and MD5-only acknowledgements never authorize a v2 send.
+    if (parsed.version < 4) for (const video of takes) delete video.uploadAcknowledgement;
+    const { checkpoint: _checkpoint, ...state } = parsed;
+    return { revision, state: { ...state, version: SESSION_VERSION, approvedBatch, pendingUploadReceipts,
+      uploadConfirmed: false, uploadedQuestionIndices: [] } };
   } catch {
     return null;
   }
 }
 
+function readSlots(ownerId: string) {
+  return SESSION_FILES.map(name => {
+    const file = accountFile(name), exists = file.exists;
+    return { file, exists, checkpoint: exists ? readCheckpoint(file, ownerId) : null };
+  }).sort((a, b) => (b.checkpoint?.revision ?? -1) - (a.checkpoint?.revision ?? -1));
+}
+
+export function saveSession(state: Omit<PersistedSession, 'version' | 'ownerId'>): void {
+  const ownerId = currentAccount();
+  if (!ownerId) return;
+  const [latest, spare] = readSlots(ownerId);
+  if (!latest.checkpoint && (latest.exists || spare.exists)) throw new Error('No readable session checkpoint');
+  // Expo overwrite/move can unlink its destination first. Alternate files so
+  // a partial write always leaves the previously committed checkpoint intact.
+  const file = latest.checkpoint ? spare.file : latest.file;
+  if (!file.exists) file.create();
+  file.write(JSON.stringify({ ...state, ownerId, version: SESSION_VERSION, checkpoint: (latest.checkpoint?.revision ?? 0) + 1 }));
+}
+
+export function loadSession(): PersistedSession | null {
+  const ownerId = currentAccount();
+  if (!ownerId) return null;
+  const [latest, spare] = readSlots(ownerId);
+  const state = latest.checkpoint?.state;
+  if (!state || !spare.exists || spare.checkpoint || state.approvedBatch?.status !== 'pending') return state ?? null;
+  // An interrupted checkpoint could have been a cancellation. Recover the old
+  // takes and receipts, while requiring fresh approval for any future send.
+  return { ...state, approvedBatch: null, videos: acknowledgeConfirmedTakes(state.videos, state.approvedBatch),
+    pendingUploadReceipts: restorePendingUploadReceipts([
+      ...(state.pendingUploadReceipts ?? []), ...pendingReceiptsForBatch(state.approvedBatch),
+    ], ownerId) };
+}
+
 export function clearSession(): void {
-  const file = getSessionFile();
-  if (file.exists) file.delete();
+  if (!currentAccount()) return;
+  for (const name of SESSION_FILES) {
+    const file = accountFile(name);
+    if (file.exists) file.delete();
+  }
 }
 
 // True only once real progress exists worth restoring - an empty/default
@@ -83,6 +129,7 @@ export function clearSession(): void {
 export function hasMeaningfulProgress(session: PersistedSession): boolean {
   return (
     session.videos.length > 0 ||
+    !!session.pendingUploadReceipts?.length ||
     Object.keys(session.takesByQuestion).length > 0 ||
     session.screen !== 'main' ||
     session.mainTab !== 'home' ||

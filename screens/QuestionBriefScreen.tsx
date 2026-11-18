@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer } from 'expo-video';
 import { useEvent } from 'expo';
 import { useTheme } from '../theme/ThemeContext';
@@ -8,10 +8,17 @@ import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
-import { Dropdown } from '../components/ui/Dropdown';
-import { Toggle } from '../components/ui/Toggle';
+import { PopupSheet } from '../components/ui/Modal';
+import { hasSeenTip, markTipSeen } from '../firstRunTips';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import { HelpButton } from '../tooltips/HelpButton';
+import { TooltipTarget } from '../tooltips/TooltipTarget';
+import { useGuidedTour } from '../tooltips/useGuidedTour';
+import { QUESTION_TOUR, QUESTION_TOOLTIP_IDS } from '../tooltips/tooltipRegistry';
 import { useStrings } from '../i18n/useStrings';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PromptSelector } from '../components/PromptSelector';
+import type { PromptSelectionControl } from '../promptSelection';
 
 interface Props {
   questionNumber: number;
@@ -24,7 +31,7 @@ interface Props {
   // clip.
   voPlaybackUrl?: string;
   questionText: string;
-  talkingPoints: string[];
+  promptSelection: PromptSelectionControl;
   onStartRecording: () => void;
   onRehearse: () => void;
   onBack?: () => void;
@@ -50,7 +57,7 @@ export function QuestionBriefScreen({
   totalQuestions,
   voPlaybackUrl,
   questionText,
-  talkingPoints,
+  promptSelection,
   onStartRecording,
   onRehearse,
   onBack,
@@ -58,6 +65,7 @@ export function QuestionBriefScreen({
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
+  const insets = useSafeAreaInsets();
 
   // undefined (not a missing key in a map) while questions are still
   // loading or a question genuinely has no VO - useVideoPlayer accepts a
@@ -72,6 +80,14 @@ export function QuestionBriefScreen({
   // it straight from the player via useEvent means there's only one source
   // of truth, so this can't drift out of sync with reality again.
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  const [showPrepTips, setShowPrepTips] = useState(false);
+  const [editingPrompts, setEditingPrompts] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffset = useRef(0);
+  const hasAudio = audioSource != null;
+  // Even a question without backend prompts can accept a custom reminder.
+  const tourIds = useMemo(() => QUESTION_TOOLTIP_IDS.filter(id => id !== 'question.audio' || hasAudio), [hasAudio]);
+  useGuidedTour(QUESTION_TOUR, tourIds, questionText.length > 0);
   const sampleAnswer = SAMPLE_ANSWERS[(questionNumber - 1) % SAMPLE_ANSWERS.length];
 
   // Same "shared object already released" risk as CameraCheckScreen.tsx's
@@ -93,8 +109,26 @@ export function QuestionBriefScreen({
     }
   }
 
+  function pauseQuestion() {
+    try { player.pause(); }
+    catch (error) { console.warn('[question-brief] VO pause failed', error); }
+  }
+
+  function requestRecording() {
+    pauseQuestion();
+    if (hasSeenTip('questionRecordingPrep')) onStartRecording();
+    else setShowPrepTips(true);
+  }
+
+  function leavePrepTips(next: () => void) {
+    try { markTipSeen('questionRecordingPrep'); }
+    catch (error) { console.warn('[question-brief] could not save tips preference', error); }
+    setShowPrepTips(false);
+    next();
+  }
+
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.topRow}>
         {onBack && (
           <Pressable style={styles.backRow} onPress={onBack} hitSlop={8}>
@@ -102,13 +136,24 @@ export function QuestionBriefScreen({
             <Text style={styles.backText}>{t('questionBrief.backButton')}</Text>
           </Pressable>
         )}
+        <HelpButton tourId={QUESTION_TOUR} tooltipIds={tourIds} onReplay={pauseQuestion} />
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
+      <ScrollView ref={scrollRef} onScroll={event => { scrollOffset.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16} removeClippedSubviews={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
         <View style={styles.questionHeaderRow}>
           <Text style={styles.questionNumberLabel}>{t('questionBrief.questionNumberLabel', { number: questionNumber })}</Text>
-          {audioSource != null && (
+        </View>
+        <TooltipTarget id="question.text" scrollRef={scrollRef} scrollOffset={scrollOffset}>
+        <Text
+          style={[styles.title, containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('700') }]}
+        >
+          {questionText}
+        </Text>
+        </TooltipTarget>
+        {audioSource != null && (
+          <TooltipTarget id="question.audio" scrollRef={scrollRef} scrollOffset={scrollOffset} style={{ alignSelf: 'flex-start' }}>
             <Pressable
+              accessibilityRole="button"
               style={[styles.readToMe, isPlaying && styles.readToMeActive]}
               onPress={toggleReadToMe}
             >
@@ -117,39 +162,14 @@ export function QuestionBriefScreen({
                 {isPlaying ? t('questionBrief.readToMeActive') : t('questionBrief.readToMeIdle')}
               </Text>
             </Pressable>
-          )}
-        </View>
-        <Text
-          style={[styles.title, containsDevanagari(questionText) && { fontFamily: devanagariFontFamily('700') }]}
-        >
-          {questionText}
-        </Text>
-
-        {talkingPoints.length > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>{t('questionBrief.talkingPointsSectionTitle')}</Text>
-            <View style={styles.pointsList}>
-              {talkingPoints.map((point, i) => (
-                <View key={point} style={styles.pointRow}>
-                  <Text style={styles.pointNumber}>{i + 1}</Text>
-                  <Text
-                    style={[
-                      styles.pointText,
-                      containsDevanagari(point) && { fontFamily: devanagariFontFamily('400') },
-                    ]}
-                  >
-                    {point}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </>
+          </TooltipTarget>
         )}
 
-        <View style={styles.addPromptRow}>
-          <Text style={styles.addPromptText}>{t('questionBrief.addPromptRow')}</Text>
-        </View>
+        <TooltipTarget id="question.points" scrollRef={scrollRef} scrollOffset={scrollOffset}>
+            <PromptSelector {...promptSelection} onBeginAdd={() => { pauseQuestion(); setEditingPrompts(true); }} onEndAdd={() => setEditingPrompts(false)} />
+        </TooltipTarget>
 
+        {__DEV__ && <>
         <View style={styles.sampleRow}>
           <View style={styles.sampleThumb}>
             <View style={styles.sampleThumbPlay}>
@@ -164,21 +184,31 @@ export function QuestionBriefScreen({
           </View>
         </View>
 
-        <View style={{ gap: spacing.sm }}>
-          <Dropdown title={t('questionBrief.beforeYouStartTitle')} subtitle={t('questionBrief.beforeYouStartSubtitle')}>
-            <Text style={styles.dropdownBody}>{t('questionBrief.beforeYouStartBody')}</Text>
-          </Dropdown>
-          <Dropdown title={t('questionBrief.nervousTitle')} subtitle={t('questionBrief.nervousSubtitle')}>
-            <Text style={styles.dropdownBody}>{t('questionBrief.nervousBody')}</Text>
-          </Dropdown>
-        </View>
+        </>}
+
+        <Button label={t('questionBrief.recordingTipsLink')} onPress={() => setShowPrepTips(true)} variant="quiet" />
       </ScrollView>
 
-      <View style={styles.actions}>
-        <Button label={t('questionBrief.startRecordingButton')} onPress={onStartRecording} />
+      {!editingPrompts && <TooltipTarget id="question.actions" style={[styles.actions, { paddingBottom: insets.bottom + spacing.edgeGap + spacing.footerGap }]}>
+        <Button label={t('questionBrief.startRecordingButton')} onPress={requestRecording} />
         <Button label={t('questionBrief.rehearseButton')} onPress={onRehearse} variant="secondary" />
-      </View>
-    </View>
+      </TooltipTarget>}
+      <PopupSheet visible={showPrepTips} onDismiss={() => setShowPrepTips(false)}>
+        <Text style={styles.prepTitle}>{t('questionBrief.prepTitle')}</Text>
+        <ScrollView style={styles.prepPoints}>
+          {[1, 2, 3, 4].map((number) => (
+            <View key={number} style={styles.prepPoint}>
+              <Text style={styles.pointNumber}>{number}</Text>
+              <Text style={styles.prepText}>{t(`questionBrief.prepPoint${number}`)}</Text>
+            </View>
+          ))}
+        </ScrollView>
+        <View style={{ gap: spacing.sm }}>
+          <Button label={t('questionBrief.prepContinue')} onPress={() => leavePrepTips(onStartRecording)} />
+          <Button label={t('questionBrief.rehearseButton')} onPress={() => leavePrepTips(onRehearse)} variant="secondary" />
+        </View>
+      </PopupSheet>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -200,6 +230,8 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.xl + spacing.topExtra },
     topRow: {
       flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       paddingHorizontal: spacing.xl,
     },
     // One tappable row (arrow + label together) instead of a lone
@@ -219,6 +251,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     // Always accent-tinted, not just while playing - the old muted-grey
     // idle state read as inert label text, not a control worth tapping.
     readToMe: {
+      alignSelf: 'flex-start',
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
@@ -254,26 +287,9 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       color: colors.textFaint,
       fontWeight: '700',
       marginTop: spacing.sm,
-    },
-    pointsList: {},
-    pointRow: {
-      flexDirection: 'row',
-      gap: spacing.md,
-      paddingVertical: spacing.sm + 2,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      marginBottom: spacing.sm,
     },
     pointNumber: { fontSize: 13.5, fontWeight: '700', color: colors.accent, width: 16 },
-    pointText: { ...typography.body, fontSize: 15.5, color: colors.text, flex: 1, lineHeight: 22 },
-    addPromptRow: {
-      borderWidth: 1.5,
-      borderColor: colors.borderStrong,
-      borderStyle: 'dashed',
-      borderRadius: radius.lg,
-      padding: spacing.md,
-      alignItems: 'center',
-    },
-    addPromptText: { fontSize: 14.5, fontWeight: '700', color: colors.accent },
     sampleRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
     sampleThumb: {
       width: 58,
@@ -294,7 +310,10 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
     sampleThumbPlayGlyph: { fontSize: 11, color: '#241E1A', marginLeft: 2 },
     sampleTitle: { ...typography.body, fontSize: 15.5, fontWeight: '600', color: colors.text },
     sampleSubtitle: { ...typography.caption, fontSize: 13, color: colors.textFaint },
-    dropdownBody: { ...typography.caption, color: colors.textMuted, lineHeight: 20 },
+    prepTitle: { ...typography.title, fontSize: 22, color: colors.text, marginBottom: spacing.md },
+    prepPoints: { maxHeight: 300, marginBottom: spacing.lg },
+    prepPoint: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
+    prepText: { ...typography.body, color: colors.text, flex: 1, lineHeight: 24 },
     actions: { padding: spacing.xl, paddingTop: spacing.md, gap: spacing.sm },
   });
 }

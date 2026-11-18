@@ -21,9 +21,10 @@ export interface DistributorProfile {
   city: string | null;
   years_as_distributor: number | null;
   min_app_version: string;
+  campaign?: {name: string; participant_notice: string};
 }
 
 export async function fetchDistributorProfile(): Promise<DistributorProfile> {
-  const { distributor } = await apiGet<{ distributor: DistributorProfile }>('/distributors/me');
-  return distributor;
+  const { distributor, min_app_version, campaign } = await apiGet<{ distributor: DistributorProfile; min_app_version?: string; campaign?: DistributorProfile['campaign'] }>('/distributors/me');
+  return {...distributor, min_app_version: min_app_version ?? '0.0.0', campaign};
 }

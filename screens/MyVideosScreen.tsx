@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { PlayableVideo } from './VideoPlayerScreen';
 import type { UserFacingStatus } from '../myVideos';
@@ -16,19 +16,17 @@ export interface AnswerRow {
   questionIndex: number;
   label: string;
   questionText: string;
-  play: PlayableVideo;
-  // 1 or 2 entries pre-upload (a primary plus a runner-up kept alongside
-  // it - AppFlow.tsx's take-keeping flow), always exactly 1 once a segment
-  // has superseded local (the runner-up's file is deleted right after a
-  // successful upload - there's nothing left to choose between at that
-  // point). `play` always mirrors whichever entry here is primary.
-  takes: { id: string; play: PlayableVideo; durationSeconds: number }[];
-  // True once this question's row was built from a server-confirmed
-  // segment (AppFlow.tsx's segments merge), not just a local recording -
-  // the source of truth for "has this actually been sent," not a local
-  // session flag. Retake isn't offered once true, since re-upload after an
-  // already-confirmed segment isn't supported yet.
+  play: PlayableVideo | null;
+  // Local takes remain available after acceptance. Their default pointers
+  // are withheld for partial trims; Original/Edit is a separate route.
+  takes: { id: string; play: PlayableVideo | null; durationSeconds: number }[];
+  serverSegmentId?: string | null;
+  hasLocalTakes?: boolean;
+  playbackStatus?: 'processing' | 'ready' | 'failed' | 'local_trim' | 'legacy_unverified';
+  // Server acceptance is separate from selected-playback readiness and
+  // explicit legacy-unverified status. Replacement requires new approval.
   uploaded: boolean;
+  uploadLocked?: boolean;
 }
 
 export interface BrandedRow {
@@ -39,6 +37,9 @@ export interface BrandedRow {
 }
 
 interface Props {
+  unmatchedTakes?: { id: string; label: string }[];
+  onReviewOriginal?: (id: string) => void;
+  feedback?: ReactNode;
   loading: boolean;
   error: string | null;
   onRetryLoad: () => void;
@@ -61,9 +62,8 @@ interface Props {
   // expanded panel).
   onRetake: (questionIndex: number) => void;
   // Jumps straight into Review & Trim for this question's already-saved
-  // takes - no camera, no re-recording. Only offered pre-upload (see the
-  // `!answer.uploaded` gate below) - there's nothing left to edit once a
-  // segment is already confirmed server-side.
+  // takes, including a retained submitted original. Trim changes require
+  // fresh approval and a new accepted revision.
   onEditTakes: (questionIndex: number) => void;
   // Purely local - switches which of a question's up to 2 kept takes is
   // primary (no camera, no network). Only meaningful while a row has more
@@ -80,6 +80,9 @@ interface Props {
 // Backed by GET /distributors/me/segments + GET
 // /distributors/me/rendered-videos per API_CONTRACT.md.
 export function MyVideosScreen({
+  unmatchedTakes = [],
+  onReviewOriginal,
+  feedback,
   loading,
   error,
   onRetryLoad,
@@ -105,9 +108,10 @@ export function MyVideosScreen({
     failed: t('myVideos.statusFailed'),
   };
 
-  if (error) {
+  if (error && answers.length === 0 && unmatchedTakes.length === 0) {
     return (
       <View style={styles.centeredContainer}>
+        {feedback}
         <Text style={styles.errorTitle}>{t('myVideos.errorTitle')}</Text>
         <Text style={styles.errorSubtitle}>{error}</Text>
         <Button label={t('myVideos.tryAgainButton')} onPress={onRetryLoad} variant="secondary" style={{ marginTop: spacing.lg }} />
@@ -115,9 +119,10 @@ export function MyVideosScreen({
     );
   }
 
-  if (loading && answers.length === 0 && branded.length === 0) {
+  if (loading && answers.length === 0 && branded.length === 0 && unmatchedTakes.length === 0) {
     return (
       <View style={styles.centeredContainer}>
+        {feedback}
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
@@ -128,6 +133,12 @@ export function MyVideosScreen({
   const answersSection = (
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>{t('myVideos.answersSectionTitle')}</Text>
+      {feedback}
+      {error && <View style={{ gap: spacing.sm }}><Text style={styles.uploadedNote}>{error}</Text><Button label={t('myVideos.tryAgainButton')} onPress={onRetryLoad} variant="secondary" /></View>}
+      {unmatchedTakes.map(take => <View key={take.id} style={{ gap: spacing.sm }}>
+        <Text style={styles.uploadedNote}>{t('uploadApproval.removedQuestion')} {take.label}</Text>
+        <Button label={t('uploadApproval.originalReview')} onPress={() => onReviewOriginal?.(take.id)} variant="secondary" />
+      </View>)}
       <View style={styles.rowsCard}>
         {questionTexts.map((questionText, questionIndex) => {
           const answer = answers.find((a) => a.questionIndex === questionIndex);
@@ -135,7 +146,7 @@ export function MyVideosScreen({
             <AnswerRowCard
               key={questionIndex}
               questionIndex={questionIndex}
-              questionText={questionText}
+              questionText={answer?.questionText ?? questionText}
               answer={answer}
               expanded={expandedIndex === questionIndex}
               onToggleExpand={() => setExpandedIndex((prev) => (prev === questionIndex ? null : questionIndex))}
@@ -311,24 +322,30 @@ function AnswerRowCard({
         </View>
         <Pressable
           style={styles.playButton}
+          disabled={!answer.play}
+          accessibilityLabel={t(answer.play ? 'reviewTrim.playPreview' : 'myVideos.statusProcessing')}
           onPress={(e) => {
             e.stopPropagation();
-            onPressAnswer(answer);
+            if (answer.play) onPressAnswer(answer);
           }}
         >
-          <View style={styles.playTriangleSmall} />
+          {answer.play ? <View style={styles.playTriangleSmall} /> : <Text style={styles.rowMeta}>{t(answer.playbackStatus === 'local_trim' ? 'uploadApproval.selectedPreview' : answer.playbackStatus === 'legacy_unverified' ? 'uploadApproval.legacyUpload' : answer.playbackStatus === 'failed' ? 'myVideos.statusFailed' : 'myVideos.statusProcessing')}</Text>}
         </Pressable>
         <Text style={styles.rowChevron}>{expanded ? '⌃' : '⌄'}</Text>
       </Pressable>
 
       {expanded && (
         <View style={styles.expandPanel}>
-          {answer.uploaded ? (
-            <Text style={styles.uploadedNote}>
-              {t('myVideos.uploadedNote')}
-            </Text>
+          {answer.uploadLocked ? (
+            <Text style={styles.uploadedNote}>{t('uploadApproval.locked')}</Text>
+          ) : answer.uploaded ? (
+            <View style={{ gap: 8 }}><Text style={styles.uploadedNote}>
+              {t(answer.playbackStatus === 'legacy_unverified' ? 'uploadApproval.legacyUploadBody' : 'myVideos.uploadedNote')}
+            </Text><Text style={styles.retakeText} onPress={() => onRetake(questionIndex)}>{t('myVideos.recordAnotherTakeLink')}</Text>
+            {answer.hasLocalTakes && <Text style={styles.retakeText} onPress={() => onEditTakes(questionIndex)}>{t('uploadApproval.originalAndEdit')}</Text>}</View>
           ) : (
             <>
+              {answer.playbackStatus === 'local_trim' && <Text style={styles.uploadedNote}>{t('uploadApproval.selectedPreviewBody')}</Text>}
               {hasTwoTakes && (
                 <>
                   <Text style={styles.takesLabel}>{t('myVideos.chooseTakeLabel')}</Text>
@@ -358,7 +375,7 @@ function AnswerRowCard({
               )}
               <View style={styles.actionLinkRow}>
                 <Text style={styles.retakeText} onPress={() => onEditTakes(questionIndex)}>
-                  {hasTwoTakes ? t('myVideos.editTakesLink') : t('myVideos.editTakeLink')}
+                  {t('uploadApproval.originalAndEdit')}
                 </Text>
                 <Text style={styles.retakeText} onPress={() => onRetake(questionIndex)}>
                   {hasTwoTakes ? t('myVideos.recordAnotherTakeLink') : t('myVideos.retakeLink')}

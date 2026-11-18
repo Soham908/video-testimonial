@@ -1,13 +1,16 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useVideoPlayer } from 'expo-video';
+import { useAudioPlayer } from 'expo-audio';
+import { playQuestionAudio } from '../playQuestionAudio';
 import { useTheme } from '../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
 import { Toggle } from '../components/ui/Toggle';
 import { Button } from '../components/ui/Button';
+import { Chip } from '../components/ui/Chip';
 import { PopupSheet } from '../components/ui/Modal';
 import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 import { useStrings } from '../i18n/useStrings';
@@ -16,22 +19,21 @@ import { useFirstRunTip } from '../useFirstRunTip';
 interface Props {
   questionNumber: number;
   totalQuestions: number;
-  // Shown once countingDown is true, in the same place/style RecordingScreen
-  // shows it - reinforces the question that was just read aloud (or is
-  // being read aloud right now, if readQuestionAloud is on) instead of it
-  // only ever being audio, or only appearing once recording actually starts.
+  // Shown during question playback and countdown, in the same position
+  // as the question text during recording.
   questionText: string;
+  prompts?: string[];
   autoStart: boolean;
   onToggleAutoStart: (next: boolean) => void;
   /** True once alignment has locked and noise is clear (or overridden). */
   checksReady: boolean;
   countingDown: boolean;
+  countdownReady: boolean;
+  prepareQuestionAudio: () => Promise<void>;
+  onQuestionAudioComplete: () => void;
   countdownSeconds: number;
   onStartRecording: () => void;
-  // The current question's own vo_playback_url (API_CONTRACT.md), same
-  // source QuestionBriefScreen's "Read to me" uses - a fresh presigned S3
-  // URL, not a bundled/local clip. undefined while questions are still
-  // loading.
+  // Cached local question audio, with the API playback URL as fallback.
   voPlaybackUrl?: string;
   readQuestionAloud: boolean;
   onToggleReadQuestionAloud: (next: boolean) => void;
@@ -50,10 +52,14 @@ export function CameraCheckScreen({
   questionNumber,
   totalQuestions,
   questionText,
+  prompts = [],
   autoStart,
   onToggleAutoStart,
   checksReady,
   countingDown,
+  countdownReady,
+  prepareQuestionAudio,
+  onQuestionAudioComplete,
   countdownSeconds,
   onStartRecording,
   voPlaybackUrl,
@@ -61,6 +67,7 @@ export function CameraCheckScreen({
   onToggleReadQuestionAloud,
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
 
@@ -71,21 +78,16 @@ export function CameraCheckScreen({
   // recording starts.
   const cameraCheckTip = useFirstRunTip('cameraCheckAlignment', !countingDown);
 
-  // null (not just undefined) while there's nothing to play - useVideoPlayer
-  // accepts a null source and stays inert, same fallback QuestionBriefScreen's
-  // "Read to me" uses.
+  // Use the existing audio module for the audio-only question. Keep its
+  // iOS session active on completion so pause/unmount cannot deactivate
+  // the microphone session that VisionCamera is about to use.
   const audioSource = voPlaybackUrl ?? null;
-  const player = useVideoPlayer(audioSource);
+  const player = useAudioPlayer(audioSource, { keepAudioSessionActive: true });
+  const [audioStage, setAudioStage] = useState<'preparing' | 'playing' | 'failed' | 'complete'>('preparing');
+  const [audioAttempt, setAudioAttempt] = useState(0);
+  const [canSkipAudio, setCanSkipAudio] = useState(false);
 
-  // The underlying native call can throw synchronously with "Cannot use
-  // shared object that was already released" - same root cause and same
-  // defensive pattern as useAmbientNoiseCheck.ts's safeStop() (see that
-  // file's comment for the full mechanism), just for VideoPlayer instead
-  // of AudioRecorder. useVideoPlayer releases its native player
-  // automatically on unmount; there's no ordering guarantee that this
-  // effect's own cleanup runs before that happens - most reliably hit right
-  // when the countdown ends, since that's the same render that unmounts
-  // this component (phase flips away from 'cameraCheck'/'countdown').
+  // Automatic native-object release may precede our unmount cleanup.
   function safePause() {
     try {
       player.pause();
@@ -94,33 +96,51 @@ export function CameraCheckScreen({
     }
   }
 
-  // Plays once per countdown, from the top, only while the preference is
-  // on - not tied to whether it happened to still be playing from Question
-  // Brief's "Read to me", since that's a different moment in the flow and
-  // may not have been used at all. Stopped (not just paused) the instant
-  // the countdown ends and 'recording' actually starts (CLAUDE.md: no
-  // simultaneous playback + record, mic pickup would otherwise catch the
-  // tail of this over the person's own answer) - countingDown flipping to
-  // false covers both that transition and a cancelled countdown alike.
+  // Complete sampling shutdown and the entire VO before releasing the
+  // parent's countdown. A delayed/failed VO never silently starts capture.
   useEffect(() => {
-    if (audioSource == null) return;
-    if (!countingDown || !readQuestionAloud) {
+    if (!countingDown) return;
+    const cancellation = new AbortController();
+    setAudioStage('preparing');
+    setCanSkipAudio(false);
+    (async () => {
+      await prepareQuestionAudio();
+      if (cancellation.signal.aborted) return;
+      setCanSkipAudio(true);
+      if (readQuestionAloud && audioSource != null) {
+        setAudioStage('playing');
+        if (audioAttempt > 0) player.replace(audioSource);
+        await playQuestionAudio(player, cancellation.signal);
+      }
+      if (cancellation.signal.aborted) return;
+      setAudioStage('complete');
+      onQuestionAudioComplete();
+    })().catch((error) => {
+      if (cancellation.signal.aborted) return;
+      console.warn('[camera-check] question preparation failed', error);
+      setAudioStage('failed');
+    });
+    return () => {
+      cancellation.abort();
       safePause();
-      return;
-    }
-    try {
-      player.currentTime = 0;
-      player.play();
-    } catch (error) {
-      console.warn('[camera-check] VO play failed', error);
-    }
-    return safePause;
+    };
+    // safePause only accesses this effect's player.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countingDown, readQuestionAloud, audioSource]);
+  }, [countingDown, readQuestionAloud, audioSource, audioAttempt, player, prepareQuestionAudio, onQuestionAudioComplete]);
+
+  function skipQuestionAudio() {
+    try {
+      player.pause();
+      setAudioStage('complete');
+      onQuestionAudioComplete();
+    } catch (error) {
+      console.warn('[camera-check] VO skip failed', error);
+    }
+  }
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-      <View style={styles.topBar} pointerEvents="box-none">
+      <View style={[styles.topBar, { top: insets.top + spacing.edgeGap + 16 }]} pointerEvents="box-none">
         {countingDown ? (
           // Same style/place RecordingScreen shows the question in, once
           // recording actually starts - the progress badge above it mirrors
@@ -176,8 +196,13 @@ export function CameraCheckScreen({
         )}
       </View>
 
-      <View style={styles.bottomBar} pointerEvents="box-none">
-        {countingDown ? (
+      <View style={[styles.bottomBar, { bottom: insets.bottom + spacing.edgeGap + spacing.footerGap }]} pointerEvents="box-none">
+        {countingDown && prompts.length > 0 && (
+          <View style={styles.promptsRow} pointerEvents="none">
+            {prompts.map((prompt) => <Chip key={prompt} label={prompt} onDark emphasis />)}
+          </View>
+        )}
+        {countingDown && countdownReady ? (
           <View style={styles.countdownRow}>
             <View style={styles.countdownCircle}>
               <Text style={styles.countdownNumber}>{Math.max(countdownSeconds, 1)}</Text>
@@ -185,6 +210,19 @@ export function CameraCheckScreen({
             <Text style={styles.countdownLabel}>
               {t('cameraCheck.countdownLabel', { seconds: Math.max(countdownSeconds, 1) })}
             </Text>
+          </View>
+        ) : countingDown ? (
+          <View style={styles.audioPreparation}>
+            <Text style={styles.countdownLabel}>
+              {t(audioStage === 'failed' ? (canSkipAudio ? 'cameraCheck.audioFailed' : 'cameraCheck.preparationFailed') :
+                audioStage === 'playing' ? 'cameraCheck.listenToQuestion' : 'cameraCheck.preparingAudio')}
+            </Text>
+            {audioStage === 'failed' && (
+              <>
+                <Button label={t('cameraCheck.retryAudio')} onPress={() => setAudioAttempt((value) => value + 1)} />
+                {canSkipAudio && <Button label={t('cameraCheck.skipAudio')} variant="secondary" onPress={skipQuestionAudio} />}
+              </>
+            )}
           </View>
         ) : (
           <Button
@@ -207,6 +245,7 @@ export function CameraCheckScreen({
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+    audioPreparation: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: 'rgba(0,0,0,0.7)' },
     tipTitle: { ...typography.title, fontSize: 19, color: colors.text, marginBottom: spacing.sm },
     tipBody: { ...typography.body, color: colors.textMuted, lineHeight: 22, marginBottom: spacing.lg },
     topBar: {
@@ -261,7 +300,8 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       color: '#FFFFFF',
       lineHeight: 28,
     },
-    bottomBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: 30 },
+    bottomBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: 30, gap: spacing.md },
+    promptsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     countdownRow: { alignItems: 'center', gap: spacing.sm },
     countdownCircle: {
       width: 58,

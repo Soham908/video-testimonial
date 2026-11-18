@@ -1,318 +1,173 @@
-import { useMemo, useRef, useState } from 'react';
-import {
-  Dimensions,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { useStrings } from '../i18n/useStrings';
-import type { PaletteColors, PaletteDarkColors } from '../theme/palettes';
-import type { Spacing } from '../theme/spacing';
-import type { Radius } from '../theme/radius';
-import type { Typography } from '../theme/typography';
+import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import type { LanguageCode } from '../preferences';
+import { Button } from '../components/ui/Button';
+
+type StepKind = 'what' | 'why' | 'how';
+const LANGUAGES: LanguageCode[] = ['en', 'hi', 'mr'];
+const STEPS: StepKind[] = ['what', 'why', 'how'];
 
 interface Props {
+  language: LanguageCode | null;
+  onChangeLanguage: (language: LanguageCode) => void;
   onGetStarted: () => void;
+  onBack: () => void;
 }
 
-type StepVariant = 'ask' | 'reward' | 'share';
-
-interface Step {
-  variant: StepVariant;
-  eyebrow: string;
-  title: string;
-  body: string;
+function scriptStyle(text: string, weight = '400') {
+  return containsDevanagari(text) ? { fontFamily: devanagariFontFamily(weight) } : undefined;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-export function OnboardingScreen({ onGetStarted }: Props) {
-  const { colors, themeDark, spacing, radius, typography } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
+// One language choice followed by three content cards: four stops in total.
+// Keep the current card when reopening the picker; consent remains a separate gate.
+export function OnboardingScreen({ language, onChangeLanguage, onGetStarted, onBack }: Props) {
+  const { colors, spacing, radius, typography, themeDark } = useTheme();
   const { t } = useStrings();
-  const scrollRef = useRef<ScrollView>(null);
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const pager = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
+  const [choosingLanguage, setChoosingLanguage] = useState(true);
+  const styles = useMemo(() => StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background, paddingTop: insets.top + spacing.edgeGap + spacing.sm },
+    header: { paddingHorizontal: spacing.xl, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    brand: { ...typography.caption, color: colors.accent, fontWeight: '700', flex: 1 },
+    textAction: { paddingVertical: spacing.md, minHeight: 48, justifyContent: 'center', flexShrink: 1 },
+    textActionText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
+    content: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.lg },
+    title: { ...typography.title, color: colors.text, lineHeight: 36 },
+    body: { ...typography.body, color: colors.textMuted, lineHeight: 26 },
+    choices: { gap: spacing.md },
+    languageRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 2, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, minHeight: 72 },
+    languageSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+    languageText: { ...typography.button, color: colors.text },
+    check: { fontSize: 22, fontWeight: '700', color: colors.accent },
+    pager: { flex: 1 },
+    page: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md, gap: spacing.md },
+    artwork: { height: Math.min(240, Math.max(130, height * 0.24)), borderRadius: radius.xl, backgroundColor: themeDark.background, alignItems: 'center', justifyContent: 'center', padding: spacing.lg, marginBottom: spacing.sm },
+    eyebrow: { ...typography.label, color: colors.accent },
+    footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.edgeGap + spacing.footerGap, gap: spacing.sm },
+    progress: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
+    footerRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+    next: { flex: 1 },
+    dots: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
+    dot: { height: 6, width: 6, borderRadius: 3, backgroundColor: colors.borderStrong },
+    activeDot: { width: 22, backgroundColor: colors.accent },
+    illustrationCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center', gap: spacing.sm, minWidth: 150 },
+    illustrationTitle: { ...typography.body, fontWeight: '700', color: colors.text, textAlign: 'center' },
+    questionMark: { fontSize: 48, color: colors.accent, fontWeight: '700' },
+    quote: { fontSize: 64, lineHeight: 70, color: colors.accentText },
+    illustrationLightText: { ...typography.body, color: '#FFFFFF', textAlign: 'center', fontWeight: '700' },
+    howList: { gap: spacing.md, alignSelf: 'stretch' },
+    howRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+    howNumber: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+    howNumberText: { color: colors.accentText, fontWeight: '700' },
+  }), [colors, spacing, radius, typography, themeDark, height, insets.top, insets.bottom]);
 
-  // Three swipes, one idea each - the middle one is the reward, shown
-  // rather than described (DECISIONS.md, 14B, replaces the old
-  // single-screen WelcomeScreen). No tab bar - this is a one-time,
-  // pre-login-adjacent sequence, not part of the main app shell. Built
-  // inside the component (not module-level) since translating each step
-  // needs `t`, only available here.
-  const steps: Step[] = [
-    {
-      variant: 'ask',
-      eyebrow: t('onboarding.step1Eyebrow'),
-      title: t('onboarding.step1Title'),
-      body: t('onboarding.step1Body'),
-    },
-    {
-      variant: 'reward',
-      eyebrow: t('onboarding.step2Eyebrow'),
-      title: t('onboarding.step2Title'),
-      body: t('onboarding.step2Body'),
-    },
-    {
-      variant: 'share',
-      eyebrow: t('onboarding.step3Eyebrow'),
-      title: t('onboarding.step3Title'),
-      body: t('onboarding.step3Body'),
-    },
-  ];
-
-  function goTo(nextIndex: number) {
-    setIndex(nextIndex);
-    scrollRef.current?.scrollTo({ x: nextIndex * SCREEN_WIDTH, animated: true });
+  function goTo(next: number) {
+    const bounded = Math.max(0, Math.min(STEPS.length - 1, next));
+    setIndex(bounded);
+    pager.current?.scrollTo({ x: bounded * width, animated: true });
   }
 
-  function handleMomentumEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const next = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    setIndex(next);
+  function goBack() {
+    if (choosingLanguage) onBack();
+    else if (index > 0) goTo(index - 1);
+    else setChoosingLanguage(true);
   }
 
-  const isLast = index === steps.length - 1;
+  useEffect(() => {
+    if (!choosingLanguage) pager.current?.scrollTo({ x: index * width, animated: false });
+    // The pager remounts when closing the picker; restore the current card.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, choosingLanguage]);
 
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => { goBack(); return true; });
+    return () => subscription.remove();
+  }, [choosingLanguage, index, width, onBack]);
+
+  function onSwipe(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    setIndex(Math.max(0, Math.min(STEPS.length - 1, Math.round(event.nativeEvent.contentOffset.x / width))));
+  }
+
+  const languageName = language ? t(`languageNames.${language}`) : '';
   return (
     <View style={styles.container}>
-      <View style={styles.topRow}>
-        <View style={{ flex: 1 }} />
-        <Pressable onPress={onGetStarted}>
-          <Text style={styles.skip}>{t('onboarding.skipButton')}</Text>
-        </Pressable>
+      <View style={styles.header}>
+        {choosingLanguage ? (
+          <>
+            <Text style={styles.brand}>{t('splash.appName')}</Text>
+            <Pressable accessibilityRole="button" onPress={onBack} style={styles.textAction}>
+              <Text style={[styles.textActionText, scriptStyle(t('onboarding.backButton'))]}>{t('onboarding.backButton')}</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Pressable accessibilityRole="button" onPress={() => setChoosingLanguage(true)} style={[styles.textAction, { flex: 1 }]}>
+              <Text style={[styles.textActionText, scriptStyle(languageName, '600')]}>{t('onboarding.changeLanguage')}: {languageName} ▾</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onGetStarted} style={styles.textAction}>
+              <Text style={[styles.textActionText, scriptStyle(t('onboarding.skipButton'))]}>{t('onboarding.skipButton')}</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleMomentumEnd}
-        style={styles.pager}
-      >
-        {steps.map((step) => (
-          <View key={step.variant} style={[styles.page, { width: SCREEN_WIDTH }]}>
-            <View style={styles.artwork}>
-              <StepIllustration variant={step.variant} styles={styles} themeDark={themeDark} accent={colors.accent} t={t} />
+      {choosingLanguage ? (
+        <>
+          <ScrollView contentContainerStyle={styles.content}>
+            <Text accessibilityRole="header" style={[styles.title, scriptStyle(t('onboarding.languageTitle'), '700')]}>{t('onboarding.languageTitle')}</Text>
+            <Text style={[styles.body, scriptStyle(t('onboarding.languageBody'))]}>{t('onboarding.languageBody')}</Text>
+            <View accessibilityRole="radiogroup" style={styles.choices}>
+              {LANGUAGES.map(code => (
+                <Pressable key={code} accessibilityRole="radio" accessibilityState={{ checked: language === code }} accessibilityLabel={t(`languageNames.${code}`)} onPress={() => onChangeLanguage(code)} style={[styles.languageRow, language === code && styles.languageSelected]}>
+                  <Text style={[styles.languageText, scriptStyle(t(`languageNames.${code}`), '700')]}>{t(`languageNames.${code}`)}</Text>
+                  {language === code && <Text style={styles.check}>✓</Text>}
+                </Pressable>
+              ))}
             </View>
-            <Text style={styles.eyebrow}>{step.eyebrow}</Text>
-            <Text style={styles.title}>{step.title}</Text>
-            <Text style={styles.body}>{step.body}</Text>
+          </ScrollView>
+          <View style={styles.footer}>
+            {!language && <Text style={styles.progress}>{t('onboarding.languageHint')}</Text>}
+            <Button label={t('onboarding.languageContinue')} textStyle={scriptStyle(t('onboarding.languageContinue'), '700')} disabled={!language} onPress={() => { if (language) setChoosingLanguage(false); }} />
           </View>
-        ))}
-      </ScrollView>
-
-      <View style={styles.bottomRow}>
-        <Pressable onPress={() => goTo(Math.max(0, index - 1))} disabled={index === 0}>
-          <Text style={[styles.back, index === 0 && styles.backHidden]}>{t('onboarding.backButton')}</Text>
-        </Pressable>
-
-        <View style={styles.dots}>
-          {steps.map((step, i) => (
-            <View
-              key={step.variant}
-              style={[styles.dot, i === index && styles.dotActive, i === index && { backgroundColor: colors.accent }]}
-            />
-          ))}
-        </View>
-
-        <Pressable
-          style={styles.nextButton}
-          onPress={() => (isLast ? onGetStarted() : goTo(index + 1))}
-        >
-          <Text style={styles.nextButtonText}>{isLast ? t('onboarding.getStartedButton') : t('onboarding.nextButton')}</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-// Per-step artwork - a dark "device mockup" card echoing the approved design
-// export (14B), not a floating emoji. `themeDark` is the same fixed dark
-// token used for the camera-mode chrome elsewhere, reused here so the card
-// looks intentional rather than like a random hardcoded color.
-function StepIllustration({
-  variant,
-  styles,
-  themeDark,
-  accent,
-  t,
-}: {
-  variant: StepVariant;
-  styles: ReturnType<typeof makeStyles>;
-  themeDark: PaletteDarkColors;
-  accent: string;
-  t: (path: string, vars?: Record<string, string | number>) => string;
-}) {
-  const cardStyle = [styles.illoCard, { backgroundColor: themeDark.background }];
-
-  if (variant === 'ask') {
-    return (
-      <View style={cardStyle}>
-        <View style={styles.illoQuestionCard}>
-          <View style={styles.illoDotsRow}>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <View key={i} style={[styles.illoDot, i === 0 && { backgroundColor: accent }]} />
+        </>
+      ) : (
+        <>
+          <ScrollView ref={pager} horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onSwipe} style={styles.pager}>
+            {STEPS.map((kind, i) => (
+              <ScrollView key={kind} style={{ width }} contentContainerStyle={styles.page}>
+                <View style={styles.artwork} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                  {kind === 'what' ? (
+                    <View style={styles.illustrationCard}><Text style={styles.questionMark}>?</Text><Text style={[styles.illustrationTitle, scriptStyle(t('onboarding.whatBadge'), '700')]}>{t('onboarding.whatBadge')}</Text></View>
+                  ) : kind === 'why' ? (
+                    <><Text style={styles.quote}>“</Text><Text style={[styles.illustrationLightText, scriptStyle(t('onboarding.whyBadge'), '700')]}>{t('onboarding.whyBadge')}</Text></>
+                  ) : (
+                    <View style={styles.howList}>{[1, 2, 3].map(n => <View key={n} style={styles.howRow}><View style={styles.howNumber}><Text style={styles.howNumberText}>{n}</Text></View><Text style={[styles.illustrationLightText, { flex: 1, textAlign: 'left' }, scriptStyle(t(`onboarding.howStep${n}`), '700')]}>{t(`onboarding.howStep${n}`)}</Text></View>)}</View>
+                  )}
+                </View>
+                <Text style={[styles.eyebrow, scriptStyle(t(`onboarding.step${i + 1}Eyebrow`), '700')]}>{t(`onboarding.step${i + 1}Eyebrow`)}</Text>
+                <Text accessibilityRole="header" style={[styles.title, scriptStyle(t(`onboarding.step${i + 1}Title`), '700')]}>{t(`onboarding.step${i + 1}Title`)}</Text>
+                <Text style={[styles.body, scriptStyle(t(`onboarding.step${i + 1}Body`))]}>{t(`onboarding.step${i + 1}Body`)}</Text>
+              </ScrollView>
             ))}
+          </ScrollView>
+          <View style={styles.footer}>
+            <Text accessibilityLiveRegion="polite" style={[styles.progress, scriptStyle(t('onboarding.cardProgress', { number: index + 1, total: STEPS.length }))]}>{t('onboarding.cardProgress', { number: index + 1, total: STEPS.length })}</Text>
+            <View style={styles.dots} accessible={false}>{STEPS.map((kind, i) => <View key={kind} style={[styles.dot, index === i && styles.activeDot]} />)}</View>
+            <View style={styles.footerRow}>
+              <Button label={t('onboarding.backButton')} textStyle={scriptStyle(t('onboarding.backButton'), '700')} variant="quiet" onPress={goBack} />
+              <Button label={t(index === STEPS.length - 1 ? 'onboarding.getStartedButton' : 'onboarding.nextButton')} textStyle={scriptStyle(t(index === STEPS.length - 1 ? 'onboarding.getStartedButton' : 'onboarding.nextButton'), '700')} onPress={() => index === STEPS.length - 1 ? onGetStarted() : goTo(index + 1)} style={styles.next} />
+            </View>
           </View>
-          <View style={[styles.illoPlayCircle, { backgroundColor: accent }]}>
-            <View style={styles.illoPlayTriangle} />
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  if (variant === 'reward') {
-    return (
-      <View style={cardStyle}>
-        <View style={styles.illoBadge}>
-          <Text style={styles.illoBadgeText}>{t('onboarding.rewardBadge')}</Text>
-        </View>
-        <View style={[styles.illoPhoneCard, { backgroundColor: themeDark.chromeStrong }]}>
-          <View style={styles.illoAvatarBlock} />
-          <Text style={styles.illoPhoneName}>Mahesh Agrawal</Text>
-          <Text style={styles.illoPhoneSubtitle}>Agrawal Traders</Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={cardStyle}>
-      <View style={styles.illoChatStack}>
-        <View style={styles.illoBubbleIncoming} />
-        <View style={[styles.illoBubbleOutgoing, { backgroundColor: accent }]}>
-          <Text style={styles.illoCheckGlyph}>✓✓</Text>
-        </View>
-      </View>
+        </>
+      )}
     </View>
   );
-}
-
-function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
-  return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.xl + spacing.topExtra },
-    topRow: { flexDirection: 'row', paddingHorizontal: spacing.xl },
-    skip: { ...typography.body, fontSize: 14, fontWeight: '600', color: colors.textMuted },
-    pager: { flex: 1 },
-    page: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
-    artwork: {
-      height: 330,
-      borderRadius: radius.xl,
-      overflow: 'hidden',
-      marginBottom: spacing.xl,
-    },
-    illoCard: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    // 'ask' variant - a mini question card with a progress-dots row and a
-    // play glyph, echoing Home's own question card treatment.
-    illoQuestionCard: {
-      width: 170,
-      borderRadius: radius.lg,
-      backgroundColor: '#FFFFFF',
-      paddingVertical: spacing.lg,
-      alignItems: 'center',
-      gap: spacing.md,
-    },
-    illoDotsRow: { flexDirection: 'row', gap: 5 },
-    illoDot: { width: 10, height: 4, borderRadius: 2, backgroundColor: '#E4DBCF' },
-    illoPlayCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-    illoPlayTriangle: {
-      width: 0,
-      height: 0,
-      borderTopWidth: 8,
-      borderBottomWidth: 8,
-      borderLeftWidth: 13,
-      borderTopColor: 'transparent',
-      borderBottomColor: 'transparent',
-      borderLeftColor: '#FFFFFF',
-      marginLeft: 4,
-    },
-    // 'reward' variant - matches the approved design export (14B) almost
-    // exactly: a phone-card mockup with a "YOUR VIDEO" badge.
-    illoBadge: {
-      position: 'absolute',
-      top: spacing.md,
-      left: spacing.md,
-      backgroundColor: 'rgba(255,255,255,0.14)',
-      borderRadius: radius.pill,
-      paddingVertical: 6,
-      paddingHorizontal: 11,
-    },
-    illoBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 },
-    illoPhoneCard: {
-      width: 150,
-      height: 250,
-      borderRadius: radius.lg,
-      padding: spacing.md,
-      flexDirection: 'column',
-    },
-    illoAvatarBlock: { width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.16)', marginBottom: 'auto' },
-    illoPhoneName: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-    illoPhoneSubtitle: { color: 'rgba(255,255,255,0.62)', fontSize: 12, marginTop: 2 },
-    // 'share' variant - a two-bubble chat exchange (incoming, then an
-    // outgoing message with a read receipt) - immediately reads as
-    // "sharing/WhatsApp" the way a generic send-arrow glyph didn't.
-    illoChatStack: { width: 190, gap: 10 },
-    illoBubbleIncoming: {
-      alignSelf: 'flex-start',
-      width: 88,
-      height: 32,
-      borderRadius: 16,
-      borderBottomLeftRadius: 4,
-      backgroundColor: '#FFFFFF',
-    },
-    illoBubbleOutgoing: {
-      alignSelf: 'flex-end',
-      width: 122,
-      height: 44,
-      borderRadius: 16,
-      borderBottomRightRadius: 4,
-      alignItems: 'flex-end',
-      justifyContent: 'flex-end',
-      paddingRight: 10,
-      paddingBottom: 6,
-    },
-    illoCheckGlyph: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '700' },
-    eyebrow: {
-      fontSize: 12.5,
-      fontWeight: '700',
-      letterSpacing: 1.5,
-      textTransform: 'uppercase',
-      color: colors.accent,
-      marginBottom: spacing.sm,
-    },
-    title: {
-      ...typography.title,
-      fontSize: 27,
-      color: colors.text,
-      lineHeight: 34,
-      marginBottom: spacing.sm,
-    },
-    body: { ...typography.body, color: colors.textMuted, lineHeight: 24 },
-    bottomRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.xl,
-      paddingBottom: spacing.footerBottom,
-      paddingTop: spacing.md,
-    },
-    back: { ...typography.body, fontSize: 14.5, fontWeight: '600', color: colors.textMuted, width: 56 },
-    backHidden: { opacity: 0 },
-    dots: { flexDirection: 'row', gap: 7 },
-    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.borderStrong },
-    dotActive: { width: 22 },
-    nextButton: {
-      backgroundColor: colors.accent,
-      borderRadius: radius.md,
-      paddingVertical: 13,
-      paddingHorizontal: 26,
-    },
-    nextButtonText: { ...typography.button, fontSize: 15.5, color: colors.accentText },
-  });
 }

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PALETTES, DEFAULT_PALETTE_ID, type Palette, type PaletteColors, type PaletteDarkColors } from './palettes';
 import { DEFAULT_FONT_ID, type FontId } from './fonts';
 import { makeTypography, type Typography } from './typography';
@@ -26,6 +27,13 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  const pageSpacing = useMemo(() => ({
+    ...spacing,
+    // Existing screens use xl + topExtra; keep their content below the
+    // status band even on a notched iPhone, without changing camera size.
+    topExtra: Math.max(spacing.topExtra, insets.top + spacing.edgeGap + spacing.md - spacing.xl),
+  }), [insets.top]);
   const [paletteId, setPaletteIdState] = useState(DEFAULT_PALETTE_ID);
   const [fontId, setFontIdState] = useState<FontId>(DEFAULT_FONT_ID);
 
@@ -39,7 +47,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         SecureStore.getItemAsync(PALETTE_KEY),
         SecureStore.getItemAsync(FONT_KEY),
       ]);
-      if (storedPalette && PALETTES[storedPalette]) setPaletteIdState(storedPalette);
+      // Production always uses the approved green brand, including upgrades
+      // from a development install that saved a different trial palette.
+      if (__DEV__ && storedPalette && PALETTES[storedPalette]) setPaletteIdState(storedPalette);
       if (storedFont === 'notoSans' || storedFont === 'plusJakartaSans') {
         setFontIdState(storedFont);
       }
@@ -66,12 +76,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       colors: palette.colors,
       themeDark: palette.dark,
       typography,
-      spacing,
+      spacing: pageSpacing,
       radius,
       setPaletteId,
       setFontId,
     }),
-    [paletteId, fontId, palette, typography],
+    [paletteId, fontId, palette, typography, pageSpacing],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

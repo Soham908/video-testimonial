@@ -20,12 +20,19 @@ export class ApiError extends Error {
 }
 
 let authToken: string | null = null;
+let authGeneration = 0;
+export interface AuthSession { token: string | null; generation: number; }
+export function captureAuthSession(): AuthSession { return { token: authToken, generation: authGeneration }; }
+export function authSessionIsCurrent(session: AuthSession): boolean {
+  return session.token === authToken && session.generation === authGeneration;
+}
 
 // Called by the auth layer (Goal 2) once a token is available/cleared.
 // A module-level setter, not a param on every call, so every other call
 // site in the app doesn't need to know or care about the token.
 export function setAuthToken(token: string | null): void {
   authToken = token;
+  authGeneration++;
 }
 
 // Fired once, from whichever call site's request happens to be the first to
@@ -43,17 +50,20 @@ export function setAuthToken(token: string | null): void {
 // expired mid-flow" finding - previously this surfaced only as a raw error
 // string wherever the failing call happened to be caught, with no path back
 // to a working state short of manually finding Logout in Profile).
-const SESSION_EXPIRED_CODES = new Set(['token_expired', 'invalid_token', 'missing_token']);
+const SESSION_EXPIRED_CODES = new Set(['token_expired', 'invalid_token', 'missing_token', 'account_deleted']);
 
-let onSessionExpired: (() => void) | null = null;
+let onSessionExpired: ((code?: string) => void) | null = null;
 
-export function setSessionExpiredHandler(handler: (() => void) | null): void {
+export function setSessionExpiredHandler(handler: ((code?: string) => void) | null): void {
   onSessionExpired = handler;
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   body?: unknown;
+  signal?: AbortSignal;
+  // Isolated recovery requests never replace/expire the active account.
+  token?: string | null;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -63,9 +73,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     );
   }
 
+  const session = captureAuthSession();
+  const isolated = Object.prototype.hasOwnProperty.call(options, 'token');
+  const requestToken = isolated ? options.token : session.token;
   const headers: Record<string, string> = {};
-  if (authToken) {
-    headers.Authorization = `Bearer ${authToken}`;
+  if (requestToken) {
+    headers.Authorization = `Bearer ${requestToken}`;
   }
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -77,6 +90,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       method: options.method ?? 'GET',
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
     });
   } catch (error) {
     throw new ApiError(0, 'network_error', 'Could not reach the server. Check your connection.');
@@ -85,15 +99,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   // 204/empty responses aren't in the contract anywhere, but guard anyway
   // rather than letting JSON.parse throw on an empty body.
   const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  let data: any;
+  try { data = text ? JSON.parse(text) : {}; }
+  catch { throw new ApiError(response.status, 'invalid_response', 'The server returned an unsupported response. Please try again later.'); }
 
   if (!response.ok) {
     const code = data.error ?? 'unknown_error';
     // A real 403 (e.g. permission-denied) or any other error code must fall
     // straight through to the normal ApiError path below, unhandled here -
     // only these three specific codes mean "the session itself is dead."
-    if (SESSION_EXPIRED_CODES.has(code)) {
-      onSessionExpired?.();
+    if (!isolated && requestToken && authSessionIsCurrent(session) && SESSION_EXPIRED_CODES.has(code)) {
+      onSessionExpired?.(code);
     }
     throw new ApiError(response.status, code, data.message ?? data.error ?? 'Something went wrong.');
   }
@@ -101,10 +117,30 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return data as T;
 }
 
-export function apiGet<T>(path: string): Promise<T> {
-  return request<T>(path, { method: 'GET' });
+export function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, { method: 'GET', signal });
 }
 
-export function apiPost<T>(path: string, body: unknown): Promise<T> {
-  return request<T>(path, { method: 'POST', body });
+export function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, { method: 'POST', body, signal });
+}
+
+export function apiDelete<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, { method: 'DELETE', body });
+}
+
+async function isolatedRequest<T>(path: string, options: RequestOptions): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try { return await request<T>(path, { ...options, signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+export function apiGetWithToken<T>(path: string, token: string | null): Promise<T> {
+  return isolatedRequest<T>(path, { token });
+}
+export function apiPostWithToken<T>(path: string, body: unknown, token: string | null): Promise<T> {
+  return isolatedRequest<T>(path, { method: 'POST', body, token });
+}
+export function apiDeleteWithToken<T>(path: string, body: unknown, token: string): Promise<T> {
+  return isolatedRequest<T>(path, { method: 'DELETE', body, token });
 }

@@ -3,6 +3,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { useTheme } from '../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -30,6 +31,7 @@ interface Props {
 
 export function VideoPlayerScreen({ video, onClose }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const { t } = useStrings();
@@ -55,7 +57,7 @@ export function VideoPlayerScreen({ video, onClose }: Props) {
   async function handleSave() {
     setSaveState('saving');
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      const { status } = await MediaLibrary.requestPermissionsAsync(true);
       if (status !== 'granted') {
         setSaveState('error');
         return;
@@ -72,12 +74,12 @@ export function VideoPlayerScreen({ video, onClose }: Props) {
     <View style={styles.container}>
       <VideoView style={styles.video} player={player} contentFit="contain" nativeControls />
 
-      <Pressable style={styles.closeButton} onPress={onClose}>
+      <Pressable style={[styles.closeButton, { top: insets.top + spacing.edgeGap + spacing.lg }]} onPress={onClose}>
         <Text style={styles.closeButtonText}>{t('videoPlayer.closeButton')}</Text>
       </Pressable>
 
       {video.celebratory ? (
-        <View style={styles.celebratoryFooter}>
+        <View style={[styles.celebratoryFooter, { paddingBottom: insets.bottom + spacing.edgeGap + spacing.footerGap }]}>
           <Text style={styles.congrats}>{t('videoPlayer.congratulations')}</Text>
           <Text style={styles.congratsSubtitle}>{t('videoPlayer.congratsSubtitle', { label: video.label })}</Text>
           <View style={styles.celebratoryActions}>
@@ -97,7 +99,7 @@ export function VideoPlayerScreen({ video, onClose }: Props) {
           </View>
         </View>
       ) : (
-        <Text style={styles.label}>{video.label}</Text>
+        <Text style={[styles.label, { bottom: insets.bottom + spacing.edgeGap + spacing.footerGap }]}>{video.label}</Text>
       )}
     </View>
   );

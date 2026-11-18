@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
@@ -8,9 +8,13 @@ import type { Typography } from '../theme/typography';
 import { register, loginByPhone } from '../auth';
 import { ApiError } from '../api';
 import { useStrings } from '../i18n/useStrings';
+import { AuthFormLayout } from '../components/ui/AuthFormLayout';
+import { LegalLinks } from '../components/LegalDocumentViewer';
+import { PhoneNumberField } from '../components/ui/PhoneNumberField';
+import { validPhone, type PhoneCountryCode } from '../phoneNumbers';
 
 interface Props {
-  onAuthenticated: () => void;
+  onAuthenticated: () => void | Promise<void>;
   onBack: () => void;
 }
 
@@ -35,18 +39,24 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
   // Shared across both modes - phone is the same identifier either way, and
   // a 409-triggered switch into sign-in mode keeps whatever was typed here.
   const [phone, setPhone] = useState('');
+  const [country, setCountry] = useState<PhoneCountryCode>('IN');
   const [password, setPassword] = useState('');
+  const [useInvite, setUseInvite] = useState(false);
+  const [organizationInvite, setOrganizationInvite] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Set only by the 409 redirect below - a neutral notice, not an error,
   // since "this phone is already registered" is an expected case per the
   // contract, not a failure.
   const [notice, setNotice] = useState<string | null>(null);
+  const phoneInput = useRef<TextInput>(null);
+  const passwordInput = useRef<TextInput>(null);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const isRegister = mode === 'register';
   const canSubmit = isRegister
-    ? name.trim().length > 0 && phone.trim().length > 0 && password.length >= 6
-    : phone.trim().length > 0 && password.length > 0;
+    ? name.trim().length > 0 && validPhone(phone, country, true) && password.length >= 8 && (!useInvite || /^[A-Za-z0-9_-]{43}$/.test(organizationInvite.trim()))
+    : validPhone(phone, country) && password.length > 0;
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -55,17 +65,18 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
   }
 
   async function handleSubmit() {
-    if (!canSubmit) return;
+    if (submitting || !canSubmit) return;
+    Keyboard.dismiss();
     setSubmitting(true);
     setError(null);
     setNotice(null);
     try {
       if (isRegister) {
-        await register(name.trim(), phone.trim(), password);
+        await register(name.trim(), phone.trim(), password, useInvite ? organizationInvite.trim() : undefined, country);
       } else {
-        await loginByPhone(phone.trim(), password);
+        await loginByPhone(phone.trim(), password, country);
       }
-      onAuthenticated();
+      await onAuthenticated();
     } catch (err) {
       if (isRegister && err instanceof ApiError && err.code === 'phone_already_registered') {
         setMode('signIn');
@@ -79,14 +90,11 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
   }
 
   return (
-    <Pressable style={styles.container} onPress={Keyboard.dismiss}>
+    <AuthFormLayout contentStyle={styles.container}>
       <View>
         <View style={styles.logoBadge}>
           <Image source={require('../assets/Zeist-logo-white.png')} style={styles.logoMark} resizeMode="contain" />
         </View>
-        <Text style={styles.backLink} onPress={onBack}>
-          {t('selfRegister.backLink')}
-        </Text>
         <Text style={styles.title}>
           {isRegister ? t('selfRegister.registerTitle') : t('selfRegister.signInTitle')}
         </Text>
@@ -98,42 +106,56 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
           <>
             <Text style={styles.label}>{t('selfRegister.nameLabel')}</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, focusedField === 'name' && styles.inputFocused]}
+              accessibilityLabel={t('selfRegister.nameLabel')}
               value={name}
+              maxLength={200}
               onChangeText={setName}
               autoCapitalize="words"
               editable={!submitting}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => phoneInput.current?.focus()}
+              onFocus={() => setFocusedField('name')}
+              onBlur={() => setFocusedField(null)}
               placeholderTextColor={colors.textDisabled}
             />
           </>
         )}
 
-        <Text style={styles.label}>{t('selfRegister.phoneLabel')}</Text>
-        <TextInput
-          style={styles.input}
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          editable={!submitting}
-          placeholderTextColor={colors.textDisabled}
-        />
+        <PhoneNumberField ref={phoneInput} label={t('selfRegister.phoneLabel')} value={phone} country={country} onChangeText={setPhone} onCountryChange={setCountry} disabled={submitting} registering={isRegister} onNext={() => passwordInput.current?.focus()} />
 
         <Text style={styles.label}>{t('selfRegister.passwordLabel')}</Text>
         <TextInput
-          style={styles.input}
+          ref={passwordInput}
+          style={[styles.input, focusedField === 'password' && styles.inputFocused]}
+          accessibilityLabel={t('selfRegister.passwordLabel')}
           value={password}
           onChangeText={setPassword}
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
           editable={!submitting}
+          returnKeyType="done"
+          onSubmitEditing={handleSubmit}
+          onFocus={() => setFocusedField('password')}
+          onBlur={() => setFocusedField(null)}
           placeholderTextColor={colors.textDisabled}
         />
 
+        {isRegister && password.length > 0 && password.length < 8 && <Text accessibilityLiveRegion="polite" style={[styles.error, { marginTop: -8, marginBottom: 12, fontSize: 12 }]}>{t('selfRegister.passwordHint')}</Text>}
+
+        {isRegister && <>
+          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: useInvite }} onPress={() => setUseInvite(v => !v)} disabled={submitting}>
+            <Text style={styles.toggleLink}>{t('selfRegister.inviteToggle')} {useInvite ? '✓' : ''}</Text>
+          </Pressable>
+          {useInvite && <TextInput style={styles.input} accessibilityLabel={t('selfRegister.inviteLabel')} placeholder={t('selfRegister.inviteLabel')} placeholderTextColor={colors.textDisabled} value={organizationInvite} onChangeText={setOrganizationInvite} autoCapitalize="none" autoCorrect={false} maxLength={43} editable={!submitting} />}
+        </>}
         {notice && <Text style={styles.notice}>{notice}</Text>}
         {error && <Text style={styles.error}>{error}</Text>}
 
         <Pressable
+          accessibilityRole="button"
           style={[styles.button, (submitting || !canSubmit) && styles.buttonDisabled]}
           onPress={handleSubmit}
           disabled={submitting || !canSubmit}
@@ -153,15 +175,17 @@ export function SelfRegisterScreen({ onAuthenticated, onBack }: Props) {
         >
           {isRegister ? t('selfRegister.switchToSignInLink') : t('selfRegister.switchToRegisterLink')}
         </Text>
+        <LegalLinks />
       </View>
-    </Pressable>
+
+    </AuthFormLayout>
   );
 }
 
 function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typography: Typography) {
   return StyleSheet.create({
     container: {
-      flex: 1,
+      flexGrow: 1,
       backgroundColor: colors.background,
       padding: spacing.xl,
       paddingTop: spacing.xxl + spacing.topExtra,
@@ -216,6 +240,10 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, typ
       color: colors.text,
       marginBottom: spacing.md,
     },
+    inputFocused: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+    keyboardToolbar: { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, alignItems: 'flex-end' },
+    keyboardNext: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+    keyboardNextText: { ...typography.body, fontWeight: '700', color: colors.accent },
     notice: {
       ...typography.body,
       fontSize: 14,

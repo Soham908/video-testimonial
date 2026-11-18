@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
@@ -8,6 +9,8 @@ import type { Typography } from '../theme/typography';
 import { Button } from '../components/ui/Button';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { useStrings } from '../i18n/useStrings';
+import { CompletionCheckmark } from '../components/CompletionFeedback';
+import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
 
 interface Props {
   onDone: () => void;
@@ -20,6 +23,8 @@ interface Props {
   // 0-1, same value UploadingScreen used to show on its own button -
   // meaningless once `uploading` is false.
   progress: number;
+  confirmedCount: number;
+  totalCount: number;
   // When false (this build's default - see config.ts), no render job is
   // ever created server-side, so the normal "we'll message you when your
   // branded videos are ready" copy would be a promise that never gets
@@ -36,40 +41,45 @@ interface Props {
 // questions, one batch, no "another product" concept) - the only real
 // exit is back to Home, available throughout (release semantics: the
 // user isn't blocked here even while sending is still in progress).
-export function ConfirmationScreen({ onDone, uploading, progress, reelsEnabled }: Props) {
+export function ConfirmationScreen({ onDone, uploading, progress, confirmedCount, totalCount, reelsEnabled }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
+  const sending = uploading || totalCount <= 0 || confirmedCount !== totalCount;
+  const previousUploading = useRef(sending);
+  const [completionEvent, setCompletionEvent] = useState(0);
+  useEffect(() => {
+    if (previousUploading.current && !sending) setCompletionEvent(value => value + 1);
+    previousUploading.current = sending;
+  }, [sending]);
+  const font = (value: string, weight = '400') => containsDevanagari(value) ? { fontFamily: devanagariFontFamily(weight) } : undefined;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + spacing.edgeGap + spacing.footerGap }]}>
       <View style={styles.content}>
-        <View style={styles.checkCircle}>
-          {uploading ? (
+        {sending ? <View style={styles.checkCircle}>
             <ActivityIndicator size="large" color={colors.accentText} />
-          ) : (
-            <Text style={styles.checkmark}>✓</Text>
-          )}
-        </View>
-        <Text style={styles.title}>
-          {uploading ? t('confirmation.titleSending') : t('confirmation.titleDone')}
+        </View> : <CompletionCheckmark eventId={completionEvent || undefined} style={{ marginBottom: spacing.xl }} />}
+        <Text accessibilityRole="header" style={[styles.title, !sending && font(t('feedback.uploadCompleteTitle'), '700')]}>
+          {sending ? t('confirmation.titleSending') : t('feedback.uploadCompleteTitle')}
         </Text>
-        <Text style={styles.subtitle}>
-          {uploading
+        <Text style={[styles.subtitle, !sending && font(t(reelsEnabled ? 'confirmation.subtitleDoneReelsEnabled' : confirmedCount === 1 ? 'feedback.uploadCompleteBodySingular' : 'feedback.uploadCompleteBody'))]}>
+          {sending
             ? t('confirmation.subtitleSending', { percent: Math.round(progress * 100) })
             : reelsEnabled
               ? t('confirmation.subtitleDoneReelsEnabled')
-              : t('confirmation.subtitleDoneReelsDisabled')}
+              : t(confirmedCount === 1 ? 'feedback.uploadCompleteBodySingular' : 'feedback.uploadCompleteBody', { count: confirmedCount })}
         </Text>
-        <View style={[styles.reassuranceBox, uploading && styles.reassuranceBoxWarning]}>
-          {uploading ? (
+        <View style={[styles.reassuranceBox, sending && styles.reassuranceBoxWarning]}>
+          {sending ? (
             <>
               <ProgressBar progress={progress} />
               <Text style={styles.reassuranceRowWarning}>{t('confirmation.reassuranceSending')}</Text>
             </>
           ) : (
             <>
-              <Text style={styles.reassuranceRow}>{t('confirmation.reassuranceDone1')}</Text>
+              <Text accessibilityLiveRegion="polite" style={[styles.reassuranceRow, font(t('feedback.uploadReceived'))]}>{t('feedback.uploadReceived', { completed: confirmedCount, total: totalCount })}</Text>
               {reelsEnabled && <Text style={styles.reassuranceRow}>{t('confirmation.reassuranceDone2')}</Text>}
             </>
           )}

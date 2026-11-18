@@ -1,28 +1,20 @@
-// Single place listing every anchored tooltip in the app. Add, remove, or
-// reword one here (plus its matching i18n keys under "tooltips.<key>" in
-// all three language files) rather than hunting through screen components -
-// the screens themselves only ever reference an id from this list via
-// <TooltipTarget id="...">, they don't own any tooltip copy directly.
-export interface TooltipDef {
-  id: string;
-  titleKey: string;
-  bodyKey: string;
-}
+export interface TooltipDef { id: string; titleKey: string; bodyKey: string; }
+const tip = (id: string, key: string): TooltipDef => ({ id, titleKey: `tooltips.${key}.title`, bodyKey: `tooltips.${key}.body` });
 
 export const TOOLTIP_REGISTRY: TooltipDef[] = [
-  {
-    id: 'home.profileAvatar',
-    titleKey: 'tooltips.homeProfileAvatar.title',
-    bodyKey: 'tooltips.homeProfileAvatar.body',
-  },
-  {
-    id: 'bottomTabBar.myVideosTab',
-    titleKey: 'tooltips.bottomTabBarMyVideos.title',
-    bodyKey: 'tooltips.bottomTabBarMyVideos.body',
-  },
+  tip('home.overview', 'homeOverview'),
+  tip('home.profileAvatar', 'homeProfileAvatar'),
+  tip('bottomTabBar.myVideosTab', 'bottomTabBarMyVideos'),
+  tip('home.nextAction', 'homeNextAction'),
+  tip('question.text', 'questionText'),
+  tip('question.audio', 'questionAudio'),
+  tip('question.points', 'questionPoints'),
+  tip('question.actions', 'questionActions'),
 ];
 
-// Grouped ids for HelpButton instances - a screen's "?" button replays
-// whichever of these ids apply to it, in this order, regardless of
-// whether they were already dismissed.
-export const HOME_TOOLTIP_IDS = ['home.profileAvatar', 'bottomTabBar.myVideosTab'];
+// Versioned, device-local completion flags; the old two standalone tips
+// do not count as having seen the new guided tour.
+export const HOME_TOUR = 'guided-tour.home.v2';
+export const QUESTION_TOUR = 'guided-tour.question.v1';
+export const HOME_TOOLTIP_IDS = ['home.overview', 'home.profileAvatar', 'bottomTabBar.myVideosTab', 'home.nextAction'];
+export const QUESTION_TOOLTIP_IDS = ['question.text', 'question.audio', 'question.points', 'question.actions'];

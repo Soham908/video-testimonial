@@ -1,20 +1,27 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEvent } from 'expo';
 import { useTheme } from '../theme/ThemeContext';
 import type { PaletteColors } from '../theme/palettes';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import { Button } from '../components/ui/Button';
+import { ProgressBar } from '../components/ui/ProgressBar';
 import { Toggle } from '../components/ui/Toggle';
+import { PopupSheet } from '../components/ui/Modal';
 import { MAX_KEPT_TAKES } from '../recordings';
 import { useStrings } from '../i18n/useStrings';
+import { containsDevanagari, devanagariFontFamily } from '../theme/fonts';
+import { draggedTrimMs, measuredDurationMs, requestedTrim, trimAfterRemovingTail } from '../trim';
 
 export interface Take {
   id: string;
   filePath: string;
   durationSeconds: number;
+  durationVerified?: boolean;
+  trimAdjustedForReview?: boolean;
   // Trim metadata lives per-take now (recordings.ts) - undefined means
   // "never touched," same untouched-vs-full-clip distinction upload.ts
   // already relies on.
@@ -24,10 +31,13 @@ export interface Take {
   // shown with a "Saved" tag instead of counting as one of this
   // recording's live attempts, so it's clear which ones are new.
   saved?: boolean;
+  isPrimary?: boolean;
 }
 
 interface Props {
   questionNumber: number;
+  totalQuestions: number;
+  recordedQuestions: number;
   takes: Take[];
   selectedTakeId: string;
   onSelectTake: (id: string) => void;
@@ -40,6 +50,15 @@ interface Props {
   onToggleKept: (id: string) => void;
   onRecordAnother: () => void;
   onKeep: () => void;
+  onBack?: () => void;
+  questionBindingNeeded?: boolean;
+  onBindQuestion?: () => void;
+  onReviewReplacement?: () => void;
+  replacementReviewError?: string | null;
+  onMeasuredDuration?: (takeId: string, filePath: string, durationSeconds: number) => void;
+  bindingQuestionText?: string;
+  // Absent for an uploaded answer or while upload is in progress.
+  onDeleteTake?: (id: string) => void;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -61,6 +80,8 @@ const TRIM_END_EPSILON = 0.05;
 // no media is actually cut here.
 export function ReviewTrimScreen({
   questionNumber,
+  totalQuestions,
+  recordedQuestions,
   takes,
   selectedTakeId,
   onSelectTake,
@@ -69,6 +90,14 @@ export function ReviewTrimScreen({
   onToggleKept,
   onRecordAnother,
   onKeep,
+  onDeleteTake,
+  onBack,
+  questionBindingNeeded,
+  onBindQuestion,
+  onReviewReplacement,
+  replacementReviewError,
+  onMeasuredDuration,
+  bindingQuestionText,
 }: Props) {
   const { colors, spacing, radius } = useTheme();
   const { t } = useStrings();
@@ -86,6 +115,61 @@ export function ReviewTrimScreen({
   const player = useVideoPlayer(selected?.filePath ?? null, (p) => {
     p.pause();
   });
+  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const measuredCallbackRef = useRef(onMeasuredDuration);
+  measuredCallbackRef.current = onMeasuredDuration;
+  const [durationError, setDurationError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const takeId = selected?.id, filePath = selected?.filePath;
+    setDurationError(false);
+    const observe = (duration: number, sourceUri?: string) => {
+      if (!active || !takeId || !filePath || selectedRef.current?.id !== takeId || selectedRef.current.filePath !== filePath
+        || (sourceUri !== undefined && sourceUri !== filePath)) return;
+      if (measuredDurationMs(duration) === null) { setDurationError(true); return; }
+      measuredCallbackRef.current?.(takeId, filePath, duration);
+    };
+    const loaded = player.addListener('sourceLoad', event => {
+      const source = event.videoSource;
+      const uri = typeof source === 'string' ? source : source && typeof source === 'object' ? source.uri : undefined;
+      observe(event.duration, uri);
+    });
+    const status = player.addListener('statusChange', event => { if (active && event.status === 'error') setDurationError(true); });
+    if (player.duration > 0) observe(player.duration);
+    return () => { active = false; loaded.remove(); status.remove(); };
+  }, [player, selected?.id, selected?.filePath]);
+  const recordedCount = Math.min(totalQuestions, recordedQuestions);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState(false);
+  const deleting = useRef(false);
+  const pendingDelete = onDeleteTake ? takes.find(take => take.id === deleteId) : undefined;
+  const deleteNumber = takes.findIndex(take => take.id === deleteId) + 1;
+  const font = (value: string, weight = '400') => containsDevanagari(value) ? { fontFamily: devanagariFontFamily(weight) } : undefined;
+
+  function requestDelete(id: string) {
+    try { player.pause(); }
+    catch (error) { console.warn('[review] could not pause preview', error); }
+    setDeleteError(false);
+    setDeleteId(id);
+  }
+  function confirmDelete() {
+    if (!pendingDelete || !onDeleteTake || deleting.current) return;
+    deleting.current = true;
+    try { onDeleteTake(pendingDelete.id); setDeleteId(null); }
+    catch (error) { console.warn('[review] take deletion failed', error); setDeleteError(true); }
+    finally { deleting.current = false; }
+  }
+
+  function playPreview() {
+    try {
+      if (player.duration > 0 && player.currentTime >= player.duration - 0.1) player.currentTime = 0;
+      player.play();
+    } catch (error) {
+      console.warn('[review] preview playback failed', error);
+    }
+  }
 
   // Derived, not stored: "on" means the end handle is currently sitting at
   // duration - 2, nothing more. This can never drift out of sync with what
@@ -97,9 +181,10 @@ export function ReviewTrimScreen({
     !!selected && Math.abs(selectedEnd - (selectedDuration - REMOVE_LAST_SECONDS)) < TRIM_END_EPSILON;
 
   function handleToggleRemoveLastTwoSeconds(next: boolean) {
-    if (!selected) return;
+    if (!selected || selected.durationVerified !== true) return;
     const start = selected.trimStartSeconds ?? 0;
-    onChangeTrim(start, next ? Math.max(start, selectedDuration - REMOVE_LAST_SECONDS) : selectedDuration);
+    const trim = trimAfterRemovingTail(selectedDuration, start, next);
+    if (trim) onChangeTrim(trim.startSeconds, trim.endSeconds);
   }
 
   // Picking is only required once there's more to choose from than the
@@ -114,7 +199,9 @@ export function ReviewTrimScreen({
     : keptTakeIds.length === MAX_KEPT_TAKES
       ? t('reviewTrim.keepTheseButton', { count: MAX_KEPT_TAKES })
       : t('reviewTrim.selectToKeepButton', { count: MAX_KEPT_TAKES, kept: keptTakeIds.length });
-  const keepDisabled = mustPick && keptTakeIds.length !== MAX_KEPT_TAKES;
+  const kept = mustPick ? takes.filter(take => keptTakeIds.includes(take.id)) : takes;
+  const durationsReady = kept.length > 0 && kept.every(take => requestedTrim(take) !== null);
+  const keepDisabled = (mustPick && keptTakeIds.length !== MAX_KEPT_TAKES) || !durationsReady || durationError;
   const droppedTake =
     mustPick && keptTakeIds.length === MAX_KEPT_TAKES
       ? takes.find((take) => !keptTakeIds.includes(take.id))
@@ -122,6 +209,7 @@ export function ReviewTrimScreen({
 
   return (
     <View style={styles.container}>
+      {onBack && <View style={{ paddingTop: insets.top + spacing.edgeGap + 8, paddingHorizontal: spacing.lg, paddingBottom: 8 }}><Pressable accessibilityRole="button" accessibilityLabel={t('questionBrief.backButton')} onPress={onBack} style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center' }}><Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>‹ {t('questionBrief.backButton')}</Text></Pressable></View>}
       <View style={styles.videoWrap}>
         {selected && (
           // "contain" (not "cover") - the wrap's height is an arbitrary
@@ -130,6 +218,18 @@ export function ReviewTrimScreen({
           // true framing the distributor actually recorded.
           <VideoView style={styles.video} player={player} contentFit="contain" nativeControls />
         )}
+        {selected && !isPlaying && (
+          <View style={styles.playOverlay} pointerEvents="box-none">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('reviewTrim.playPreview')}
+              style={styles.playButton}
+              onPress={playPreview}
+            >
+              <Text style={styles.playGlyph}>▶</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {/* Scrollable, not a plain flex column - a short device with 3 takes
@@ -137,6 +237,26 @@ export function ReviewTrimScreen({
           the bottom with no way to reach them; a tall device just never
           shows a scroll indicator at all. */}
       <ScrollView style={styles.sheet} contentContainerStyle={styles.sheetContent}>
+        <Text style={styles.subtitle}>{t('uploadApproval.originalReview')}</Text>
+        <Text style={styles.subtitle}>{t('uploadApproval.originalRetained')}</Text>
+        {(!durationsReady || durationError) && <Text accessibilityRole={durationError ? 'alert' : 'text'} style={styles.subtitle}>{t(durationError ? 'reviewTrim.durationError' : 'reviewTrim.durationPending')}</Text>}
+        {selected?.trimAdjustedForReview && <Text style={styles.subtitle}>{t('reviewTrim.trimAdjusted')}</Text>}
+        {questionBindingNeeded && <View style={{ gap: spacing.sm }}>
+          <Text style={styles.subtitle}>{t('uploadApproval.legacyReview')}</Text>
+          {!!bindingQuestionText && <Text style={styles.toggleLabel}>{bindingQuestionText}</Text>}
+          {onBindQuestion && <Button label={t('uploadApproval.bindQuestion')} onPress={onBindQuestion} variant="secondary" />}
+        </View>}
+        {!questionBindingNeeded && onReviewReplacement && <Button label={t('uploadApproval.reviewReplacement')} onPress={onReviewReplacement} variant="quiet" />}
+        {replacementReviewError && <Text accessibilityRole="alert" style={styles.deleteError}>{replacementReviewError}</Text>}
+        <View style={styles.progressSummary}>
+          <Text style={styles.progressText}>
+            {t('reviewTrim.questionProgress', { number: questionNumber, total: totalQuestions })}
+          </Text>
+          <Text style={styles.subtitle}>
+            {t('reviewTrim.recordedProgress', { completed: recordedCount, total: totalQuestions, remaining: totalQuestions - recordedCount })}
+          </Text>
+          <ProgressBar progress={totalQuestions > 0 ? recordedCount / totalQuestions : 0} />
+        </View>
         <View style={styles.headerRow}>
           <Text style={styles.title}>{t('reviewTrim.title')}</Text>
           <Text style={styles.subtitle}>
@@ -153,21 +273,21 @@ export function ReviewTrimScreen({
           </Text>
         )}
 
-        {takes.length > 1 && (
+        {(takes.length > 1 || (takes.length > 0 && onDeleteTake)) && (
           <View style={styles.list}>
             {takes.map((take, i) => {
               const isKept = keptTakeIds.includes(take.id);
               const isSelected = take.id === selected?.id;
               return (
-                <Pressable
+                <View
                   key={take.id}
-                  onPress={() => onSelectTake(take.id)}
                   style={[
                     styles.takeRow,
                     { borderColor: isSelected ? colors.accent : colors.border },
                     mustPick && !isKept && styles.takeRowDropped,
                   ]}
                 >
+                  <Pressable accessibilityRole="button" accessibilityLabel={t('takeDeletion.previewLabel', { number: i + 1 })} accessibilityState={{ selected: isSelected }} onPress={() => onSelectTake(take.id)} style={styles.rowPreview}>
                   <View style={styles.rowThumb}>
                     <View style={styles.rowThumbPlay} />
                   </View>
@@ -177,6 +297,7 @@ export function ReviewTrimScreen({
                     {isSelected && <Text style={styles.rowInlineTag}> · {t('reviewTrim.usingBadge')}</Text>}
                     {take.saved && <Text style={styles.rowInlineTag}> · {t('reviewTrim.savedTag')}</Text>}
                   </Text>
+                  </Pressable>
                   {mustPick && (
                     <Pressable
                       hitSlop={10}
@@ -189,7 +310,13 @@ export function ReviewTrimScreen({
                       {isKept && <Text style={styles.rowKeepGlyph}>✓</Text>}
                     </Pressable>
                   )}
-                </Pressable>
+                  {onDeleteTake && <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t('takeDeletion.deleteLabel', { number: i + 1 })}
+                    onPress={() => requestDelete(take.id)}
+                    style={styles.deleteButton}
+                  ><TrashIcon color={colors.danger} /></Pressable>}
+                </View>
               );
             })}
           </View>
@@ -206,10 +333,10 @@ export function ReviewTrimScreen({
             <Text style={styles.toggleLabel}>{t('reviewTrim.removeLastTwoSecondsLabel')}</Text>
             <Text style={styles.toggleReason}>{t('reviewTrim.removeLastTwoSecondsReason')}</Text>
           </View>
-          <Toggle value={removeLastTwoSecondsOn} onValueChange={handleToggleRemoveLastTwoSeconds} />
+          <View pointerEvents={selected?.durationVerified === true && trimAfterRemovingTail(selectedDuration, selected?.trimStartSeconds ?? 0, true) ? 'auto' : 'none'} style={{ opacity: selected?.durationVerified === true && trimAfterRemovingTail(selectedDuration, selected?.trimStartSeconds ?? 0, true) ? 1 : 0.4 }}><Toggle value={removeLastTwoSecondsOn} onValueChange={handleToggleRemoveLastTwoSeconds} /></View>
         </View>
 
-        {selected && (
+        {selected && selected.durationVerified === true && (
           <TrimTimeline
             durationSeconds={selected.durationSeconds}
             startSeconds={selected.trimStartSeconds ?? 0}
@@ -240,8 +367,29 @@ export function ReviewTrimScreen({
           textStyle={styles.actionButtonText}
         />
       </View>
+
+      <PopupSheet visible={!!pendingDelete} groupAccessibility={false} onDismiss={() => { if (!deleting.current) setDeleteId(null); }}>
+        <Text accessibilityRole="header" style={[styles.deleteTitle, font(t('takeDeletion.title'), '700')]}>{t('takeDeletion.title', { number: deleteNumber })}</Text>
+        <Text style={[styles.deleteBody, font(t('takeDeletion.question'))]}>{t('takeDeletion.question', { number: questionNumber })} · {formatTime(pendingDelete?.durationSeconds ?? 0)}</Text>
+        <Text style={[styles.deleteBody, font(t('takeDeletion.body'))]}>{t('takeDeletion.body')}</Text>
+        <Text style={[styles.deleteBody, font(t(takes.length === 1 ? 'takeDeletion.lastTake' : 'takeDeletion.remaining'))]}>{t(takes.length === 1 ? 'takeDeletion.lastTake' : 'takeDeletion.remaining')}</Text>
+        {pendingDelete?.isPrimary && takes.some(take => take.id !== deleteId && take.saved) && <Text style={[styles.deleteBody, font(t('takeDeletion.primary'))]}>{t('takeDeletion.primary')}</Text>}
+        {deleteError && <Text accessibilityRole="alert" style={[styles.deleteError, font(t('takeDeletion.error'))]}>{t('takeDeletion.error')}</Text>}
+        <View style={{ gap: spacing.sm }}>
+          <Pressable accessibilityRole="button" onPress={confirmDelete} style={[styles.confirmDelete, { backgroundColor: colors.danger }]}><Text style={[styles.confirmDeleteText, { color: colors.accentText }, font(t('takeDeletion.confirm'), '700')]}>{t('takeDeletion.confirm')}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('takeDeletion.cancel')} onPress={() => setDeleteId(null)} style={[styles.confirmDelete, { borderWidth: 1.5, borderColor: colors.border }]}><Text style={[styles.confirmDeleteText, { color: colors.text }, font(t('takeDeletion.cancel'), '700')]}>{t('takeDeletion.cancel')}</Text></Pressable>
+        </View>
+      </PopupSheet>
     </View>
   );
+}
+
+function TrashIcon({ color }: { color: string }) {
+  return <View pointerEvents="none" style={{ alignItems: 'center', width: 18, height: 20 }}>
+    <View style={{ width: 7, height: 3, borderWidth: 1.5, borderColor: color, borderBottomWidth: 0 }} />
+    <View style={{ width: 18, height: 1.5, backgroundColor: color }} />
+    <View style={{ width: 13, height: 14, borderWidth: 1.5, borderTopWidth: 0, borderColor: color, borderBottomLeftRadius: 2, borderBottomRightRadius: 2 }} />
+  </View>;
 }
 
 // Plain draggable strip - two handles, no frame thumbnails or waveform.
@@ -261,34 +409,35 @@ function TrimTimeline({
 }) {
   const { spacing, radius } = useTheme();
   const trackWidth = useRef(0);
+  const dragStart = useRef({ startMs: 0, endMs: 0, width: 0, durationMs: 0 });
   const [width, setWidth] = useState(0);
 
   const startResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => { dragStart.current = { startMs: Math.round(startSeconds * 1000), endMs: Math.round(endSeconds * 1000), width: trackWidth.current, durationMs: Math.floor(durationSeconds * 1000) }; },
         onPanResponderMove: (_e, gesture) => {
-          if (trackWidth.current === 0) return;
-          const fraction = Math.max(0, Math.min(1, gesture.moveX / trackWidth.current));
-          const next = Math.min(fraction * durationSeconds, endSeconds - 1);
-          onChange(Math.max(0, next), endSeconds);
+          const initial = dragStart.current;
+          const next = draggedTrimMs('start', gesture.dx, initial.width, initial.durationMs, initial.startMs, initial.endMs);
+          if (next) onChange(next.startMs / 1000, next.endMs / 1000);
         },
       }),
-    [durationSeconds, endSeconds, onChange],
+    [durationSeconds, startSeconds, endSeconds, onChange],
   );
 
   const endResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => { dragStart.current = { startMs: Math.round(startSeconds * 1000), endMs: Math.round(endSeconds * 1000), width: trackWidth.current, durationMs: Math.floor(durationSeconds * 1000) }; },
         onPanResponderMove: (_e, gesture) => {
-          if (trackWidth.current === 0) return;
-          const fraction = Math.max(0, Math.min(1, gesture.moveX / trackWidth.current));
-          const next = Math.max(fraction * durationSeconds, startSeconds + 1);
-          onChange(startSeconds, Math.min(durationSeconds, next));
+          const initial = dragStart.current;
+          const next = draggedTrimMs('end', gesture.dx, initial.width, initial.durationMs, initial.startMs, initial.endMs);
+          if (next) onChange(next.startMs / 1000, next.endMs / 1000);
         },
       }),
-    [durationSeconds, startSeconds, onChange],
+    [durationSeconds, startSeconds, endSeconds, onChange],
   );
 
   const startPct = durationSeconds > 0 ? startSeconds / durationSeconds : 0;
@@ -358,6 +507,11 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, ins
     container: { flex: 1, backgroundColor: colors.background },
     videoWrap: { height: '38%', backgroundColor: '#000' },
     video: { flex: 1 },
+    playOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
+    playButton: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.95)', justifyContent: 'center', alignItems: 'center' },
+    playGlyph: { fontSize: 27, color: '#241E1A', marginLeft: 4 },
+    progressSummary: { gap: spacing.sm },
+    progressText: { fontSize: 14, fontWeight: '700', color: colors.accent },
     sheet: { flex: 1 },
     sheetContent: { padding: spacing.xl, gap: spacing.md },
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
@@ -381,6 +535,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, ins
       backgroundColor: colors.surface,
     },
     takeRowDropped: { opacity: 0.45 },
+    rowPreview: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2, minHeight: 44 },
     rowThumb: {
       width: 32,
       height: 32,
@@ -403,6 +558,12 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, ins
     rowLabel: { flex: 1, fontSize: 13.5, fontWeight: '700', color: colors.text },
     rowMeta: { fontSize: 12, fontWeight: '400', color: colors.textFaint },
     rowInlineTag: { fontSize: 12, fontWeight: '700', color: colors.accent },
+    deleteButton: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+    deleteTitle: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
+    deleteBody: { fontSize: 15, color: colors.textMuted, lineHeight: 23, marginBottom: spacing.md },
+    deleteError: { fontSize: 14, color: colors.danger, marginBottom: spacing.md },
+    confirmDelete: { minHeight: 48, paddingVertical: 14, paddingHorizontal: 20, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
+    confirmDeleteText: { fontSize: 16, fontWeight: '700' },
     // A real touch target (28px + hitSlop 10), not the old 18px corner
     // badge - and its own Pressable with stopPropagation, not a raw
     // onTouchEnd on the row competing with a nested Pressable for the
@@ -431,7 +592,7 @@ function makeStyles(colors: PaletteColors, spacing: Spacing, radius: Radius, ins
       // Just the real device inset plus a small fixed margin - not
       // spacing.lg on top of it, which left far more air below the
       // buttons than the system nav bar actually needs cleared.
-      paddingBottom: insetBottom + spacing.xs,
+      paddingBottom: insetBottom + spacing.edgeGap + spacing.footerGap,
       borderTopWidth: 1,
       borderTopColor: colors.border,
       backgroundColor: colors.background,

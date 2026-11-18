@@ -6,6 +6,7 @@
     "@expo-google-fonts/noto-sans": "^0.4.2",
     "@expo-google-fonts/noto-sans-devanagari": "^0.4.1",
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
+    "@noble/hashes": "2.4.0",
     "expo": "~57.0.2",
     "expo-application": "~57.0.2",
     "expo-audio": "~57.0.0",

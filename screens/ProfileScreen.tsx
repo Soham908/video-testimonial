@@ -9,6 +9,7 @@ import type { LanguageCode } from '../preferences';
 import { Button } from '../components/ui/Button';
 import { ListRow } from '../components/ui/ListRow';
 import { PopupSheet } from '../components/ui/Modal';
+import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { useStrings } from '../i18n/useStrings';
 
 interface Props {
@@ -29,6 +30,8 @@ interface Props {
   onOpenConsent?: () => void;
   /** Clears the stored session and returns to the login screen. */
   onLogout?: () => void;
+  onDeleteAccount?: (password: string) => Promise<void>;
+  deletionBusy?: boolean;
 }
 
 // Truncated, not fabricated - the backend only has a UUID, no short
@@ -60,11 +63,14 @@ export function ProfileScreen({
   onChangeLanguage,
   onOpenConsent,
   onLogout,
+  onDeleteAccount,
+  deletionBusy = false,
 }: Props) {
   const { colors, spacing, radius, typography } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, radius, typography), [colors, spacing, radius, typography]);
   const { t } = useStrings();
 
+  const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [changingLanguage, setChangingLanguage] = useState(false);
   const [reelName, setReelName] = useState('');
@@ -148,6 +154,7 @@ export function ProfileScreen({
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>{t('profile.settingsSectionLabel')}</Text>
         <View style={{ gap: spacing.sm }}>
+          {__DEV__ && <>
           <ListRow
             title={t('profile.notifyRowLabel')}
             trailing={<Switch value={notifyOnReady} onValueChange={setNotifyOnReady} trackColor={{ true: colors.accent }} />}
@@ -156,6 +163,7 @@ export function ProfileScreen({
             title={t('profile.wifiOnlyRowLabel')}
             trailing={<Switch value={wifiOnly} onValueChange={setWifiOnly} trackColor={{ true: colors.accent }} />}
           />
+          </>}
           <ListRow
             title={t('profile.languageRowLabel')}
             subtitle={t(`languageNames.${language ?? 'en'}`)}
@@ -176,6 +184,12 @@ export function ProfileScreen({
         </Text>
       )}
 
+      {onDeleteAccount && <>
+        <Pressable accessibilityRole="button" disabled={!distributorId || deletionBusy} onPress={() => setDeleting(true)} style={{ padding: spacing.md, alignItems: 'center' }}>
+          <Text style={{ color: colors.danger, fontWeight: '700', fontSize: 15 }}>{t('deletion.title')}</Text>
+        </Pressable>
+        <DeleteAccountSheet visible={deleting} busy={deletionBusy} onClose={() => setDeleting(false)} onDelete={onDeleteAccount} />
+      </>}
       <Text style={styles.version}>{t('profile.versionLabel', { version: '1.0' })}</Text>
 
       <PopupSheet visible={editing} onDismiss={() => setEditing(false)}>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Spacing } from '../theme/spacing';
 import type { Radius } from '../theme/radius';
 import type { Typography } from '../theme/typography';
@@ -66,13 +67,14 @@ export function RecordingScreen({
   onFinishAnswer,
 }: Props) {
   const { spacing, radius, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(spacing, radius, typography), [spacing, radius, typography]);
   const { t } = useStrings();
   const showNudge = isRecording && elapsedSeconds >= LENGTH_NUDGE_AT_SECONDS;
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-      <View style={styles.topBar} pointerEvents="none">
+      <View style={[styles.topBar, { top: insets.top + spacing.edgeGap + 18 }]} pointerEvents="none">
         <View style={styles.topRow}>
           {isRecording && (
             <View style={styles.recIndicator}>
@@ -101,7 +103,7 @@ export function RecordingScreen({
         </View>
       </View>
 
-      <View style={styles.bottomBlock} pointerEvents="box-none">
+      <View style={[styles.bottomBlock, { paddingBottom: insets.bottom + spacing.edgeGap + spacing.footerGap }]} pointerEvents="box-none">
         {prompts.length > 0 && (
           <View style={styles.promptsRow}>
             {prompts.map((p) => (
